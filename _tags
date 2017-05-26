@@ -1,0 +1,17 @@
+true : bin_annot, safe_string, principal
+true : warn(+A-44)
+true : package(rresult logs ipaddr x509 tls bos hex ptime ptime.clock.os astring duration)
+"src" : include
+
+<src/vmm_wire.{ml,mli}>: package(cstruct.ppx)
+<src/vmm_asn.{ml,mli}>: package(asn1-combinators)
+<src/vmm_lwt.{ml,mli}>: package(lwt)
+<src/vmm_tls.{ml,mli}>: package(lwt tls.lwt)
+
+<app/*>: package(lwt.unix cmdliner logs.fmt fmt.cli logs.cli fmt.tty lwt ipaddr.unix)
+<app/vmm_client.{ml,native,byte}>: package(nocrypto tls.lwt nocrypto.lwt)
+<app/vmmd.{ml,native,byte}>: package(tls.lwt)
+
+<provision/*>: package(cmdliner logs.fmt fmt.cli logs.cli fmt.tty asn1-combinators nocrypto.unix lwt)
+
+<stats/vmm_stats_lwt.{ml,native,byte}>: link_vmm_stats, package(cmdliner logs.fmt fmt.cli logs.cli fmt.tty lwt.unix lwt)
