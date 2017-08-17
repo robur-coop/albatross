@@ -7,29 +7,32 @@ open Vmm_core
 external sysctl_rusage : int -> rusage = "vmmanage_sysctl_rusage"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
 external sysctl_ifdata : int -> ifdata = "vmmanage_sysctl_ifdata"
+external vmmapi_stats : string -> (string * int64) list = "vmmanage_vmmapi_stats"
 
 let my_version = `WV0
 
 type t = {
   pid_nic : (int * string) list IM.t ;
   pid_rusage : rusage IM.t ;
-  old_pid_rusage : rusage IM.t ;
+  pid_vmmapi : (string * int64) list IM.t ;
   nic_ifdata : ifdata String.Map.t ;
-  old_nic_ifdata : ifdata String.Map.t ;
 }
 
 let empty () =
-  { pid_nic = IM.empty ;
-    pid_rusage = IM.empty ; nic_ifdata = String.Map.empty ;
-    old_pid_rusage = IM.empty ; old_nic_ifdata = String.Map.empty }
+  { pid_nic = IM.empty ; pid_rusage = IM.empty ; pid_vmmapi = IM.empty ; nic_ifdata = String.Map.empty }
 
 let rec safe_sysctl f arg =
   try Some (f arg) with
   | Unix.Unix_error (Unix.EINTR, _, _) -> safe_sysctl f arg
   | _ -> None
 
+let vm_vmmapi_stats pid =
+  let name = "ukvm" ^ string_of_int pid in
+  vmmapi_stats name
+
 let gather pid nics =
   safe_sysctl sysctl_rusage pid,
+  vm_vmmapi_stats pid,
   List.fold_left (fun ifd (nic, _) ->
       match safe_sysctl sysctl_ifdata nic with
       | None -> ifd
@@ -37,17 +40,17 @@ let gather pid nics =
     String.Map.empty nics
 
 let tick t =
-  let pid_rusage, nic_ifdata =
-    IM.fold (fun pid nics (rus, ifds) ->
-        let ru, ifd = gather pid nics in
+  let pid_rusage, pid_vmmapi, nic_ifdata =
+    IM.fold (fun pid nics (rus, vmms, ifds) ->
+        let ru, vmm, ifd = gather pid nics in
         (match ru with
          | None -> rus
          | Some ru -> IM.add pid ru rus),
+        IM.add pid vmm vmms,
         String.Map.union (fun _k a _b -> Some a) ifd ifds)
-      t.pid_nic (IM.empty, String.Map.empty)
+      t.pid_nic (IM.empty, IM.empty, String.Map.empty)
   in
-  let old_pid_rusage, old_nic_ifdata = t.pid_rusage, t.nic_ifdata in
-  { t with pid_rusage ; nic_ifdata ; old_pid_rusage ; old_nic_ifdata }
+  { t with pid_rusage ; pid_vmmapi ; nic_ifdata }
 
 let add_pid t pid nics =
   match safe_sysctl sysctl_ifcount () with
@@ -64,18 +67,14 @@ let add_pid t pid nics =
     in
     let nic_ids = go (List.length nics) [] max_nic in
     let pid_nic = IM.add pid nic_ids t.pid_nic in
-    let ru, ifd = gather pid nic_ids in
-    (match ru with
-     | None -> ()
-     | Some ru -> Logs.info (fun m -> m "RU %a" pp_rusage ru)) ;
-    Logs.info (fun m -> m "interfaces: %a" Fmt.(list ~sep:(unit ",@ ") pp_ifdata) (snd (List.split (String.Map.bindings ifd)))) ;
     Ok { t with pid_nic }
 
-(* TODO: we can now compute deltas: t contains also old ru & ifdata *)
 let stats t pid =
   try
-    let nics = IM.find pid t.pid_nic in
-    let ru = IM.find pid t.pid_rusage in
+    let nics = IM.find pid t.pid_nic
+    and ru = IM.find pid t.pid_rusage
+    and vmm = IM.find pid t.pid_vmmapi
+    in
     match
       List.fold_left (fun acc nic ->
           match String.Map.find nic t.nic_ifdata, acc with
@@ -85,7 +84,7 @@ let stats t pid =
         (Some []) (snd (List.split nics))
     with
     | None -> Error (`Msg "failed to find interface statistics")
-    | Some ifd -> Ok (ru, ifd)
+    | Some ifd -> Ok (ru, vmm, ifd)
   with
   | _ -> Error (`Msg "failed to find resource usage")
 

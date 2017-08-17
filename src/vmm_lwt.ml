@@ -13,7 +13,6 @@ let ret = function
   | Unix.WSTOPPED s -> `Stop s
 
 let wait_and_clear pid stdout =
-  let open Lwt.Infix in
   Lwt_unix.waitpid [] pid >>= fun (_, s) ->
   Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
   Vmm_commands.close_no_err stdout ;

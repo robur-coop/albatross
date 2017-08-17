@@ -170,7 +170,7 @@ let setup_log =
 
 let socket =
   let doc = "Socket to listen onto" in
-  Arg.(value & pos 0 string "" & info [] ~doc)
+  Arg.(required & pos 0 (some string) None & info [] ~doc)
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket)),

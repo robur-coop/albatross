@@ -177,6 +177,14 @@ let exec dir vm fifo vmimage taps =
     Logs.debug (fun m -> m "creating process");
     let pid = create_process prog line stdout stdout in
     Logs.debug (fun m -> m "created process %d: %a" pid Bos.Cmd.pp cmd) ;
+    (* on FreeBSD we need to chmod g+rw /dev/vmm/ukvm$pid to run
+       bhyvectl --get-stats --vm=ukvm$pid as non-priviliged user *)
+    (Lazy.force (uname ()) >>= fun (sys, _) ->
+     match sys with
+     | x when x = "FreeBSD" ->
+       let dev = "/dev/vmm/ukvm" ^ string_of_int pid in
+       Bos.OS.Cmd.run Bos.Cmd.(v "chmod" % "g+rw" % dev)
+     | _ -> Ok ()) >>= fun () ->
     Ok { config = vm ; cmd ; pid ; taps ; stdout }
   with
     Unix.Unix_error (e, _, _) ->

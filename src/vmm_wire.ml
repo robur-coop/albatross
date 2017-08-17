@@ -326,7 +326,7 @@ module Stats = struct
 
   let decode_ifdata buf =
     decode_string buf >>= fun (name, l) ->
-    check_exact buf (l + 116) >>= fun () ->
+    check_len buf (l + 116) >>= fun () ->
     let cs = Cstruct.shift buf l in
     let flags = Cstruct.BE.get_uint32 cs 0
     and send_length = Cstruct.BE.get_uint32 cs 4
@@ -369,23 +369,53 @@ module Stats = struct
     in
     Cstruct.to_string r
 
-  let encode_stats (ru, ifd) =
+  let encode_int64 i =
+    let cs = Cstruct.create 8 in
+    Cstruct.BE.set_uint64 cs 0 i ;
+    cs
+
+  let decode_int64 ?(off = 0) cs =
+    check_len cs (8 + off) >>= fun () ->
+    Ok (Cstruct.BE.get_uint64 cs off)
+
+  let encode_vmm_stats xs =
+    encode_int (List.length xs) ::
+    List.flatten
+      (List.map (fun (k, v) -> [ fst (encode_string k) ; encode_int64 v ]) xs)
+
+  let decode_vmm_stats cs =
+    let rec go acc ctr buf =
+      if ctr = 0 then
+        Ok (List.rev acc, buf)
+      else
+        decode_string buf >>= fun (str, off) ->
+        decode_int64 ~off buf >>= fun v ->
+        go ((str, v) :: acc) (pred ctr) (Cstruct.shift buf (off + 8))
+    in
+    decode_int cs >>= fun stat_num ->
+    go [] stat_num (Cstruct.shift cs 8)
+
+  let encode_stats (ru, vmm, ifd) =
     Cstruct.concat
-      (encode_rusage ru :: List.map encode_ifdata ifd)
+      (encode_rusage ru ::
+       encode_vmm_stats vmm @
+       encode_int (List.length ifd) :: List.map encode_ifdata ifd)
 
   let decode_stats cs =
     check_len cs 144 >>= fun () ->
-    let ru, ifd = Cstruct.split cs 144 in
+    let ru, rest = Cstruct.split cs 144 in
     decode_rusage ru >>= fun ru ->
-    let rec go acc buf =
-      if Cstruct.len buf = 0 then
-        Ok (List.rev acc)
+    decode_vmm_stats rest >>= fun (vmm, rest) ->
+    let rec go acc ctr buf =
+      if ctr = 0 then
+        Ok (List.rev acc, buf)
       else
         decode_ifdata buf >>= fun (this, used) ->
-        go (this :: acc) (Cstruct.shift buf used)
+        go (this :: acc) (pred ctr) (Cstruct.shift buf used)
     in
-    go [] ifd >>= fun ifs ->
-    Ok (ru, ifs)
+    decode_int rest >>= fun num_if ->
+    go [] num_if (Cstruct.shift rest 8) >>= fun (ifs, _rest) ->
+    Ok (ru, vmm, ifs)
 
   let decode_pid_taps data =
     decode_pid data >>= fun pid ->

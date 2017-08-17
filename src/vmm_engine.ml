@@ -17,7 +17,7 @@ type ('a, 'b) t = {
   console_version : Vmm_wire.version ;
   stats_socket : 'a option ;
   stats_counter : int ;
-  stats_requests : ('b * int) IM.t ;
+  stats_requests : ('b * int * (string -> string option)) IM.t ;
   stats_version : Vmm_wire.version ;
   log_socket : 'a ;
   log_counter : int ;
@@ -256,8 +256,9 @@ let handle_command t s prefix perms hdr buf =
               | None -> Error (`Msg "no statistics available")
               | Some _ -> match Vmm_resources.find_vm t.resources arg with
                 | Some vm ->
-                  let stat_out = Vmm_wire.Stats.stat t.stats_counter t.stats_version vm.Vmm_core.pid in
-                  let stats_requests = IM.add t.stats_counter (s, hdr.Vmm_wire.id) t.stats_requests in
+                  let stat_out = Vmm_wire.Stats.stat t.stats_counter t.stats_version vm.pid in
+                  let d = (s, hdr.Vmm_wire.id, translate_tap vm) in
+                  let stats_requests = IM.add t.stats_counter d t.stats_requests in
                   Ok ({ t with stats_counter = succ t.stats_counter ; stats_requests },
                       stat t stat_out)
                 | _ -> Error (`Msg ("statistics: not found " ^ buf))
@@ -373,31 +374,33 @@ let handle_initial t s addr chain ca =
   (* TODO here: inspect top-level-cert of chain.
      may need to create bridges and/or block device subdirectory (zfs create) *)
   let prefix = List.map id chain in
-  let t, out = log t (Log.hdr prefix (id leaf), `Login addr) in
+  let login_hdr, login_ev = Log.hdr prefix (id leaf), `Login addr in
+  let t, out = log t (login_hdr, login_ev) in
+  let initial_out = `Tls (s, Vmm_wire.Client.log login_hdr login_ev t.client_version) in
   Vmm_asn.permissions_of_cert asn_version leaf >>= fun perms ->
-  if List.mem `Image perms && Vmm_asn.contains_vm leaf then
-    handle_create t prefix chain leaf >>= fun (file, cont) ->
-    let cons = Vmm_wire.Console.add t.console_counter t.console_version file in
-    Ok ({ t with console_counter = succ t.console_counter },
-        `Raw (t.console_socket, cons) :: out,
-        `Create cont)
-  else if List.mem `Crl perms && Vmm_asn.contains_crl leaf then
-    handle_revocation t s leaf chain ca prefix
-  else
-    let log_attached =
-      if cmd_allowed perms `Log then
-        let pre = string_of_id prefix in
-        let v = match String.Map.find pre t.log_attached with
-          | None -> []
-          | Some xs -> xs
-        in
-        String.Map.add pre ((s, id leaf) :: v) t.log_attached
-      else
-        t.log_attached
-    in
-    Ok ({ t with log_attached },
-        out,
-        `Loop (prefix, perms))
+  (if List.mem `Image perms && Vmm_asn.contains_vm leaf then
+     handle_create t prefix chain leaf >>= fun (file, cont) ->
+     let cons = Vmm_wire.Console.add t.console_counter t.console_version file in
+     Ok ({ t with console_counter = succ t.console_counter },
+         [ `Raw (t.console_socket, cons) ],
+         `Create cont)
+   else if List.mem `Crl perms && Vmm_asn.contains_crl leaf then
+     handle_revocation t s leaf chain ca prefix
+   else
+     let log_attached =
+       if cmd_allowed perms `Log then
+         let pre = string_of_id prefix in
+         let v = match String.Map.find pre t.log_attached with
+           | None -> []
+           | Some xs -> xs
+         in
+         String.Map.add pre ((s, id leaf) :: v) t.log_attached
+       else
+         t.log_attached
+     in
+     Ok ({ t with log_attached }, [], `Loop (prefix, perms))
+  ) >>= fun (t, outs, res) ->
+  Ok (t, initial_out :: out @ outs, res)
 
 let handle_stat state hdr data =
   let open Vmm_wire in
@@ -411,14 +414,30 @@ let handle_stat state hdr data =
     | exception Not_found ->
       Logs.err (fun m -> m "couldn't find stat request") ;
       state, []
-    | (s, req_id) ->
+    | (s, req_id, f) ->
       let stats_requests = IM.remove hdr.id state.stats_requests in
       let state = { state with stats_requests } in
       let out =
         match Stats.int_to_op hdr.tag with
         | Some Stats.StatReply ->
-          let out = Client.stat data req_id state.client_version in
-          [ `Tls (s, out) ]
+          begin match Stats.decode_stats (Cstruct.of_string data) with
+            | Ok (ru, vmm, ifs) ->
+              let ifs =
+                List.map
+                  (fun x ->
+                     match f x.name with
+                     | Some name -> { x with name }
+                     | None -> x)
+                  ifs
+              in
+              let data = Cstruct.to_string (Stats.encode_stats (ru, vmm, ifs)) in
+              let out = Client.stat data req_id state.client_version in
+              [ `Tls (s, out) ]
+            | Error (`Msg msg) ->
+              Logs.err (fun m -> m "error %s while decode statistics" msg) ;
+              let out = fail req_id state.client_version in
+              [ `Tls (s, out) ]
+          end
         | None when hdr.tag = fail_tag ->
           let out = fail ~msg:data req_id state.client_version in
           [ `Tls (s, out) ]

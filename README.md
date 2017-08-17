@@ -12,7 +12,7 @@ is used on top to (more gracefully) handle multiple connection, and to have a
 watching thread (in `waitpid(2)`) for every virtual machine started by vmmd.
 
 It requires some pinned packages:
-- `asn1-combinators https://github.com/hannesm/ocaml-asn-combinators.git#enum`
+- `asn1-combinators https://github.com/hannesm/ocaml-asn1-combinators.git#enum`
 - `x509 https://github.com/hannesm/ocaml-x509.git#crl`
 - `tls https://github.com/hannesm/ocaml-tls.git#changes`
 - on FreeBSD, `solo5-kernel-ukvm https://github.com/solo5/solo5.git`
@@ -146,7 +146,7 @@ And deploying (watch the output of the processes started on the server above!):
 
 ```
 DEV> vmm_client cacert.pem hello.bundle hello.key SRV:1025
-DEV> vmm_client cacert.pem admin.bundle hello.key SRV:1025 --db dev.db
+DEV> vmm_client cacert.pem admin.bundle admin.key SRV:1025 --db dev.db
 ```
 
 Commands are at the moment `info`, `statistics`, `destroy`, `attach`, `detach`,

@@ -227,6 +227,11 @@ let pp_vm ppf vm =
     vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
     Bos.Cmd.pp vm.cmd
 
+let translate_tap vm tap =
+  match List.filter (fun (t, b) -> tap = t) (List.combine vm.taps vm.config.network) with
+  | [ (_, b) ] -> Some b
+  | _ -> None
+
 let identifier serial =
   match Hex.of_cstruct @@ Nocrypto.Hash.SHA256.digest @@
     Nocrypto.Numeric.Z.to_cstruct_be @@ serial

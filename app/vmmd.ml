@@ -8,6 +8,7 @@ let write_tls state t data =
        let state', out = Vmm_engine.handle_disconnect !state t in
        state := state' ;
        Lwt_list.iter_s (fun (s, data) -> Vmm_lwt.write_raw s data) out >>= fun () ->
+       Tls_lwt.Unix.close (fst t) >>= fun () ->
        raise e)
 
 let to_ipaddr (_, sa) = match sa with
@@ -31,17 +32,20 @@ let handle ca state t =
     let time = Unix.gettimeofday () in
     X509.Authenticator.chain_of_trust ~time ~crls:!state.Vmm_engine.crls [ca]
   in
-  Lwt.catch (fun () ->
-      Tls_lwt.Unix.reneg ~authenticator (fst t))
+  Lwt.catch
+    (fun () -> Tls_lwt.Unix.reneg ~authenticator (fst t))
     (fun e ->
        (match e with
         | Tls_lwt.Tls_alert a -> Logs.err (fun m -> m "TLS ALERT %s" (Tls.Packet.alert_type_to_string a))
         | Tls_lwt.Tls_failure f -> Logs.err (fun m -> m "TLS FAILURE %s" (Tls.Engine.string_of_failure f))
         | exn -> Logs.err (fun m -> m "%s" (Printexc.to_string exn))) ;
+       Tls_lwt.Unix.close (fst t) >>= fun () ->
        Lwt.fail e) >>= fun () ->
   (match Tls_lwt.Unix.epoch (fst t) with
    | `Ok epoch -> Lwt.return epoch.Tls.Core.peer_certificate_chain
-   | `Error -> Lwt.fail_with "error while getting epoch") >>= fun chain ->
+   | `Error ->
+     Tls_lwt.Unix.close (fst t) >>= fun () ->
+     Lwt.fail_with "error while getting epoch") >>= fun chain ->
   match Vmm_engine.handle_initial !state t (to_ipaddr t) chain ca with
   | Ok (state', outs, next) ->
     state := state' ;
@@ -75,11 +79,13 @@ let handle ca state t =
            process state out >>= fun () ->
            loop ()
        in
-       Lwt.catch loop (fun e ->
-           let state', cons = Vmm_engine.handle_disconnect !state t in
-           state := state' ;
-           Lwt_list.iter_s (fun (s, data) -> Vmm_lwt.write_raw s data) cons >>= fun () ->
-           raise e)
+       Lwt.catch loop
+         (fun e ->
+            let state', cons = Vmm_engine.handle_disconnect !state t in
+            state := state' ;
+            Lwt_list.iter_s (fun (s, data) -> Vmm_lwt.write_raw s data) cons >>= fun () ->
+            Tls_lwt.Unix.close (fst t) >>= fun () ->
+            raise e)
      | `Close socks ->
        Logs.debug (fun m -> m "closing session with %d active ones" (List.length socks)) ;
        Lwt_list.iter_s (fun (t, _) -> Tls_lwt.Unix.close t) socks >>= fun () ->

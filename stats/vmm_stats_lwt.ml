@@ -38,7 +38,7 @@ let handle s addr () =
 
 let rec timer () =
   t := Vmm_stats.tick !t ;
-  Lwt_unix.sleep Duration.(to_f (of_min 5)) >>= fun () ->
+  Lwt_unix.sleep Duration.(to_f (of_sec 15)) >>= fun () ->
   timer ()
 
 let jump _ file =

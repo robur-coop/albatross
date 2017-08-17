@@ -16,9 +16,11 @@ let process db hdr data =
     let r =
       match hdr.tag with
       | x when x = Client.stat_msg_tag ->
-        Client.decode_stat data >>= fun (ru, ifd) ->
-        Logs.app (fun m -> m "statistics: %a %a"
-                      pp_rusage ru Fmt.(list ~sep:(unit ", ") pp_ifdata) ifd) ;
+        Client.decode_stat data >>= fun (ru, vmm, ifd) ->
+        Logs.app (fun m -> m "statistics: %a %a %a"
+                     pp_rusage ru
+                     Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ": ") string uint64)) vmm
+                     Fmt.(list ~sep:(unit ", ") pp_ifdata) ifd) ;
         Ok ()
       | x when x = Client.log_msg_tag ->
         Client.decode_log data >>= fun log ->
@@ -56,12 +58,12 @@ let rec read_tls_write_cons db t =
         Logs.err (fun m -> m "error while reading %s" msg) ;
         read_tls_write_cons db t
       | Ok (hdr, data) ->
-        Logs.debug (fun m -> m "read from tls id %d %a tag %d data %a"
-                       hdr.Vmm_wire.id Vmm_wire.pp_version hdr.Vmm_wire.version
-                       hdr.Vmm_wire.tag Cstruct.hexdump_pp (Cstruct.of_string data)) ;
         process db hdr data ;
         read_tls_write_cons db t)
-    (fun _ -> Lwt.return_unit)
+    (fun e ->
+       Logs.err (fun m -> m "exception reading TLS stream %s"
+                    (Printexc.to_string e)) ;
+       Tls_lwt.Unix.close t)
 
 let rec read_cons_write_tls db t =
   Lwt.catch (fun () ->
@@ -99,9 +101,7 @@ let client cas host port cert priv_key db =
     Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
 
     if Vmm_asn.contains_vm leaf || Vmm_asn.contains_crl leaf then
-      Vmm_tls.read_tls t >|= function
-      | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg)
-      | Ok (hdr, data) -> process db hdr data
+      read_tls_write_cons db t
     else
       (Logs.debug (fun m -> m "read/write games!") ;
        Lwt.join [ read_tls_write_cons db t ; read_cons_write_tls db t ]))

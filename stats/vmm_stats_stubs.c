@@ -12,14 +12,13 @@
 #include <sys/sysctl.h>
 #include <net/if.h>
 
-#ifdef __FreeBSD__
-#include <net/if_mib.h>
-#endif
-
 #define Val32 caml_copy_int32
 #define Val64 caml_copy_int64
 
 #ifdef __FreeBSD__
+#include <net/if_mib.h>
+#include <vmmapi.h>
+
 CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
   CAMLparam1(pid_r);
   CAMLlocal3(res, utime, stime);
@@ -70,6 +69,38 @@ CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
 
   CAMLreturn(res);
 }
+
+CAMLprim value vmmanage_vmmapi_stats (value name) {
+  CAMLparam1(name);
+  CAMLlocal3(res, tmp, t);
+  int i, num_stats;
+  uint64_t *stats;
+  const char *desc;
+  struct vmctx *ctx;
+  const char *devname;
+
+  if (! caml_string_is_c_safe(name)) caml_raise_not_found();
+
+  devname = String_val(name);
+  ctx = vm_open(devname);
+  if (ctx == NULL) uerror("vm_open", Nothing);
+
+  stats = vm_get_stats(ctx, 0, NULL, &num_stats);
+  if (stats != NULL) {
+    for (i = 0; i < num_stats; i++) {
+      tmp = caml_alloc(2, 0);
+      desc = vm_get_stat_desc(ctx, i);
+      Store_field (tmp, 0, caml_copy_string(desc));
+      Store_field (tmp, 1, Val64(stats[i]));
+      t = caml_alloc(2, 0);
+      Store_field (t, 0, tmp);
+      Store_field (t, 1, res);
+      res = t;
+    }
+  }
+  CAMLreturn(res);
+}
+
 
 CAMLprim value vmmanage_sysctl_ifcount (value unit) {
   CAMLparam1(unit);
@@ -136,17 +167,21 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
 CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
   CAMLparam1(pid_r);
-  uerror("sysctl", Nothing);
+  uerror("sysctl_rusage", Nothing);
 }
 
 CAMLprim value vmmanage_sysctl_ifcount (value unit) {
   CAMLparam1(unit);
-  uerror("sysctl", Nothing);
+  uerror("sysctl_ifcount", Nothing);
 }
 
 CAMLprim value vmmanage_sysctl_ifdata (value num) {
   CAMLparam1(num);
-  uerror("sysctl", Nothing);
+  uerror("sysctl_ifdata", Nothing);
 }
 
+CAMLprim value vmmanage_vmmapi_stats (value name) {
+  CAMLparam1(name);
+  uerror("vm_stat", Nothing);
+}
 #endif
