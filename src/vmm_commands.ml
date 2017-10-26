@@ -166,7 +166,8 @@ let exec dir vm fifo vmimage taps =
    | [_] -> Ok Fpath.(dir / "ukvm-bin.net")
    | _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   cpuset vm.cpuid >>= fun cpuset ->
-  let cmd = Bos.Cmd.(of_list cpuset % p bin %% of_list net % "--" % p vmimage %% of_list argv) in
+  let mem = "--mem=" ^ string_of_int vm.memory in
+  let cmd = Bos.Cmd.(of_list cpuset % p bin % mem %% of_list net % "--" % p vmimage %% of_list argv) in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
   let line = Array.of_list line in
