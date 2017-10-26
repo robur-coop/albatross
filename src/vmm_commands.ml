@@ -191,4 +191,4 @@ let exec dir vm fifo vmimage taps =
     close_no_err stdout;
     R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_error e
 
-let destroy vm = Unix.kill vm.pid 9
+let destroy vm = Unix.kill vm.pid 15 (* 15 is SIGTERM *)
