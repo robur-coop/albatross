@@ -364,7 +364,7 @@ module Log = struct
         | `Signal n -> "signal", n
         | `Stop n -> "stop", n
       in
-      Fmt.pf ppf "STOPPED %d with %s %d" pid s c
+      Fmt.pf ppf "STOPPED %d with %s %a" pid s Fmt.Dump.signal c
     | `Block_create (name, size) ->
       Fmt.pf ppf "BLOCK_CREATE %s %d" name size
     | `Block_destroy name -> Fmt.pf ppf "BLOCK_DESTROY %s" name

@@ -3,9 +3,9 @@
 open Lwt.Infix
 
 let pp_process_status ppf = function
-| Unix.WEXITED c -> Fmt.pf ppf "exited with %d" c
-| Unix.WSIGNALED s -> Fmt.pf ppf "killed by signal %a" Fmt.Dump.signal s
-| Unix.WSTOPPED s -> Fmt.pf ppf "stopped by signal %a" Fmt.Dump.signal s
+  | Unix.WEXITED c -> Fmt.pf ppf "exited with %d" c
+  | Unix.WSIGNALED s -> Fmt.pf ppf "killed by signal %a" Fmt.Dump.signal s
+  | Unix.WSTOPPED s -> Fmt.pf ppf "stopped by signal %a" Fmt.Dump.signal s
 
 let ret = function
   | Unix.WEXITED c -> `Exit c
