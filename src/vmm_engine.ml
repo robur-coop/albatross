@@ -326,7 +326,7 @@ let handle_revocation t s leaf chain ca prefix =
     | subca::_ -> subca
     | [] -> ca
   in
-  let time = Ptime.to_float_s (Ptime_clock.now ()) in
+  let time = Ptime_clock.now () in
   (if X509.CRL.verify crl ~time issuer then Ok () else Error (`Msg "couldn't verify CRL")) >>= fun () ->
   (* the this_update must be > now, next_update < now, this_update > <local>.this_update, number > <local>.number *)
   (* TODO: can we have something better for uniqueness of CRL? *)

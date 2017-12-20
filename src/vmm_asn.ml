@@ -37,7 +37,7 @@ module Oid = struct
 end
 
 let perms : permission list Asn.t =
-  Asn.bit_string_flags [
+  Asn.S.bit_string_flags [
     0, `All ;
     1, `Info ;
     2, `Image ;
@@ -48,28 +48,29 @@ let perms : permission list Asn.t =
     7, `Crl ;
   ]
 
+open Rresult.R.Infix
+
+let guard p err = if p then Ok () else Error err
+
 let decode_strict codec cs =
-  try
-    let (a, cs) = Asn.decode_exn codec cs in
-    if Cstruct.len cs = 0 then
-      Ok a
-    else
-      Error (`Msg "trailing bytes")
-  with
-  | e -> Error (`Msg (Printexc.to_string e))
+  match Asn.decode codec cs with
+  | Ok (a, cs) ->
+    guard (Cstruct.len cs = 0) (`Msg "trailing bytes") >>= fun () ->
+    Ok a
+  | Error (`Parse msg) -> Error (`Msg msg)
 
 let projections_of asn =
   let c = Asn.codec Asn.der asn in
   (decode_strict c, Asn.encode c)
 
-let int_of_cstruct, int_to_cstruct = projections_of Asn.int
-let ints_of_cstruct, ints_to_cstruct = projections_of Asn.(sequence_of int)
+let int_of_cstruct, int_to_cstruct = projections_of Asn.S.int
+let ints_of_cstruct, ints_to_cstruct = projections_of Asn.S.(sequence_of int)
 
 let ipv4 =
   let f cs = Ipaddr.V4.of_bytes_exn (Cstruct.to_string cs)
   and g ip = Cstruct.of_string (Ipaddr.V4.to_bytes ip)
   in
-  Asn.map f g Asn.octet_string
+  Asn.S.map f g Asn.S.octet_string
 
 let bridge =
   let f = function
@@ -79,23 +80,23 @@ let bridge =
     | `Internal nam -> `C1 nam
     | `External (nam, s, e, r, n) -> `C2 (nam, s, e, r, n)
   in
-  Asn.map f g @@
-  Asn.(choice2
-         (explicit 0 utf8_string)
-         (explicit 1 (sequence5
-                        (required ~label:"name" utf8_string)
-                        (required ~label:"start" ipv4)
-                        (required ~label:"end" ipv4)
-                        (required ~label:"router" ipv4)
-                        (required ~label:"netmask" int))))
+  Asn.S.map f g @@
+  Asn.S.(choice2
+           (explicit 0 utf8_string)
+           (explicit 1 (sequence5
+                          (required ~label:"name" utf8_string)
+                          (required ~label:"start" ipv4)
+                          (required ~label:"end" ipv4)
+                          (required ~label:"router" ipv4)
+                          (required ~label:"netmask" int))))
 
 let bridges_of_cstruct, bridges_to_cstruct =
-  projections_of (Asn.sequence_of bridge)
+  projections_of (Asn.S.sequence_of bridge)
 
 let strings_of_cstruct, strings_to_cstruct =
-  projections_of Asn.(sequence_of utf8_string)
+  projections_of Asn.S.(sequence_of utf8_string)
 
-let string_of_cstruct, string_to_cstruct = projections_of Asn.utf8_string
+let string_of_cstruct, string_to_cstruct = projections_of Asn.S.utf8_string
 
 let image =
   let f = function
@@ -105,20 +106,18 @@ let image =
     | `Ukvm_amd64, x -> `C1 x
     | `Ukvm_arm64, x -> `C2 x
   in
-  Asn.map f g @@
-  Asn.(choice2
-         (explicit 0 octet_string)
-         (explicit 1 octet_string))
+  Asn.S.map f g @@
+  Asn.S.(choice2
+           (explicit 0 octet_string)
+           (explicit 1 octet_string))
 
 let image_of_cstruct, image_to_cstruct = projections_of image
 
 let permissions_of_cstruct, permissions_to_cstruct = projections_of perms
 
-open Rresult.R.Infix
-
 let req label cert oid f =
   match X509.Extension.unsupported cert oid with
-  | None -> R.error_msgf "OID %s not present (%s)" label (Asn.OID.to_string oid)
+  | None -> R.error_msgf "OID %s not present (%a)" label Asn.OID.pp oid
   | Some (_, data) -> f data
 
 let opt cert oid f =

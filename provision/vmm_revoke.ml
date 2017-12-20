@@ -22,7 +22,7 @@ let jump _ db cacert cakey crl cn serial =
     Bos.OS.File.read (Fpath.v cacert) >>= fun cacert ->
     let cacert = X509.Encoding.Pem.Certificate.of_pem_cstruct1 (Cstruct.of_string cacert) in
 
-    let this_update = asn1_of_unix (Unix.time ()) in
+    let this_update = Ptime_clock.now () in
     let revoked = { X509.CRL.serial ; date = this_update ; extensions = [] } in
     let crl = Fpath.v crl in
     let issuer = X509.subject cacert in

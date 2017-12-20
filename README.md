@@ -1,4 +1,4 @@
-# Managing virtual machines
+# Albatross: Managing virtual machines
 
 A set of binaries to manage, provision, and deploy virtual machine images.  This
 is very much work in progress, don't expect anything stable.
@@ -11,11 +11,9 @@ the (blocking!) Bos library for operating system commands.  A thin layer of Lwt
 is used on top to (more gracefully) handle multiple connection, and to have a
 watching thread (in `waitpid(2)`) for every virtual machine started by vmmd.
 
-It requires some pinned packages:
-- `asn1-combinators https://github.com/hannesm/ocaml-asn1-combinators.git#enum`
-- `x509 https://github.com/hannesm/ocaml-x509.git#crl`
-- `tls https://github.com/hannesm/ocaml-tls.git#changes`
-- on FreeBSD, `solo5-kernel-ukvm https://github.com/solo5/solo5.git`
+To install Albatross, run `opam pin add albatross
+https://github.com/hannesm/albatross`.  On FreeBSD, `opam pin add
+solo5-kernel-ukvm --dev` is needed as well.
 
 The following elaborates on how to get the software up and running, following by
 provisioning and deploying some unikernels.  There is a *server* (`SRV`)

@@ -16,20 +16,11 @@ let d_exts ?len () =
   [ (true, (`Basic_constraints (true, len)))
   ; (true, (`Key_usage [ `Key_cert_sign ; `CRL_sign ; `Digital_signature ; `Content_commitment ])) ]
 
-let asn1_of_unix ts =
-  let tm = Unix.gmtime ts in
-  { Asn.Time.date = Unix.(tm.tm_year + 1900, (tm.tm_mon + 1), tm.tm_mday) ;
-    time = Unix.(tm.tm_hour, tm.tm_min, tm.tm_sec, 0.) ;
-    tz = None }
-
 let timestamps validity =
-  let valid = Duration.to_f validity
-  and now = Unix.time ()
-  in
-  let start = asn1_of_unix now
-  and expire = asn1_of_unix (now +. valid)
-  in
-  (start, expire)
+  let now = Ptime_clock.now () in
+  match Ptime.add_span now (Ptime.Span.of_int_s (Duration.to_sec validity)) with
+  | None -> Error (`Msg "span too big - reached end of ptime")
+  | Some exp -> Ok (now, exp)
 
 let rec safe f arg =
   try Ok (f arg) with
@@ -79,14 +70,16 @@ let sign ?dbname ?certname extensions issuer key csr delta =
          Logs.info (fun m -> m "reusing serial %s" (Z.to_string serial)) ;
          Ok (Some serial)
        | Error _ -> Ok None) >>= fun serial ->
-  let valid_from, valid_until = timestamps delta in
-  (match dbname with
-   | None -> Ok extensions (* evil hack to avoid issuer + public key for CA cert *)
-   | Some _ ->
-     match key with
-     | `RSA priv ->
-       let capub = `RSA (Nocrypto.Rsa.pub_of_priv priv) in
-       Ok (extensions @ key_ids (X509.CA.info csr).X509.CA.public_key capub)) >>= fun extensions ->
+  timestamps delta >>= fun (valid_from, valid_until) ->
+  let extensions =
+    match dbname with
+    | None -> extensions (* evil hack to avoid issuer + public key for CA cert *)
+    | Some _ ->
+      match key with
+      | `RSA priv ->
+        let capub = `RSA (Nocrypto.Rsa.pub_of_priv priv) in
+        extensions @ key_ids (X509.CA.info csr).X509.CA.public_key capub
+  in
   let cert = X509.CA.sign csr ?serial ~valid_from ~valid_until ~extensions key issuer in
   (match serial, dbname with
    | Some _, _ -> Ok () (* already in DB! *)

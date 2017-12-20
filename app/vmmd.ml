@@ -29,7 +29,7 @@ let process state xs =
 let handle ca state t =
   Logs.debug (fun m -> m "connection from %a" pp_sockaddr t) ;
   let authenticator =
-    let time = Unix.gettimeofday () in
+    let time = Ptime_clock.now () in
     X509.Authenticator.chain_of_trust ~time ~crls:!state.Vmm_engine.crls [ca]
   in
   Lwt.catch
