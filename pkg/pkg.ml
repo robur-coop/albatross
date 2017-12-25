@@ -4,7 +4,7 @@
 open Topkg
 
 let () =
-  Pkg.describe "vmm" @@ fun _ ->
+  Pkg.describe "albatross" @@ fun _ ->
   Ok [
     Pkg.bin "app/vmmd" ;
     Pkg.bin "app/vmm_console" ;
