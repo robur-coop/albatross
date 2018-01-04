@@ -87,7 +87,7 @@ VMs local.
 
 ```
 # FreeBSD
-SRV# ifconfig bridge0 create
+SRV# ifconfig bridge create #should output bridge0
 SRV# ifconfig bridge0 name ext
 SRV# sysctl net.link.tap.up_on_open=1
 # Linux
