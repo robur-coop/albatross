@@ -91,13 +91,18 @@ let sign ?dbname ?certname extensions issuer key csr delta =
 
 let priv_key ?(bits = 2048) fn name =
   let open Rresult.R.Infix in
-  match fn with
-  | None ->
+  let file = match fn with
+    | None -> Fpath.(v name + "key")
+    | Some f -> Fpath.v f
+  in
+  Bos.OS.File.exists file >>= function
+  | false ->
+    Logs.info (fun m -> m "creating new RSA key %a" Fpath.pp file) ;
     let priv = `RSA (Nocrypto.Rsa.generate bits) in
-    Bos.OS.File.write ~mode:0o400 Fpath.(v name + "key") (Cstruct.to_string (X509.Encoding.Pem.Private_key.to_pem_cstruct1 priv)) >>= fun () ->
+    Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string (X509.Encoding.Pem.Private_key.to_pem_cstruct1 priv)) >>= fun () ->
     Ok priv
-  | Some fn ->
-    Bos.OS.File.read (Fpath.v fn) >>= fun s ->
+  | true ->
+    Bos.OS.File.read file >>= fun s ->
     Ok (X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string s))
 
 open Cmdliner
