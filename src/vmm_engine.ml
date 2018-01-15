@@ -134,12 +134,12 @@ let handle_create t prefix chain cert =
   Logs.debug (fun m -> m "now checking dynamic policies") ;
   Vmm_resources.check_dynamic t.resources vm_config res >>= fun resource_usage ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_commands.prepare vm_config >>= fun (fifo, vmimage, taps) ->
-  Logs.debug (fun m -> m "prepared vm %a" Fpath.pp vmimage) ;
-  Ok (filename vm_config,
+  Vmm_commands.prepare vm_config >>= fun (tmpfile, taps) ->
+  Logs.debug (fun m -> m "prepared vm %a" Fpath.pp tmpfile) ;
+  Ok (Fpath.basename tmpfile,
       fun t s ->
         (* actually execute the vm *)
-        Vmm_commands.exec t.dir vm_config fifo vmimage taps >>= fun vm ->
+        Vmm_commands.exec t.dir vm_config tmpfile taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
         Logs.debug (fun m -> m "%a" Vmm_resources.pp resources) ;

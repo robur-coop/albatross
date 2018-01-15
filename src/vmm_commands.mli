@@ -4,13 +4,11 @@ open Rresult
 
 open Vmm_core
 
-val tmpfile : vm_config -> string -> Fpath.t
-
-val prepare : vm_config -> (Fpath.t * Fpath.t * string list, [> R.msg ]) result
+val prepare : vm_config -> (Fpath.t * string list, [> R.msg ]) result
 
 val shutdown : vm -> (unit, [> R.msg ]) result
 
-val exec : Fpath.t -> vm_config -> Fpath.t -> Fpath.t -> string list -> (vm, [> R.msg ]) result
+val exec : Fpath.t -> vm_config -> Fpath.t -> string list -> (vm, [> R.msg ]) result
 
 val destroy : vm -> unit
 

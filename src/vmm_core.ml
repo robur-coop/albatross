@@ -219,13 +219,14 @@ type vm = {
   cmd : Bos.Cmd.t ;
   pid : int ;
   taps : string list ;
-  stdout : Unix.file_descr (* ringbuffer thingy *)
+  stdout : Unix.file_descr ; (* ringbuffer thingy *)
+  tmpfile : Fpath.t
 }
 
 let pp_vm ppf vm =
-  Fmt.pf ppf "pid %d@ taps %a cmdline %a"
+  Fmt.pf ppf "pid %d@ taps %a cmdline %a tmpfile %a"
     vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
-    Bos.Cmd.pp vm.cmd
+    Bos.Cmd.pp vm.cmd Fpath.pp vm.tmpfile
 
 let translate_tap vm tap =
   match List.filter (fun (t, b) -> tap = t) (List.combine vm.taps vm.config.network) with

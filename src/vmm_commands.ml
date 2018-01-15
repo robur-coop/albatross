@@ -58,12 +58,19 @@ let close_no_err fd = try close fd with e -> ()
 open Vmm_core
 
 let rec mkfifo name =
-  try Unix.mkfifo name 0o640 with
+  try Unix.mkfifo (Fpath.to_string name) 0o640 with
   | Unix.Unix_error (Unix.EINTR, _, _) -> mkfifo name
 
-let tmpfile vm suffix =
-  let name = filename vm in
-  Fpath.(v (Filename.get_temp_dir_name ()) / name + suffix)
+let image_fn = Fpath.add_ext "img"
+let fifo_fn = Fpath.add_ext "fifo"
+
+let tmpfile vm =
+  let random =
+    let cs = Nocrypto.Rng.generate 8 in
+    match Hex.of_cstruct cs with `Hex str -> str
+  in
+  let baseid = filename vm in
+  Fpath.(v (Filename.get_temp_dir_name ()) / "albatross" + baseid + random)
 
 let rec fifo_exists file =
   try Ok (Unix.((stat @@ Fpath.to_string file).st_kind = S_FIFO)) with
@@ -119,17 +126,17 @@ let create_bridge bname =
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let prepare vm =
-  let vmimage = tmpfile vm "img" in
+  let tmpfile = tmpfile vm in
   (match vm.vmimage with
    | `Ukvm_amd64, blob -> Ok blob
    | _ -> Error (`Msg "no amd64 ukvm image found")) >>= fun image ->
-  Bos.OS.File.write vmimage (Cstruct.to_string image) >>= fun () ->
-  let fifo = tmpfile vm "fifo" in
+  Bos.OS.File.write (image_fn tmpfile) (Cstruct.to_string image) >>= fun () ->
+  let fifo = fifo_fn tmpfile in
   (match fifo_exists fifo with
    | Ok true -> Ok ()
    | Ok false -> Error (`Msg ("file " ^ Fpath.to_string fifo ^ " exists and is not a fifo"))
    | Error _ ->
-     try Ok (mkfifo (Fpath.to_string fifo)) with
+     try Ok (mkfifo fifo) with
      | Unix.Unix_error (e, f, _) ->
        Logs.err (fun m -> m "%a error in %s: %a" Fpath.pp fifo f pp_unix_error e) ;
        Error (`Msg "while creating fifo")) >>= fun () ->
@@ -138,14 +145,13 @@ let prepare vm =
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
     (Ok []) vm.network >>= fun taps ->
-  Ok (fifo, vmimage, List.rev taps)
+  Ok (tmpfile, List.rev taps)
 
 let shutdown vm =
-  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.taps >>= fun () ->
-  let fifo = tmpfile vm.config "fifo" in
-  Bos.OS.File.delete fifo >>= fun () ->
-  let vmimage = tmpfile vm.config "img" in
-  Bos.OS.File.delete vmimage
+  (* same order as prepare! *)
+  Bos.OS.File.delete (image_fn vm.tmpfile) >>= fun () ->
+  Bos.OS.File.delete (fifo_fn vm.tmpfile) >>= fun () ->
+  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.taps
 
 let cpuset cpu =
   Lazy.force (uname ()) >>= fun (sys, _) ->
@@ -157,7 +163,7 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec dir vm fifo vmimage taps =
+let exec dir vm tmpfile taps =
   (* TODO: --net-mac=xx *)
   let net = List.map (fun t -> "--net=" ^ t) taps in
   let argv = match vm.argv with None -> [] | Some xs -> xs in
@@ -167,10 +173,11 @@ let exec dir vm fifo vmimage taps =
    | _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   cpuset vm.cpuid >>= fun cpuset ->
   let mem = "--mem=" ^ string_of_int vm.memory in
-  let cmd = Bos.Cmd.(of_list cpuset % p bin % mem %% of_list net % "--" % p vmimage %% of_list argv) in
+  let cmd = Bos.Cmd.(of_list cpuset % p bin % mem %% of_list net % "--" % p (image_fn tmpfile) %% of_list argv) in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
   let line = Array.of_list line in
+  let fifo = fifo_fn tmpfile in
   Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
   write_fd_for_file fifo >>= fun stdout ->
   Logs.debug (fun m -> m "opened file descriptor!");
@@ -186,7 +193,7 @@ let exec dir vm fifo vmimage taps =
        let dev = "/dev/vmm/ukvm" ^ string_of_int pid in
        Bos.OS.Cmd.run Bos.Cmd.(v "chmod" % "g+rw" % dev)
      | _ -> Ok ()) >>= fun () ->
-    Ok { config = vm ; cmd ; pid ; taps ; stdout }
+    Ok { config = vm ; cmd ; pid ; taps ; stdout ; tmpfile }
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
