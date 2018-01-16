@@ -1,5 +1,7 @@
 # Albatross: Managing virtual machines
 
+[![Build Status](https://travis-ci.org/hannesm/albatross.svg?branch=master)](https://travis-ci.org/hannesm/albatross)
+
 A set of binaries to manage, provision, and deploy virtual machine images.  This
 is very much work in progress, don't expect anything stable.
 
