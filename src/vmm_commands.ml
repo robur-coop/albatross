@@ -193,7 +193,9 @@ let exec dir vm tmpfile taps =
        let dev = "/dev/vmm/ukvm" ^ string_of_int pid in
        Bos.OS.Cmd.run Bos.Cmd.(v "chmod" % "g+rw" % dev)
      | _ -> Ok ()) >>= fun () ->
-    Ok { config = vm ; cmd ; pid ; taps ; stdout ; tmpfile }
+    (* this should get rid of the vmimage from vmmd's memory! *)
+    let config = { vm with vmimage = (fst vm.vmimage, Cstruct.create 0) } in
+    Ok { config ; cmd ; pid ; taps ; stdout ; tmpfile }
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
