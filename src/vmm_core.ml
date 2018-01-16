@@ -13,32 +13,34 @@ module IS = Set.Make(I)
 module IM = Map.Make(I)
 
 type permission =
-  [ `All | `Info | `Image | `Block | `Statistics | `Console | `Log | `Crl ]
+  [ `All | `Info | `Create | `Block | `Statistics | `Console | `Log | `Crl | `Force_create]
 
 let pp_permission ppf = function
   | `All -> Fmt.pf ppf "all"
   | `Info -> Fmt.pf ppf "info"
-  | `Image -> Fmt.pf ppf "image"
+  | `Create -> Fmt.pf ppf "create"
   | `Block -> Fmt.pf ppf "block"
   | `Statistics -> Fmt.pf ppf "statistics"
   | `Console -> Fmt.pf ppf "console"
   | `Log -> Fmt.pf ppf "log"
   | `Crl -> Fmt.pf ppf "crl"
+  | `Force_create -> Fmt.pf ppf "force-create"
 
 let permission_of_string = function
   | x when x = "all" -> Some `All
   | x when x = "info" -> Some `Info
-  | x when x = "image" -> Some `Image
+  | x when x = "create" -> Some `Create
   | x when x = "block" -> Some `Block
   | x when x = "statistics" -> Some `Statistics
   | x when x = "console" -> Some `Console
   | x when x = "log" -> Some `Log
   | x when x = "crl" -> Some `Crl
+  | x when x = "force-create" -> Some `Force_create
   | _ -> None
 
 type cmd =
   [ `Info
-  | `Destroy_image
+  | `Destroy_vm
   | `Create_block
   | `Destroy_block
   | `Statistics
@@ -49,7 +51,7 @@ type cmd =
 
 let pp_cmd ppf = function
   | `Info -> Fmt.pf ppf "info"
-  | `Destroy_image -> Fmt.pf ppf "destroy"
+  | `Destroy_vm -> Fmt.pf ppf "destroy"
   | `Create_block -> Fmt.pf ppf "create-block"
   | `Destroy_block -> Fmt.pf ppf "destroy-block"
   | `Statistics -> Fmt.pf ppf "statistics"
@@ -59,7 +61,7 @@ let pp_cmd ppf = function
 
 let cmd_of_string = function
   | x when x = "info" -> Some `Info
-  | x when x = "destroy" -> Some `Destroy_image
+  | x when x = "destroy" -> Some `Destroy_vm
   | x when x = "create-block" -> Some `Create_block
   | x when x = "destroy-block" -> Some `Destroy_block
   | x when x = "statistics" -> Some `Statistics
@@ -72,7 +74,7 @@ let cmd_allowed permissions cmd =
   List.mem `All permissions ||
   let perm = match cmd with
     | `Info -> `Info
-    | `Destroy_image -> `Image
+    | `Destroy_vm -> `Create
     | `Create_block -> `Block
     | `Destroy_block -> `Block
     | `Statistics -> `Statistics

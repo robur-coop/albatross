@@ -576,7 +576,7 @@ end
 module Client = struct
   let cmd_to_int = function
     | `Info -> 0
-    | `Destroy_image -> 1
+    | `Destroy_vm -> 1
     | `Create_block -> 2
     | `Destroy_block -> 3
     | `Statistics -> 4
@@ -585,7 +585,7 @@ module Client = struct
     | `Log -> 7
   and cmd_of_int = function
     | 0 -> Some `Info
-    | 1 -> Some `Destroy_image
+    | 1 -> Some `Destroy_vm
     | 2 -> Some `Create_block
     | 3 -> Some `Destroy_block
     | 4 -> Some `Statistics

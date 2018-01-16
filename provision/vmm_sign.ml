@@ -160,7 +160,20 @@ let sign dbname cacert key csr days =
           | None -> s_exts
           | Some a -> (Vmm_asn.Oid.argv, Vmm_asn.strings_to_cstruct a) :: s_exts
         in
-        let s_exts = (Vmm_asn.Oid.permissions, Vmm_asn.permissions_to_cstruct [ `Image ]) :: s_exts in
+        opt Vmm_asn.Oid.permissions req_exts Vmm_asn.permissions_of_cstruct >>= fun perms ->
+        Logs.app (fun m -> m "using permission %a"
+                     Fmt.(option ~none:(unit "none")
+                            (list ~sep:(unit ", ") Vmm_core.pp_permission)) perms) ;
+        let perm = match perms with
+          | Some [ `Force_create ] -> [ `Force_create ]
+          | Some [ `Create ] -> [ `Create ]
+          | _ ->
+            Logs.warn (fun m -> m "weird permissions (%a), replaced with create"
+                          Fmt.(option ~none:(unit "none")
+                                 (list ~sep:(unit ", ") Vmm_core.pp_permission)) perms) ;
+            [ `Create ]
+        in
+        let s_exts = (Vmm_asn.Oid.permissions, Vmm_asn.permissions_to_cstruct perm) :: s_exts in
         let exts = List.map (fun x -> (false, `Unsupported x)) s_exts in
         Ok (exts @ l_exts)
       | `Delegation ->

@@ -124,11 +124,18 @@ This produced in the first step two files, `admin.req` and `admin.key`, and in
 the second step two more files, `dev.db` and `admin.pem`.
 
 ```
-DEV> vmm_req_vm hello mirage-skeleton/tutorial/hello/hello.ukvm 512 1
+DEV> vmm_req_vm hello mirage-skeleton/tutorial/hello/hello.ukvm 12 1
 DEV> vmm_sign dev.db dev.pem dev.key hello.req
 ```
 
-This produced three more files, `hello.{req,key,pem}` and modified `dev.db`.
+This generates a private key `hello.key` and a certificate signing request named
+`hello.req` including the virtual machine image `hello.ukvm`, which gets 12MB
+memory and CPU id 1.  The second command used the `dev.key` to sign the signing
+request and output a `hello.pem`.
+
+The flag `--force` can be passed to `vmm_req_vm`.  This means: if there already
+exists a running virtual machine with the same name, kill it and start the new
+one provided in the certificate.
 
 To actually deploy anything, the server needs the chain (i.e. the vm certificate
 and the delegation certificate).  Our client needs the main CA certificate to

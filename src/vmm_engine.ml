@@ -109,17 +109,13 @@ let handle_disconnect state t =
   in
   { state with console_attached ; console_counter ; log_attached }, out
 
-let handle_create t prefix chain cert =
+let handle_create t prefix chain cert force =
   Logs.debug (fun m -> m "starting with vms %a" Vmm_resources.pp t.resources) ;
   (* convert certificate to vm_config *)
   Vmm_asn.vm_of_cert prefix cert >>= fun vm_config ->
   Logs.debug (fun m -> m "vm %a" pp_vm_config vm_config) ;
   (* check whether vm with same name is already running *)
   let full = fullname vm_config in
-  (if Vmm_resources.exists t.resources full then
-     Error (`Msg "VM with same name is already running")
-   else
-     Ok ()) >>= fun () ->
   (* get names and static resources *)
   List.fold_left (fun acc ca ->
       acc >>= fun acc ->
@@ -130,9 +126,23 @@ let handle_create t prefix chain cert =
   (* check static policies *)
   Logs.debug (fun m -> m "now checking static policies") ;
   check_policies vm_config (List.map snd res) >>= fun () ->
+  (* may retract currently running vm to evaluate force-create! *)
+  (if force then
+     match Vmm_resources.find_vm t.resources full with
+     | None -> Ok (t.resources, None)
+     | Some vm ->
+       Vmm_resources.remove t.resources full vm >>= fun r -> Ok (r, Some vm)
+   else if Vmm_resources.exists t.resources full then
+     Error (`Msg "VM with same name is already running")
+   else
+     Ok (t.resources, None)) >>= fun (resources, vm) ->
   (* check dynamic usage *)
   Logs.debug (fun m -> m "now checking dynamic policies") ;
-  Vmm_resources.check_dynamic t.resources vm_config res >>= fun resource_usage ->
+  Vmm_resources.check_dynamic resources vm_config res >>= fun () ->
+  (* need to kill *)
+  (match vm with
+   | Some vm -> Vmm_commands.destroy vm
+   | None -> ()) ;
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_commands.prepare vm_config >>= fun (tmpfile, taps) ->
   Logs.debug (fun m -> m "prepared vm %a" Fpath.pp tmpfile) ;
@@ -378,8 +388,9 @@ let handle_initial t s addr chain ca =
   let t, out = log t (login_hdr, login_ev) in
   let initial_out = `Tls (s, Vmm_wire.Client.log login_hdr login_ev t.client_version) in
   Vmm_asn.permissions_of_cert asn_version leaf >>= fun perms ->
-  (if List.mem `Image perms && Vmm_asn.contains_vm leaf then
-     handle_create t prefix chain leaf >>= fun (file, cont) ->
+  (if (List.mem `Create perms || List.mem `Force_create perms) && Vmm_asn.contains_vm leaf then
+     let force = List.mem `Force_create perms in
+     handle_create t prefix chain leaf force >>= fun (file, cont) ->
      let cons = Vmm_wire.Console.add t.console_counter t.console_version file in
      Ok ({ t with console_counter = succ t.console_counter },
          [ `Raw (t.console_socket, cons) ],
