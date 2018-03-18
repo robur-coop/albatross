@@ -84,10 +84,11 @@ let cmd_allowed permissions cmd =
   in
   List.mem perm permissions
 
-type vmtype = [ `Ukvm_amd64 | `Ukvm_arm64 ]
+type vmtype = [ `Ukvm_amd64 | `Ukvm_arm64 | `Ukvm_amd64_compressed ]
 
 let pp_vmtype ppf = function
   | `Ukvm_amd64 -> Fmt.pf ppf "ukvm-amd64"
+  | `Ukvm_amd64_compressed -> Fmt.pf ppf "ukvm-amd64-compressed"
   | `Ukvm_arm64 -> Fmt.pf ppf "ukvm-arm64"
 
 type id = string list

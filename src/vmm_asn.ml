@@ -103,14 +103,17 @@ let image =
   let f = function
     | `C1 x -> `Ukvm_amd64, x
     | `C2 x -> `Ukvm_arm64, x
+    | `C3 x -> `Ukvm_amd64_compressed, x
   and g = function
     | `Ukvm_amd64, x -> `C1 x
     | `Ukvm_arm64, x -> `C2 x
+    | `Ukvm_amd64_compressed, x -> `C3 x
   in
   Asn.S.map f g @@
-  Asn.S.(choice2
+  Asn.S.(choice3
            (explicit 0 octet_string)
-           (explicit 1 octet_string))
+           (explicit 1 octet_string)
+           (explicit 2 octet_string))
 
 let image_of_cstruct, image_to_cstruct = projections_of image
 

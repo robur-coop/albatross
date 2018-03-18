@@ -125,7 +125,12 @@ let prepare vm =
   let tmpfile = tmpfile vm in
   (match vm.vmimage with
    | `Ukvm_amd64, blob -> Ok blob
-   | _ -> Error (`Msg "no amd64 ukvm image found")) >>= fun image ->
+   | `Ukvm_amd64_compressed, blob ->
+     begin match Vmm_compress.uncompress (Cstruct.to_string blob) with
+       | Ok blob -> Ok (Cstruct.of_string blob)
+       | Error () -> Error (`Msg "failed to uncompress")
+     end
+   | `Ukvm_arm64, _ -> Error (`Msg "no amd64 ukvm image found")) >>= fun image ->
   Bos.OS.File.write (image_fn tmpfile) (Cstruct.to_string image) >>= fun () ->
   let fifo = fifo_fn tmpfile in
   (match fifo_exists fifo with

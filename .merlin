@@ -6,4 +6,4 @@ S provision
 B _build/**
 
 PKG topkg logs ipaddr x509 tls rresult bos lwt cmdliner hex cstruct.ppx duration
-PKG ptime ptime.clock.os ipaddr.unix
+PKG ptime ptime.clock.os ipaddr.unix decompress
