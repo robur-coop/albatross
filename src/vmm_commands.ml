@@ -33,10 +33,6 @@ let read_fd_for_file = fd_for_file [Unix.O_RDONLY]
 
 let write_fd_for_file = fd_for_file [Unix.O_WRONLY ; Unix.O_APPEND]
 
-let rec waitpid flags pid =
-  try Unix.waitpid flags pid with
-  | Unix.Unix_error (Unix.EINTR, _, _) -> waitpid flags pid
-
 let null = match read_fd_for_file (Fpath.v "/dev/null") with
   | Ok fd -> fd
   | Error _ -> invalid_arg "cannot read /dev/null"

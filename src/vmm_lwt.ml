@@ -12,11 +12,29 @@ let ret = function
   | Unix.WSIGNALED s -> `Signal s
   | Unix.WSTOPPED s -> `Stop s
 
+let rec waitpid pid =
+  Lwt.catch
+    (fun () -> Lwt_unix.waitpid [] pid >|= fun r -> Ok r)
+    (function
+      | Unix.(Unix_error (EINTR, _, _)) ->
+        Logs.debug (fun m -> m "EINTR in waitpid(), %d retrying" pid) ;
+        waitpid pid
+      | e ->
+        Logs.err (fun m -> m "error %s in waitpid() %d"
+                     (Printexc.to_string e) pid) ;
+        Lwt.return (Error ()))
+
 let wait_and_clear pid stdout =
-  Lwt_unix.waitpid [] pid >>= fun (_, s) ->
-  Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
+  Logs.debug (fun m -> m "waitpid() for pid %d" pid) ;
+  waitpid pid >|= fun r ->
   Vmm_commands.close_no_err stdout ;
-  Lwt.return (ret s)
+  match r with
+  | Error () ->
+    Logs.err (fun m -> m "waitpid() for %d returned error" pid) ;
+    `Exit 23
+  | Ok (_, s) ->
+    Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
+    ret s
 
 let read_exactly s =
   let buf = Bytes.create 8 in
