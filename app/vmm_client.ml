@@ -52,18 +52,14 @@ let process db hdr data =
     | Error (`Msg msg) -> Logs.err (fun m -> m "error while processing: %s" msg)
 
 let rec read_tls_write_cons db t =
-  Lwt.catch (fun () ->
-      Vmm_tls.read_tls t >>= function
-      | Error (`Msg msg) ->
-        Logs.err (fun m -> m "error while reading %s" msg) ;
-        read_tls_write_cons db t
-      | Ok (hdr, data) ->
-        process db hdr data ;
-        read_tls_write_cons db t)
-    (fun e ->
-       Logs.err (fun m -> m "exception reading TLS stream %s"
-                    (Printexc.to_string e)) ;
-       Tls_lwt.Unix.close t)
+  Vmm_tls.read_tls t >>= function
+  | Error (`Msg msg) ->
+    Logs.err (fun m -> m "error while reading %s" msg) ;
+    read_tls_write_cons db t
+  | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
+  | Ok (hdr, data) ->
+    process db hdr data ;
+    read_tls_write_cons db t
 
 let rec read_cons_write_tls db t =
   Lwt.catch (fun () ->
@@ -77,10 +73,14 @@ let rec read_cons_write_tls db t =
       | Some cmd ->
         let out = Vmm_wire.Client.cmd ?arg cmd !command my_version in
         command := succ !command ;
-        Vmm_tls.write_tls t out >>= fun () ->
-        Logs.debug (fun m -> m "wrote %a" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
-        read_cons_write_tls db t)
-    (fun _ -> Lwt.return_unit)
+        Vmm_tls.write_tls t out >>= function
+        | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return_unit
+        | Ok () ->
+          Logs.debug (fun m -> m "wrote %a" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
+          read_cons_write_tls db t)
+    (fun e ->
+       Logs.err (fun m -> m "exception %s in read_cons_write_tls" (Printexc.to_string e)) ;
+       Lwt.return_unit)
 
 let client cas host port cert priv_key db =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->

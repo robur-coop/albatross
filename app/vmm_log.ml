@@ -29,8 +29,13 @@ let write_complete s str =
   in
   w 0
 
+let pp_sockaddr ppf = function
+  | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
+  | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
+                                         (Unix.string_of_inet_addr addr) port
+
 let handle fd ring s addr () =
-  Logs.info (fun m -> m "handling connection") ;
+  Logs.info (fun m -> m "handling connection from %a" pp_sockaddr addr) ;
   let str = Fmt.strf "%a: CONNECT\n" (Ptime.pp_human ~tz_offset_s:0 ()) (Ptime_clock.now ()) in
   write_complete fd str >>= fun () ->
   let rec loop () =
@@ -38,52 +43,79 @@ let handle fd ring s addr () =
     | Error (`Msg e) ->
       Logs.err (fun m -> m "error while reading %s" e) ;
       loop ()
+    | Error _ ->
+      Logs.err (fun m -> m "exception while reading") ;
+      Lwt.return_unit
     | Ok (hdr, data) ->
-      (if not (version_eq hdr.version my_version) then
-         Lwt.return (Error (`Msg "unknown version"))
-       else match int_to_op hdr.tag with
-         | Some Data ->
-           ( match decode_ts data with
-             | Ok ts -> Vmm_ring.write ring (ts, data)
-             | Error _ -> ()) ;
-           write_complete fd data >>= fun () ->
-           Lwt.return (Ok None)
-         | Some History ->
-           begin match decode_str data with
-             | Error e -> Lwt.return (Error e)
-             | Ok (str, off) -> match decode_ts ~off data with
-               | Error e -> Lwt.return (Error e)
-               | Ok ts ->
-                 let elements = Vmm_ring.read_history ring ts in
-                 let res = List.fold_left (fun acc (_, x) ->
-                     match Vmm_wire.Log.decode_log_hdr (Cstruct.of_string x) with
-                     | Ok (hdr, _) ->
-                       Logs.debug (fun m -> m "found an entry: %a" (Vmm_core.Log.pp_hdr []) hdr) ;
-                       if String.equal str (Vmm_core.string_of_id hdr.Vmm_core.Log.context) then
-                         x :: acc
-                       else
-                         acc
-                     | _ -> acc)
-                     [] elements
-                 in
-                 (* just need a wrapper in tag = Log.Data, id = reqid *)
-                 Lwt_list.iter_s (fun x ->
-                     let length = String.length x in
-                     let hdr = Vmm_wire.create_header { length ; id = hdr.id ; tag = op_to_int Data ; version = my_version } in
-                     Vmm_lwt.write_raw s (Cstruct.to_string hdr ^ x))
-                   (List.rev res) >>= fun () ->
-                 Lwt.return (Ok None)
-           end
-         | _ ->
-           Logs.err (fun m -> m "didn't understand log command %d" hdr.tag) ;
-           Lwt.return (Error (`Msg "unknown command"))) >>= (function
-          | Ok msg -> Vmm_lwt.write_raw s (success ?msg hdr.id my_version)
-          | Error (`Msg msg) ->
-            Logs.err (fun m -> m "error while processing: %s" msg) ;
-            Vmm_lwt.write_raw s (fail ~msg hdr.id my_version)) >>= fun () ->
-    loop ()
+      let out =
+        (if not (version_eq hdr.version my_version) then
+           Error (`Msg "unknown version")
+         else match int_to_op hdr.tag with
+           | Some Data ->
+             (match decode_ts data with
+              | Ok ts -> Vmm_ring.write ring (ts, data)
+              | Error _ ->
+                Logs.warn (fun m -> m "ignoring error while decoding timestamp %s" data)) ;
+             Ok (`Data data)
+           | Some History ->
+             begin match decode_str data with
+               | Error e -> Error e
+               | Ok (str, off) -> match decode_ts ~off data with
+                 | Error e -> Error e
+                 | Ok ts ->
+                   let elements = Vmm_ring.read_history ring ts in
+                   let res = List.fold_left (fun acc (_, x) ->
+                       match Vmm_wire.Log.decode_log_hdr (Cstruct.of_string x) with
+                       | Ok (hdr, _) ->
+                         Logs.debug (fun m -> m "found an entry: %a" (Vmm_core.Log.pp_hdr []) hdr) ;
+                         if String.equal str (Vmm_core.string_of_id hdr.Vmm_core.Log.context) then
+                           x :: acc
+                         else
+                           acc
+                       | _ -> acc)
+                       [] elements
+                   in
+                   (* just need a wrapper in tag = Log.Data, id = reqid *)
+                   let out =
+                     List.fold_left (fun acc x ->
+                         let length = String.length x in
+                         let hdr = Vmm_wire.create_header { length ; id = hdr.id ; tag = op_to_int Data ; version = my_version } in
+                         (Cstruct.to_string hdr ^ x) :: acc)
+                       [] (List.rev res)
+                   in
+                   Ok (`Out out)
+             end
+           | _ ->
+             Error (`Msg "unknown command"))
+      in
+      match out with
+      | Error (`Msg msg) ->
+        begin
+          Logs.err (fun m -> m "error while processing: %s" msg) ;
+          Vmm_lwt.write_raw s (fail ~msg hdr.id my_version) >>= function
+          | Error _ -> Logs.err (fun m -> m "error0 while writing") ; Lwt.return_unit
+          | Ok () -> loop ()
+        end
+      | Ok (`Data data) ->
+        begin
+          write_complete fd data >>= fun () ->
+          Vmm_lwt.write_raw s (success hdr.id my_version) >>= function
+          | Error _ -> Logs.err (fun m -> m "error1 while writing") ; Lwt.return_unit
+          | Ok () -> loop ()
+        end
+      | Ok (`Out datas) ->
+        Lwt_list.fold_left_s (fun r x -> match r with
+            | Error e -> Lwt.return (Error e)
+            | Ok () -> Vmm_lwt.write_raw s x)
+          (Ok ()) datas >>= function
+        | Error _ -> Logs.err (fun m -> m "error2 while writing") ; Lwt.return_unit
+        | Ok () ->
+          Vmm_lwt.write_raw s (success hdr.id my_version) >>= function
+          | Error _ -> Logs.err (fun m -> m "error3 while writing") ; Lwt.return_unit
+          | Ok () -> loop ()
   in
-  Lwt.catch loop (fun e -> Lwt.return_unit)
+  loop () >>= fun () ->
+  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
 
 let jump _ file sock =
   Sys.(set_signal sigpipe Signal_ignore) ;

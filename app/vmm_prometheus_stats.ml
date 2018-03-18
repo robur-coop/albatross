@@ -128,7 +128,9 @@ let process db tls hdr data =
       let out = Vmm_wire.Client.cmd `Info !command my_version in
       command := succ !command ;
       Logs.debug (fun m -> m "writing %a over TLS" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
-      Vmm_tls.write_tls tls out
+      (Vmm_tls.write_tls tls out >|= function
+        | Ok () -> ()
+        | Error _ -> Logs.err (fun m -> m "error while writing") ; ())
     | _ ->
       let r =
         match hdr.tag with
@@ -176,21 +178,23 @@ let process db tls hdr data =
       match r with
       | Ok `None -> Lwt.return_unit
       | Ok (`Sockaddr s) -> d s
-      | Ok (`Stat (fd, s, out)) -> Vmm_lwt.write_raw fd out >>= fun () -> d (fd, s)
+      | Ok (`Stat (fd, s, out)) ->
+        (Vmm_lwt.write_raw fd out >>= function
+          | Ok () -> d (fd, s)
+          | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return_unit)
       | Error (`Msg msg) -> Logs.err (fun m -> m "error while processing: %s" msg) ; Lwt.return_unit
 
 let rec tls_listener db tls =
-  Lwt.catch (fun () ->
-      Vmm_tls.read_tls tls >>= function
-      | Error (`Msg msg) ->
-        Logs.err (fun m -> m "error while reading %s" msg) ;
-        Lwt.return (Ok ())
-      | Ok (hdr, data) ->
-        process db tls hdr data >>= fun () ->
-        Lwt.return (Ok ()))
-    (fun e ->
-       Logs.err (fun m -> m "received exception in read_tls: %s" (Printexc.to_string e)) ;
-       Lwt.return (Error ())) >>= function
+  (Vmm_tls.read_tls tls >>= function
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error while reading %s" msg) ;
+      Lwt.return (Ok ())
+    | Error _ ->
+      Logs.err (fun m -> m "received exception in read_tls") ;
+      Lwt.return (Error ())
+    | Ok (hdr, data) ->
+      process db tls hdr data >>= fun () ->
+      Lwt.return (Ok ())) >>= function
   | Ok () -> tls_listener db tls
   | Error () -> Lwt.return_unit
 
@@ -203,24 +207,32 @@ let hdr =
 (* wait for TCP connection, once received request stats from vmmd, and loop *)
 let rec tcp_listener db tcp tls =
   Lwt_unix.accept tcp >>= fun (cs, sockaddr) ->
-  Vmm_lwt.write_raw cs hdr >>= fun () ->
-  let l = List.length !known_vms in
-  let ip, port = match sockaddr with Lwt_unix.ADDR_INET (ip, port) -> ip, port | _ -> invalid_arg "unexpected" in
-  Logs.info (fun m -> m "connection from %s:%d with %d known" (Unix.string_of_inet_addr ip) port l) ;
-  (if l = 0 then
-     Lwt_unix.close cs
-   else begin
-     count := SM.add sockaddr (List.length !known_vms) !count ;
-     Lwt_list.iter_s
-       (fun vm ->
-          let vm_id = translate_name db vm in
-          let out = Vmm_wire.Client.cmd `Statistics ~arg:vm_id !command my_version in
-          t := IM.add !command (cs, sockaddr, vm) !t ;
-          command := succ !command ;
-          Vmm_tls.write_tls tls out)
-       !known_vms
-   end) >>= fun () ->
-  tcp_listener db tcp tls
+  Vmm_lwt.write_raw cs hdr >>= function
+  | Error _ -> Logs.err (fun m -> m "exception while accepting") ; Lwt.return_unit
+  | Ok () ->
+    let l = List.length !known_vms in
+    let ip, port = match sockaddr with Lwt_unix.ADDR_INET (ip, port) -> ip, port | _ -> invalid_arg "unexpected" in
+    Logs.info (fun m -> m "connection from %s:%d with %d known" (Unix.string_of_inet_addr ip) port l) ;
+    (if l = 0 then
+       Lwt_unix.close cs >|= fun () -> Error ()
+     else begin
+       count := SM.add sockaddr (List.length !known_vms) !count ;
+       Lwt_list.fold_left_s
+         (fun r vm ->
+            match r with
+            | Error () -> Lwt.return (Error ())
+            | Ok () ->
+              let vm_id = translate_name db vm in
+              let out = Vmm_wire.Client.cmd `Statistics ~arg:vm_id !command my_version in
+              t := IM.add !command (cs, sockaddr, vm) !t ;
+              command := succ !command ;
+              Vmm_tls.write_tls tls out >|= function
+              | Ok () -> Ok ()
+              | Error _ -> Logs.err (fun m -> m "exception while writing") ; Error ())
+         (Ok ()) !known_vms
+     end) >>= function
+    | Ok () -> tcp_listener db tcp tls
+    | Error () -> Lwt.return_unit
 
 let client cas host port cert priv_key db listen_ip listen_port =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->

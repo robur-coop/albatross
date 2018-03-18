@@ -37,8 +37,11 @@ let read_console s name ring channel () =
         (if String.Set.mem name !active then
            Vmm_lwt.write_raw s (data my_version name t line)
          else
-           Lwt.return_unit) >>= fun () ->
-        loop ()
+           Lwt.return (Ok ())) >>= function
+        | Ok () -> loop ()
+        | Error _ ->
+          Logs.err (fun m -> m "error reading console") ;
+          Lwt_io.close channel
       in
       loop ())
     (fun e ->
@@ -102,14 +105,20 @@ let history s name since =
     let entries = Vmm_ring.read_history r since in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
-        Vmm_lwt.write_raw s (data my_version name i v)) entries >|= fun () ->
+        Vmm_lwt.write_raw s (data my_version name i v) >|= fun _ -> ())
+      entries >|= fun () ->
     Ok "success"
 
 let handle s addr () =
   Logs.info (fun m -> m "handling connection %a" pp_sockaddr addr) ;
   let rec loop () =
     Vmm_lwt.read_exactly s >>= function
-    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error while reading %s" msg) ;
+      loop ()
+    | Error _ ->
+      Logs.err (fun m -> m "exception while reading") ;
+      Lwt.return_unit
     | Ok (hdr, data) ->
       (if not (version_eq hdr.version my_version) then
          Lwt.return (Error (`Msg "ignoring data with bad version"))
@@ -138,10 +147,14 @@ let handle s addr () =
           | Ok msg -> Vmm_lwt.write_raw s (success ~msg hdr.id my_version)
           | Error (`Msg msg) ->
             Logs.err (fun m -> m "error while processing command: %s" msg) ;
-            Vmm_lwt.write_raw s (fail ~msg hdr.id my_version)) >>= fun () ->
-      loop ()
+            Vmm_lwt.write_raw s (fail ~msg hdr.id my_version)) >>= function
+            | Ok () -> loop ()
+            | Error _ ->
+              Logs.err (fun m -> m "exception while writing to socket") ;
+              Lwt.return_unit
   in
-  loop ()
+  loop () >>= fun () ->
+  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
 
 let jump _ file =
   Sys.(set_signal sigpipe Signal_ignore) ;

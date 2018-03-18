@@ -2,14 +2,17 @@
 
 open Lwt.Infix
 
+let write_raw s data =
+  Vmm_lwt.write_raw s data >|= fun _ -> ()
+
 let write_tls state t data =
-  Lwt.catch (fun () -> Vmm_tls.write_tls (fst t) data)
-    (fun e ->
-       let state', out = Vmm_engine.handle_disconnect !state t in
-       state := state' ;
-       Lwt_list.iter_s (fun (s, data) -> Vmm_lwt.write_raw s data) out >>= fun () ->
-       Tls_lwt.Unix.close (fst t) >>= fun () ->
-       raise e)
+  Vmm_tls.write_tls (fst t) data >>= function
+  | Ok () -> Lwt.return_unit
+  | Error `Exception ->
+    let state', out = Vmm_engine.handle_disconnect !state t in
+    state := state' ;
+    Lwt_list.iter_s (fun (s, data) -> write_raw s data) out >>= fun () ->
+    Tls_lwt.Unix.close (fst t)
 
 let to_ipaddr (_, sa) = match sa with
   | Lwt_unix.ADDR_UNIX _ -> invalid_arg "cannot convert unix address"
@@ -22,7 +25,7 @@ let pp_sockaddr ppf (_, sa) = match sa with
 
 let process state xs =
   Lwt_list.iter_s (function
-      | `Raw (s, str) -> Vmm_lwt.write_raw s str
+      | `Raw (s, str) -> write_raw s str
       | `Tls (s, str) -> write_tls state s str)
     xs
 
@@ -73,19 +76,19 @@ let handle ca state t =
          | Error (`Msg msg) ->
            Logs.err (fun m -> m "reading client %a error: %s" pp_sockaddr t msg) ;
            loop ()
+         | Error _ ->
+           Logs.err (fun m -> m "disconnect from %a" pp_sockaddr t) ;
+           let state', cons = Vmm_engine.handle_disconnect !state t in
+           state := state' ;
+           Lwt_list.iter_s (fun (s, data) -> write_raw s data) cons >>= fun () ->
+           Tls_lwt.Unix.close (fst t)
          | Ok (hdr, buf) ->
            let state', out = Vmm_engine.handle_command !state t prefix perms hdr buf in
            state := state' ;
            process state out >>= fun () ->
            loop ()
        in
-       Lwt.catch loop
-         (fun e ->
-            let state', cons = Vmm_engine.handle_disconnect !state t in
-            state := state' ;
-            Lwt_list.iter_s (fun (s, data) -> Vmm_lwt.write_raw s data) cons >>= fun () ->
-            Tls_lwt.Unix.close (fst t) >>= fun () ->
-            raise e)
+       loop ()
      | `Close socks ->
        Logs.debug (fun m -> m "closing session with %d active ones" (List.length socks)) ;
        Lwt_list.iter_s (fun (t, _) -> Tls_lwt.Unix.close t) socks >>= fun () ->
@@ -105,18 +108,26 @@ let server_socket port =
   listen s 10 ;
   Lwt.return s
 
-let init_exception () =
-  Lwt.async_exception_hook := (function
-      | Tls_lwt.Tls_failure a ->
-        Logs.err (fun m -> m "tls failure: %s" (Tls.Engine.string_of_failure a))
-      | exn ->
-        Logs.err (fun m -> m "exception: %s" (Printexc.to_string exn)))
+let init_sock dir name =
+  let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  Lwt_unix.set_close_on_exec c ;
+  let addr = Fpath.(dir / name + "sock") in
+  Lwt.catch (fun () ->
+      Lwt_unix.(connect c (ADDR_UNIX (Fpath.to_string addr))) >|= fun () -> Some c)
+    (fun e ->
+       Logs.warn (fun m -> m "error %s connecting to socket %a"
+                     (Printexc.to_string e) Fpath.pp addr) ;
+       (Lwt.catch (fun () -> Lwt_unix.close c) (fun _ -> Lwt.return_unit)) >|= fun () ->
+       None)
 
 let rec read_log state s =
   Vmm_lwt.read_exactly s >>= function
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "reading log error %s" msg) ;
     read_log state s
+  | Error _ ->
+    Logs.err (fun m -> m "exception while reading log") ;
+    invalid_arg "log socket communication issue"
   | Ok (hdr, data) ->
     let state', outs = Vmm_engine.handle_log !state hdr data in
     state := state' ;
@@ -128,6 +139,9 @@ let rec read_cons state s =
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "reading console error %s" msg) ;
     read_cons state s
+  | Error _ ->
+    Logs.err (fun m -> m "exception while reading console socket") ;
+    invalid_arg "console socket communication issue"
   | Ok (hdr, data) ->
     let state', outs = Vmm_engine.handle_cons !state hdr data in
     state := state' ;
@@ -139,6 +153,10 @@ let rec read_stats state s =
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "reading stats error %s" msg) ;
     read_stats state s
+  | Error _ ->
+    Logs.err (fun m -> m "exception while reading stats") ;
+    Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
+    state := { !state with Vmm_engine.stats_socket = None }
   | Ok (hdr, data) ->
     let state', outs = Vmm_engine.handle_stat !state hdr data in
     state := state' ;
@@ -156,23 +174,15 @@ let cmp_s (_, a) (_, b) =
 
 let jump _ dir cacert cert priv_key =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  let dir = Fpath.v dir in
   Lwt_main.run
-    (init_exception () ;
-     let d = Fpath.v dir in
-     let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.set_close_on_exec c ;
-     Lwt_unix.(connect c (ADDR_UNIX Fpath.(to_string (d / "cons" + "sock")))) >>= fun () ->
-     Lwt.catch (fun () ->
-         let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-         Lwt_unix.set_close_on_exec s ;
-         Lwt_unix.(connect s (ADDR_UNIX Fpath.(to_string (d / "stat" + "sock")))) >|= fun () ->
-         Some s)
-       (function
-         | Unix.Unix_error (Unix.ENOENT, _, _) -> Lwt.return None
-         | e -> Lwt.fail e) >>= fun s ->
-     let l = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.set_close_on_exec l ;
-     Lwt_unix.(connect l (ADDR_UNIX Fpath.(to_string (d / "log" + "sock")))) >>= fun () ->
+    ((init_sock dir "cons" >|= function
+       | None -> invalid_arg "cannot connect to console socket"
+       | Some c -> c) >>= fun c ->
+     init_sock dir "stat" >>= fun s ->
+     (init_sock dir "log" >|= function
+       | None -> invalid_arg "cannot connect to log socket"
+       | Some l -> l) >>= fun l ->
      server_socket 1025 >>= fun socket ->
      X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
      X509_lwt.certs_of_pem cacert >>= (function
@@ -182,7 +192,7 @@ let jump _ dir cacert cert priv_key =
        Tls.(Config.server ~version:(Core.TLS_1_2, Core.TLS_1_2)
               ~reneg:true ~certificates:(`Single cert) ())
      in
-     (match Vmm_engine.init d cmp_s c s l with
+     (match Vmm_engine.init dir cmp_s c s l with
       | Ok s -> Lwt.return s
       | Error (`Msg m) -> Lwt.fail_with m) >>= fun t ->
      let state = ref t in
@@ -200,7 +210,13 @@ let jump _ dir cacert cert priv_key =
              (fun exn ->
                 Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit) >>= fun () ->
                 Lwt.fail exn) >>= fun t ->
-           Lwt.async (fun () -> handle ca state t) ;
+           Lwt.async (fun () ->
+               Lwt.catch
+                 (fun () -> handle ca state t)
+                 (fun e ->
+                    Logs.err (fun m -> m "error while handle() %s"
+                                 (Printexc.to_string e)) ;
+                    Lwt.return_unit)) ;
            loop ())
          (function
            | Unix.Unix_error (e, f, _) ->

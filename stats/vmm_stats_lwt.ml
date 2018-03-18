@@ -26,15 +26,18 @@ let handle s addr () =
   let rec loop () =
     Vmm_lwt.read_exactly s >>= function
     | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
+    | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
     | Ok (hdr, data) ->
       Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp (Cstruct.of_string data)) ;
       let t', out = Vmm_stats.handle !t hdr data in
       t := t' ;
       Logs.debug (fun m -> m "sent %a" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
-      Vmm_lwt.write_raw s out >>= fun () ->
-      loop ()
+      Vmm_lwt.write_raw s out >>= function
+      | Ok () -> loop ()
+      | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return_unit
   in
-  loop ()
+  loop () >>= fun () ->
+  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
 
 let rec timer () =
   t := Vmm_stats.tick !t ;
