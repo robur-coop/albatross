@@ -58,12 +58,13 @@ let handle ca state t =
        (match cont !state t with
         | Ok (state', outs, vm) ->
           state := state' ;
-          process state outs >>= fun () ->
           Lwt.async (fun () ->
               Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
               let state', outs = Vmm_engine.handle_shutdown !state vm r in
               state := state' ;
               process state outs) ;
+          process state outs >>= fun () ->
+          let _ = Vmm_commands.setup_freebsd_kludge vm.Vmm_core.pid in
           Lwt.return_unit
         | Error (`Msg e) ->
           Logs.err (fun m -> m "error while cont %s" e) ;
