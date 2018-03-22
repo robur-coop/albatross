@@ -110,7 +110,6 @@ let handle_disconnect state t =
   { state with console_attached ; console_counter ; log_attached }, out
 
 let handle_create t prefix chain cert force =
-  Logs.debug (fun m -> m "starting with vms %a" Vmm_resources.pp t.resources) ;
   (* convert certificate to vm_config *)
   Vmm_asn.vm_of_cert prefix cert >>= fun vm_config ->
   Logs.debug (fun m -> m "vm %a" pp_vm_config vm_config) ;
@@ -152,7 +151,6 @@ let handle_create t prefix chain cert force =
         Vmm_commands.exec t.dir vm_config tmpfile taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
-        Logs.debug (fun m -> m "%a" Vmm_resources.pp resources) ;
         let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version vm.pid vm.taps in
         let bridges =
           List.fold_left2 (fun b br ta ->
@@ -171,14 +169,12 @@ let handle_create t prefix chain cert force =
 let handle_shutdown t vm r =
   (match Vmm_commands.shutdown vm with
    | Ok () -> ()
-   | Error (`Msg e) -> Logs.warn (fun m -> m "%s during shutdown" e)) ;
+   | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
   let resources =
     match Vmm_resources.remove t.resources (fullname vm.config) vm with
-    | Ok resources ->
-      Logs.debug (fun m -> m "shut down: %a" Vmm_resources.pp resources) ;
-      resources
+    | Ok resources -> resources
     | Error (`Msg e) ->
-      Logs.warn (fun m -> m "%s while removing vm" e) ;
+      Logs.warn (fun m -> m "%s while removing vm %a" e pp_vm vm) ;
       t.resources
   in
   let bridges =
@@ -209,7 +205,6 @@ let handle_command t s prefix perms hdr buf =
           let arg = if String.length buf = 0 then prefix else prefix @ [buf] in
           match x with
           | `Info ->
-            Logs.debug (fun m -> m "resources are %a" Vmm_resources.pp t.resources) ;
             begin match Vmm_resources.find t.resources arg with
               | None ->
                 Logs.debug (fun m -> m "info: couldn't find %a" pp_id arg) ;
