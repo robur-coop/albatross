@@ -67,9 +67,9 @@ let read_exactly s =
         r b 0 l >|= function
         | Error e -> Error e
         | Ok () ->
-          Logs.debug (fun m -> m "read hdr %a, body %a"
+          (* Logs.debug (fun m -> m "read hdr %a, body %a"
                          Cstruct.hexdump_pp (Cstruct.of_bytes buf)
-                         Cstruct.hexdump_pp (Cstruct.of_bytes b)) ;
+                         Cstruct.hexdump_pp (Cstruct.of_bytes b)) ; *)
           Ok (hdr, Bytes.to_string b)
       else
         Lwt.return (Ok (hdr, ""))
@@ -87,5 +87,5 @@ let write_raw s buf =
          Logs.err (fun m -> m "exception %s while writing" (Printexc.to_string e)) ;
          Lwt.return (Error `Exception))
   in
-  Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ;
+  (* Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
   w 0 (Bytes.length buf)

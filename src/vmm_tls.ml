@@ -39,15 +39,15 @@ let read_tls t =
         r_n b 0 l >|= function
         | Error e -> Error e
         | Ok () ->
-          Logs.debug (fun m -> m "TLS read id %d %a tag %d data %a"
+(*          Logs.debug (fun m -> m "TLS read id %d %a tag %d data %a"
                          hdr.Vmm_wire.id Vmm_wire.pp_version hdr.Vmm_wire.version hdr.Vmm_wire.tag
-                         Cstruct.hexdump_pp b) ;
+                         Cstruct.hexdump_pp b) ; *)
           Ok (hdr, Cstruct.to_string b)
       else
         Lwt.return (Ok (hdr, ""))
 
 let write_tls s buf =
-  Logs.debug (fun m -> m "TLS write %a" Cstruct.hexdump_pp (Cstruct.of_string buf)) ;
+  (*  Logs.debug (fun m -> m "TLS write %a" Cstruct.hexdump_pp (Cstruct.of_string buf)) ; *)
   Lwt.catch
     (fun () -> Tls_lwt.Unix.write s (Cstruct.of_string buf) >|= fun () -> Ok ())
     (function
