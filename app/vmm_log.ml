@@ -85,8 +85,7 @@ let handle fd ring s addr () =
                    in
                    Ok (`Out out)
              end
-           | _ ->
-             Error (`Msg "unknown command"))
+           | _ -> Error (`Msg "unknown command"))
       in
       match out with
       | Error (`Msg msg) ->

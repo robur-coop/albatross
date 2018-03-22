@@ -13,7 +13,7 @@ let subca_csr key name cpus mem vms block bridges =
     | Some x -> [ (false, `Unsupported (Oid.block, int_to_cstruct x)) ]
   and bridge = match bridges with
     | [] -> []
-    | xs -> [ (false, `Unsupported (Oid.bridges, bridges_to_cstruct bridges)) ]
+    | xs -> [ (false, `Unsupported (Oid.bridges, bridges_to_cstruct xs)) ]
   in
   let exts =
     [ (false, `Unsupported (Oid.version, version_to_cstruct asn_version)) ;

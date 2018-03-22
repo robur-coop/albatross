@@ -345,7 +345,7 @@ let handle_revocation t s leaf chain ca prefix =
    | None -> Ok ()
    | Some local -> match X509.CRL.crl_number local, X509.CRL.crl_number crl with
      | None, _ -> Ok ()
-     | Some x, None -> Error (`Msg "CRL number not present")
+     | Some _, None -> Error (`Msg "CRL number not present")
      | Some x, Some y -> if y > x then Ok () else Error (`Msg "CRL number not increased")) >>= fun () ->
   (* filename should be whatever_dir / crls / <id> *)
   let filename = Fpath.(t.dir / "crls" / string_of_id prefix) in
@@ -355,7 +355,7 @@ let handle_revocation t s leaf chain ca prefix =
   let crls =
     match local with
     | None -> crl :: t.crls
-    | Some x -> crl :: List.filter (fun c -> c <> crl) t.crls
+    | Some _ -> crl :: List.filter (fun c -> c <> crl) t.crls
   in
   (* iterate over revoked serials, find active resources, and kill them *)
   let newly_revoked =
@@ -508,7 +508,7 @@ let handle_log state hdr buf =
     state, []
   end else match IM.find hdr.id state.log_requests with
     | exception Not_found ->
-      Logs.err (fun m -> m "coudn't find log request") ;
+      Logs.warn (fun m -> m "(ignored) coudn't find log request") ;
       (state, [])
     | (s, rid) ->
       let r = match int_to_op hdr.tag with

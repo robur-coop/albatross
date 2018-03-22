@@ -123,35 +123,27 @@ let handle s addr () =
       (if not (version_eq hdr.version my_version) then
          Lwt.return (Error (`Msg "ignoring data with bad version"))
        else
-         match Console.int_to_op hdr.tag with
-         | Some Add ->
-           (match decode_str data with
-            | Error e -> Lwt.return (Error e)
-            | Ok (name, _) -> add_fifo s name)
-         | Some Attach ->
-           (match decode_str data with
-            | Error e -> Lwt.return (Error e)
-            | Ok (name, _) -> attach name)
-         | Some Detach ->
-           (match decode_str data with
-            | Error e -> Lwt.return (Error e)
-            | Ok (name, _) -> detach name)
-         | Some History ->
-           (match decode_str data with
-             | Error e -> Lwt.return (Error e)
-             | Ok (name, off) -> match decode_ts ~off data with
-               | Error e -> Lwt.return (Error e)
-               | Ok since -> history s name since)
-          | _ ->
-            Lwt.return (Error (`Msg "unknown command"))) >>= (function
+         match decode_str data with
+         | Error e -> Lwt.return (Error e)
+         | Ok (name, off) ->
+           match Console.int_to_op hdr.tag with
+           | Some Add -> add_fifo s name
+           | Some Attach -> attach name
+           | Some Detach -> detach name
+           | Some History ->
+             (match decode_ts ~off data with
+              | Error e -> Lwt.return (Error e)
+              | Ok since -> history s name since)
+           | _ ->
+             Lwt.return (Error (`Msg "unknown command"))) >>= (function
           | Ok msg -> Vmm_lwt.write_raw s (success ~msg hdr.id my_version)
           | Error (`Msg msg) ->
             Logs.err (fun m -> m "error while processing command: %s" msg) ;
             Vmm_lwt.write_raw s (fail ~msg hdr.id my_version)) >>= function
-            | Ok () -> loop ()
-            | Error _ ->
-              Logs.err (fun m -> m "exception while writing to socket") ;
-              Lwt.return_unit
+      | Ok () -> loop ()
+      | Error _ ->
+        Logs.err (fun m -> m "exception while writing to socket") ;
+        Lwt.return_unit
   in
   loop () >>= fun () ->
   Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
