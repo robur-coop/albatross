@@ -28,7 +28,7 @@ let rec safe_sysctl f arg =
 
 let vm_vmmapi_stats pid =
   let name = "ukvm" ^ string_of_int pid in
-  vmmapi_stats name
+  try Some (vmmapi_stats name) with _ -> None
 
 let gather pid nics =
   safe_sysctl sysctl_rusage pid,
@@ -40,13 +40,16 @@ let gather pid nics =
     String.Map.empty nics
 
 let tick t =
+  Logs.debug (fun m -> m "tick with %d vms" (IM.cardinal t.pid_nic)) ;
   let pid_rusage, pid_vmmapi, nic_ifdata =
     IM.fold (fun pid nics (rus, vmms, ifds) ->
         let ru, vmm, ifd = gather pid nics in
         (match ru with
          | None -> rus
          | Some ru -> IM.add pid ru rus),
-        IM.add pid vmm vmms,
+        (match vmm with
+         | None -> vmms
+         | Some vmm -> IM.add pid vmm vmms),
         String.Map.union (fun _k a _b -> Some a) ifd ifds)
       t.pid_nic (IM.empty, IM.empty, String.Map.empty)
   in
