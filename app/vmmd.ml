@@ -1,5 +1,19 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
+type stats = {
+  start : Ptime.t ;
+  vm_created : int ;
+  vm_destroyed : int ;
+}
+
+let s = ref { start = Ptime_clock.now () ; vm_created = 0 ; vm_destroyed = 0 }
+
+let pp_stats ppf s =
+  let diff = Ptime.(diff (Ptime_clock.now ()) s.start) in
+  Fmt.pf ppf "up %a: %d vms created, %d vms destroyed, %d running"
+    Ptime.Span.pp diff
+    s.vm_created s.vm_destroyed (s.vm_created - s.vm_destroyed)
+
 open Lwt.Infix
 
 let write_raw s data =
@@ -58,9 +72,11 @@ let handle ca state t =
        (match cont !state t with
         | Ok (state', outs, vm) ->
           state := state' ;
+          s := { !s with vm_created = succ !s.vm_created } ;
           Lwt.async (fun () ->
               Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
               let state', outs = Vmm_engine.handle_shutdown !state vm r in
+              s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
               state := state' ;
               process state outs) ;
           process state outs >>= fun () ->
@@ -173,6 +189,11 @@ let cmp_s (_, a) (_, b) =
     String.compare (Unix.string_of_inet_addr addr) (Unix.string_of_inet_addr addr') = 0
   | _ -> false
 
+let rec stats_loop () =
+  Logs.info (fun m -> m "%a" pp_stats !s) ;
+  Lwt_unix.sleep 600. >>= fun () ->
+  stats_loop ()
+
 let jump _ dir cacert cert priv_key =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let dir = Fpath.v dir in
@@ -202,6 +223,7 @@ let jump _ dir cacert cert priv_key =
       | None -> ()
       | Some s -> Lwt.async (fun () -> read_stats state s)) ;
      Lwt.async (fun () -> read_log state l) ;
+     Lwt.async stats_loop ;
      let rec loop () =
        Lwt.catch (fun () ->
            Lwt_unix.accept socket >>= fun (fd, addr) ->
