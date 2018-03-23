@@ -5,6 +5,7 @@ sudo: required
 env:
   global:
     - PACKAGE="albatross"
+    - TESTS=false
   matrix:
     - OCAML_VERSION=4.04
     - OCAML_VERSION=4.05
