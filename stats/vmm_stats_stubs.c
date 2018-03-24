@@ -1,3 +1,5 @@
+// (c) 2017, 2018 Hannes Mehnert, all rights reserved
+
 #include <caml/mlvalues.h>
 #include <caml/alloc.h>
 #include <caml/memory.h>
@@ -70,12 +72,8 @@ CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
   CAMLreturn(res);
 }
 
-CAMLprim value vmmanage_vmmapi_stats (value name) {
+CAMLprim value vmmanage_vmmapi_open (value name) {
   CAMLparam1(name);
-  CAMLlocal3(res, tmp, t);
-  int i, num_stats;
-  uint64_t *stats;
-  const char *desc;
   struct vmctx *ctx;
   const char *devname;
 
@@ -84,23 +82,56 @@ CAMLprim value vmmanage_vmmapi_stats (value name) {
   devname = String_val(name);
   ctx = vm_open(devname);
   if (ctx == NULL) uerror("vm_open", Nothing);
+  CAMLreturn((value)ctx);
+}
 
-  stats = vm_get_stats(ctx, 0, NULL, &num_stats);
-  if (stats != NULL) {
+CAMLprim value vmmanage_vmmapi_close (value octx) {
+  struct vmctx *ctx = (struct vmctx*)octx;
+
+  close(vm_get_device_fd(ctx));
+  free(ctx);
+  return Val_unit;
+}
+
+CAMLprim value vmmanage_vmmapi_statnames (value octx) {
+  CAMLparam0();
+  CAMLlocal2(res, tmp);
+  struct vmctx *ctx = (struct vmctx*)octx;
+  int i, num_stats;
+  uint64_t *s;
+  const char *desc;
+
+  s = vm_get_stats(ctx, 0, NULL, &num_stats);
+  if (s != NULL) {
     for (i = 0; i < num_stats; i++) {
-      tmp = caml_alloc(2, 0);
       desc = vm_get_stat_desc(ctx, i);
+      tmp = caml_alloc(2, 0);
       Store_field (tmp, 0, caml_copy_string(desc));
-      Store_field (tmp, 1, Val64(stats[i]));
-      t = caml_alloc(2, 0);
-      Store_field (t, 0, tmp);
-      Store_field (t, 1, res);
-      res = t;
+      Store_field (tmp, 1, res);
+      res = tmp;
     }
   }
   CAMLreturn(res);
 }
 
+CAMLprim value vmmanage_vmmapi_stats (value octx) {
+  CAMLparam0();
+  CAMLlocal2(res, tmp);
+  int i, num_stats;
+  uint64_t *stats;
+  struct vmctx *ctx = (struct vmctx*)octx;
+
+  stats = vm_get_stats(ctx, 0, NULL, &num_stats);
+  if (stats != NULL) {
+    for (i = 0; i < num_stats; i++) {
+      tmp = caml_alloc(2, 0);
+      Store_field (tmp, 0, Val64(stats[i]));
+      Store_field (tmp, 1, res);
+      res = tmp;
+    }
+  }
+  CAMLreturn(res);
+}
 
 CAMLprim value vmmanage_sysctl_ifcount (value unit) {
   CAMLparam1(unit);
@@ -180,8 +211,24 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
   uerror("sysctl_ifdata", Nothing);
 }
 
+CAMLprim value vmmanage_vmmapi_open (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_open", Nothing);
+}
+
+CAMLprim value vmmanage_vmmapi_close (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_close", Nothing);
+}
+
 CAMLprim value vmmanage_vmmapi_stats (value name) {
   CAMLparam1(name);
-  uerror("vm_stat", Nothing);
+  uerror("vmmapi_stats", Nothing);
 }
+
+CAMLprim value vmmanage_vmmapi_statnames (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_statnames", Nothing);
+}
+
 #endif

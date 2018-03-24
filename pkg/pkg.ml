@@ -18,5 +18,6 @@ let () =
     Pkg.bin "provision/vmm_gen_ca" ;
     Pkg.clib "stats/libvmm_stats_stubs.clib" ;
     Pkg.bin "stats/vmm_stats_lwt" ;
+    Pkg.bin "stats/vmm_stats_once" ;
     Pkg.bin "app/vmm_prometheus_stats" ;
   ]

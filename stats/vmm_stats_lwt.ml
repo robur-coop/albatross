@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 (* the process responsible for gathering statistics (CPU + mem + network) *)
 
@@ -9,7 +9,7 @@
    - remove pid
    - statistics pid
 
-   every 5 minutes, statistics of all registered pids are recorded. `statistics`
+   every 15 seconds, statistics of all registered pids are recorded. `statistics`
    reports last recorded stats *)
 
 open Lwt.Infix
