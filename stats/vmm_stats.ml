@@ -69,15 +69,15 @@ let fill_descr ctx =
   match !descr with
   | [] ->
     begin match wrap vmmapi_statnames ctx with
-      | None -> Error (`Msg "vmmapi_statnames failed, shouldn't happen")
+      | None ->
+        Logs.err (fun m -> m "vmmapi_statnames failed, shouldn't happen") ;
+        ()
       | Some d ->
         Logs.info (fun m -> m "descr are %a" Fmt.(list ~sep:(unit ",@ ") string) d) ;
-        descr := d ;
-        Ok ()
+        descr := d
     end
   | ds ->
-    Logs.info (fun m -> m "descr are already %a" Fmt.(list ~sep:(unit ",@ ") string) ds) ;
-    Ok ()
+    Logs.info (fun m -> m "descr are already %a" Fmt.(list ~sep:(unit ",@ ") string) ds)
 
 let add_pid t pid nics =
   let name = "ukvm" ^ string_of_int pid in
@@ -85,27 +85,29 @@ let add_pid t pid nics =
   | None, _ -> Error (`Msg "sysctl ifcount failed")
   | _, None -> Error (`Msg "vmmapi_open failed")
   | Some max_nic, Some vmctx ->
-    match fill_descr vmctx with
-    | Error e -> Error e
-    | Ok () ->
-      let rec go cnt acc id =
-        if id > 0 && cnt > 0 then
-          match wrap sysctl_ifdata id with
-          | Some ifd when List.mem ifd.name nics ->
-            go (pred cnt) ((id, ifd.name) :: acc) (pred id)
-          | _ -> go cnt acc (pred id)
-        else
-          List.rev acc
-      in
-      let nic_ids = go (List.length nics) [] max_nic in
-      let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic in
-      Ok { t with pid_nic }
+    fill_descr vmctx ;
+    let rec go cnt acc id =
+      if id > 0 && cnt > 0 then
+        match wrap sysctl_ifdata id with
+        | Some ifd when List.mem ifd.name nics ->
+          go (pred cnt) ((id, ifd.name) :: acc) (pred id)
+        | _ -> go cnt acc (pred id)
+      else
+        List.rev acc
+    in
+    let nic_ids = go (List.length nics) [] max_nic in
+    let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic in
+    Ok { t with pid_nic }
 
 let stats t pid =
   try
     let _, nics = IM.find pid t.pid_nic
     and ru = IM.find pid t.pid_rusage
-    and vmm = IM.find pid t.pid_vmmapi
+    and vmm =
+      try IM.find pid t.pid_vmmapi with
+      | Not_found ->
+        Logs.err (fun m -> m "failed to find vmm stats for %d" pid);
+        []
     in
     match
       List.fold_left (fun acc nic ->
