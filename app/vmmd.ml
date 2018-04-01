@@ -80,8 +80,15 @@ let handle ca state t =
               state := state' ;
               process state outs) ;
           process state outs >>= fun () ->
-          let _ = Vmm_commands.setup_freebsd_kludge vm.Vmm_core.pid in
-          Lwt.return_unit
+          begin
+            match Vmm_engine.setup_stats !state vm with
+            | Ok (state', outs) ->
+              state := state' ;
+              process state outs
+            | Error (`Msg e) ->
+              Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
+              Lwt.return_unit
+          end
         | Error (`Msg e) ->
           Logs.err (fun m -> m "error while cont %s" e) ;
           let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in

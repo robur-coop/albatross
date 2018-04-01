@@ -146,7 +146,8 @@ let handle s addr () =
         Lwt.return_unit
   in
   loop () >>= fun () ->
-  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
+  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
+  Logs.warn (fun m -> m "disconnected")
 
 let jump _ file =
   Sys.(set_signal sigpipe Signal_ignore) ;

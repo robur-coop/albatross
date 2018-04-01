@@ -213,12 +213,12 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
 CAMLprim value vmmanage_vmmapi_open (value name) {
   CAMLparam1(name);
-  CAMLreturn(Val_int(0));
+  uerror("vmmapi_open", Nothing);
 }
 
 CAMLprim value vmmanage_vmmapi_close (value name) {
   CAMLparam1(name);
-  CAMLreturn(Val_unit);
+  uerror("vmmapi_close", Nothing);
 }
 
 CAMLprim value vmmanage_vmmapi_stats (value name) {

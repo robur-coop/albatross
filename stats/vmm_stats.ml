@@ -1,6 +1,7 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Astring
+open Rresult.R.Infix
 
 open Vmm_core
 
@@ -20,11 +21,13 @@ let my_version = `WV0
 let descr = ref []
 
 type t = {
-  pid_nic : (vmctx * (int * string) list) IM.t ;
+  pid_nic : (vmctx option * (int * string) list) IM.t ;
   pid_rusage : rusage IM.t ;
   pid_vmmapi : (string * int64) list IM.t ;
   nic_ifdata : ifdata String.Map.t ;
 }
+
+let pp_strings pp taps = Fmt.(list ~sep:(unit ",@ ") string) pp taps
 
 let empty () =
   { pid_nic = IM.empty ; pid_rusage = IM.empty ; pid_vmmapi = IM.empty ; nic_ifdata = String.Map.empty }
@@ -32,17 +35,23 @@ let empty () =
 let rec wrap f arg =
   try Some (f arg) with
   | Unix.Unix_error (Unix.EINTR, _, _) -> wrap f arg
-  | _ -> None
+  | e ->
+    Logs.err (fun m -> m "exception %s" (Printexc.to_string e)) ;
+    None
 
 let gather pid vmctx nics =
   wrap sysctl_rusage pid,
-  wrap vmmapi_stats vmctx,
+  (match vmctx with
+   | None -> None
+   | Some vmctx -> wrap vmmapi_stats vmctx),
   List.fold_left (fun ifd (nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
         Logs.warn (fun m -> m "failed to get ifdata for %s" nname) ;
         ifd
-      | Some data -> String.Map.add data.name data ifd)
+      | Some data ->
+        Logs.debug (fun m -> m "adding ifdata for %s" nname) ;
+        String.Map.add data.name data ifd)
     String.Map.empty nics
 
 let tick t =
@@ -54,12 +63,16 @@ let tick t =
          | None ->
            Logs.warn (fun m -> m "failed to get rusage for %d" pid) ;
            rus
-         | Some ru -> IM.add pid ru rus),
+         | Some ru ->
+           Logs.debug (fun m -> m "adding resource usage for %d" pid) ;
+           IM.add pid ru rus),
         (match vmm with
          | None ->
            Logs.warn (fun m -> m "failed to get vmmapi_stats for %d" pid) ;
            vmms
-         | Some vmm -> IM.add pid (List.combine !descr vmm) vmms),
+         | Some vmm ->
+           Logs.debug (fun m -> m "adding vmmapi_stats for %d" pid) ;
+           IM.add pid (List.combine !descr vmm) vmms),
         String.Map.union (fun _k a _b -> Some a) ifd ifds)
       t.pid_nic (IM.empty, IM.empty, String.Map.empty)
   in
@@ -73,19 +86,18 @@ let fill_descr ctx =
         Logs.err (fun m -> m "vmmapi_statnames failed, shouldn't happen") ;
         ()
       | Some d ->
-        Logs.info (fun m -> m "descr are %a" Fmt.(list ~sep:(unit ",@ ") string) d) ;
+        Logs.info (fun m -> m "descr are %a" pp_strings d) ;
         descr := d
     end
-  | ds ->
-    Logs.info (fun m -> m "descr are already %a" Fmt.(list ~sep:(unit ",@ ") string) ds)
+  | ds -> Logs.info (fun m -> m "%d descr are already present" (List.length ds))
 
 let add_pid t pid nics =
   let name = "ukvm" ^ string_of_int pid in
-  match wrap sysctl_ifcount (), wrap vmmapi_open name with
-  | None, _ -> Error (`Msg "sysctl ifcount failed")
-  | _, None -> Error (`Msg "vmmapi_open failed")
-  | Some max_nic, Some vmctx ->
-    fill_descr vmctx ;
+  match wrap sysctl_ifcount () with
+  | None ->
+    Logs.err (fun m -> m "sysctl ifcount failed for %d %a" pid pp_strings nics) ;
+    Error (`Msg "sysctl ifcount failed")
+  | Some max_nic ->
     let rec go cnt acc id =
       if id > 0 && cnt > 0 then
         match wrap sysctl_ifdata id with
@@ -95,11 +107,22 @@ let add_pid t pid nics =
       else
         List.rev acc
     in
-    let nic_ids = go (List.length nics) [] max_nic in
+    Ok (go (List.length nics) [] max_nic) >>= fun nic_ids ->
+    (match wrap vmmapi_open name with
+     | None ->
+       Logs.warn (fun m -> m "(ignored) vmmapi_open failed for %d" pid) ;
+       Ok None
+     | Some vmctx ->
+       fill_descr vmctx ;
+       Ok (Some vmctx)) >>= fun vmctx ->
+    Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_strings nics
+                  (match vmctx with None -> false | Some _ -> true)) ;
     let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic in
     Ok { t with pid_nic }
 
+
 let stats t pid =
+  Logs.debug (fun m -> m "querying statistics for %d" pid) ;
   try
     let _, nics = IM.find pid t.pid_nic
     and ru = IM.find pid t.pid_rusage
@@ -123,16 +146,17 @@ let stats t pid =
   | _ -> Error (`Msg "failed to find resource usage")
 
 let remove_pid t pid =
+  Logs.info (fun m -> m "removing pid %d" pid) ;
   (try
-     let vmctx, _ = IM.find pid t.pid_nic in
-     let _ = wrap vmmapi_close vmctx in
-     ()
+     match IM.find pid t.pid_nic with
+     | Some vmctx, _ -> ignore (wrap vmmapi_close vmctx)
+     | None, _ -> ()
    with
      _ -> ()) ;
   let pid_nic = IM.remove pid t.pid_nic in
   { t with pid_nic }
 
-open Rresult.R.Infix
+let remove_all t = IM.iter (fun pid _ -> ignore (remove_pid t pid)) t.pid_nic
 
 let handle t hdr buf =
   let open Vmm_wire in

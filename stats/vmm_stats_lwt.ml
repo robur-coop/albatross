@@ -37,7 +37,10 @@ let handle s addr () =
       | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return_unit
   in
   loop () >>= fun () ->
-  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
+  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
+  Logs.warn (fun m -> m "disconnect, dropping vmm_stats!") ;
+  Vmm_stats.remove_all !t ;
+  t := Vmm_stats.empty ()
 
 let rec timer () =
   t := Vmm_stats.tick !t ;

@@ -151,7 +151,6 @@ let handle_create t prefix chain cert force =
         Vmm_commands.exec t.dir vm_config tmpfile taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
-        let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version vm.pid vm.taps in
         let bridges =
           List.fold_left2 (fun b br ta ->
               let old = match String.Map.find br b with
@@ -161,10 +160,16 @@ let handle_create t prefix chain cert force =
               String.Map.add br (String.Set.add ta old) b)
             t.bridges vm_config.network taps
         in
-        let t = { t with resources ; stats_counter = succ t.stats_counter ; bridges } in
+        let t = { t with resources ; bridges } in
         let t, out = log t (Log.hdr prefix vm_config.vname, `VM_start (vm.pid, vm.taps, None)) in
         let tls_out = Vmm_wire.success ~msg:"VM started" 0 t.client_version in
-        Ok (t, `Tls (s, tls_out) :: stat t stat_out @ out, vm))
+        Ok (t, `Tls (s, tls_out) :: out, vm))
+
+let setup_stats t vm =
+  Vmm_commands.setup_freebsd_kludge vm.Vmm_core.pid >>= fun () ->
+  let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version vm.pid vm.taps in
+  let t = { t with stats_counter = succ t.stats_counter } in
+  Ok (t, stat t stat_out)
 
 let handle_shutdown t vm r =
   (match Vmm_commands.shutdown vm with
