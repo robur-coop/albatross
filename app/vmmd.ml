@@ -180,7 +180,7 @@ let rec read_stats state s =
   | Error _ ->
     Logs.err (fun m -> m "exception while reading stats") ;
     Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
-    state := { !state with Vmm_engine.stats_socket = None }
+    invalid_arg "stat socket communication issue"
   | Ok (hdr, data) ->
     let state', outs = Vmm_engine.handle_stat !state hdr data in
     state := state' ;
