@@ -42,18 +42,19 @@ let handle s addr () =
   Vmm_stats.remove_all !t ;
   t := Vmm_stats.empty ()
 
-let rec timer () =
+let rec timer interval () =
   t := Vmm_stats.tick !t ;
-  Lwt_unix.sleep Duration.(to_f (of_sec 15)) >>= fun () ->
-  timer ()
+  Lwt_unix.sleep interval >>= fun () ->
+  timer interval ()
 
-let jump _ file =
+let jump _ file interval =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run
     (let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
      Lwt_unix.(Versioned.bind_2 s (ADDR_UNIX file)) >>= fun () ->
      Lwt_unix.listen s 1 ;
-     Lwt.async timer ;
+     Lwt.async (timer interval) ;
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        Lwt.async (handle cs addr) ;
@@ -77,8 +78,12 @@ let socket =
   let doc = "Socket to listen onto" in
   Arg.(value & pos 0 string "" & info [] ~doc)
 
+let interval =
+  let doc = "Interval between statistics gatherings (in seconds)" in
+  Arg.(value & opt int 15 & info [ "internval" ] ~doc)
+
 let cmd =
-  Term.(ret (const jump $ setup_log $ socket)),
+  Term.(ret (const jump $ setup_log $ socket $ interval)),
   Term.info "vmm_stats" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
