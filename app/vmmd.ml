@@ -128,7 +128,7 @@ let server_socket port =
   let s = socket PF_INET SOCK_STREAM 0 in
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
-  Versioned.bind_2 s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
+  bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
   listen s 10 ;
   Lwt.return s
 

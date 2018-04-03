@@ -27,7 +27,7 @@ type ('a, 'b) t = {
   client_version : Vmm_wire.version ;
   (* TODO: refine, maybe:
      bridges : (Macaddr.t String.Map.t * String.Set.t) String.Map.t ; *)
-  bridges : String.Set.t String.Map.t ;
+  used_bridges : String.Set.t String.Map.t ;
   (* TODO: used block devices (since each may only be active once) *)
   resources : Vmm_resources.t ;
   crls : X509.CRL.c list ;
@@ -59,7 +59,7 @@ let init dir cmp console_socket stats_socket log_socket =
     log_socket ; log_counter = 1 ; log_attached = String.Map.empty ;
     log_version = `WV0 ; log_requests = IM.empty ;
     client_version = `WV0 ;
-    bridges = String.Map.empty ;
+    used_bridges = String.Map.empty ;
     resources = Vmm_resources.empty ;
     crls
   }
@@ -151,16 +151,16 @@ let handle_create t prefix chain cert force =
         Vmm_commands.exec t.dir vm_config tmpfile taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
-        let bridges =
+        let used_bridges =
           List.fold_left2 (fun b br ta ->
               let old = match String.Map.find br b with
                 | None -> String.Set.empty
                 | Some x -> x
               in
               String.Map.add br (String.Set.add ta old) b)
-            t.bridges vm_config.network taps
+            t.used_bridges vm_config.network taps
         in
-        let t = { t with resources ; bridges } in
+        let t = { t with resources ; used_bridges } in
         let t, out = log t (Log.hdr prefix vm_config.vname, `VM_start (vm.pid, vm.taps, None)) in
         let tls_out = Vmm_wire.success ~msg:"VM started" 0 t.client_version in
         Ok (t, `Tls (s, tls_out) :: out, vm))
@@ -182,17 +182,17 @@ let handle_shutdown t vm r =
       Logs.warn (fun m -> m "%s while removing vm %a" e pp_vm vm) ;
       t.resources
   in
-  let bridges =
+  let used_bridges =
     List.fold_left2 (fun b br ta ->
         let old = match String.Map.find br b with
           | None -> String.Set.empty
           | Some x -> x
         in
         String.Map.add br (String.Set.remove ta old) b)
-      t.bridges vm.config.network vm.taps
+      t.used_bridges vm.config.network vm.taps
   in
   let stat_out = Vmm_wire.Stats.remove t.stats_counter t.stats_version vm.pid in
-  let t = { t with stats_counter = succ t.stats_counter ; resources ; bridges } in
+  let t = { t with stats_counter = succ t.stats_counter ; resources ; used_bridges } in
   let t, outs = log t (Log.hdr vm.config.prefix vm.config.vname,
                        `VM_stop (vm.pid, r))
   in

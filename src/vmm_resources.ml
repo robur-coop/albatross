@@ -6,23 +6,25 @@ open Rresult.R.Infix
 open Vmm_core
 
 type res_entry = {
-  vms : int ;
-  memory : int ;
+  running_vms : int ;
+  used_memory : int ;
 }
 
 let pp_res_entry ppf res =
-  Fmt.pf ppf "%d vms %d memory" res.vms res.memory
+  Fmt.pf ppf "%d vms %d memory" res.running_vms res.used_memory
 
-let empty_res = { vms = 0 ; memory = 0 }
+let empty_res = { running_vms = 0 ; used_memory = 0 }
 
 let check_resource (policy : delegation) (vm : vm_config) (res : res_entry) =
-  succ res.vms <= policy.vms && res.memory + vm.memory <= policy.memory
+  succ res.running_vms <= policy.vms && res.used_memory + vm.requested_memory <= policy.memory
 
 let add (vm : vm) (res : res_entry) =
-  { vms = succ res.vms ; memory = vm.config.memory + res.memory }
+  { running_vms = succ res.running_vms ;
+    used_memory = vm.config.requested_memory + res.used_memory }
 
 let rem (vm : vm) (res : res_entry) =
-  { vms = pred res.vms ; memory = res.memory - vm.config.memory }
+  { running_vms = pred res.running_vms ;
+    used_memory = res.used_memory - vm.config.requested_memory }
 
 type entry =
   | Leaf of vm

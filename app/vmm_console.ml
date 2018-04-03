@@ -153,7 +153,7 @@ let jump _ file =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
     (let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.(Versioned.bind_2 s (ADDR_UNIX file)) >>= fun () ->
+     Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
      Lwt_unix.listen s 1 ;
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->

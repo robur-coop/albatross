@@ -46,7 +46,7 @@ let rec close fd =
   try Unix.close fd with
   | Unix.Unix_error (Unix.EINTR, _, _) -> close fd
 
-let close_no_err fd = try close fd with e -> ()
+let close_no_err fd = try close fd with _ -> ()
 
 (* own code starts here
    (c) 2017 Hannes Mehnert, all rights reserved *)
@@ -173,7 +173,7 @@ let exec dir vm tmpfile taps =
    | [_] -> Ok Fpath.(dir / "ukvm-bin.net")
    | _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   cpuset vm.cpuid >>= fun cpuset ->
-  let mem = "--mem=" ^ string_of_int vm.memory in
+  let mem = "--mem=" ^ string_of_int vm.requested_memory in
   let cmd = Bos.Cmd.(of_list cpuset % p bin % mem %% of_list net % "--" % p (image_fn tmpfile) %% of_list argv) in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in

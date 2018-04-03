@@ -199,14 +199,14 @@ let crl_of_cert cert =
 
 let vm_of_cert prefix cert =
   req "cpuid" cert Oid.cpuid int_of_cstruct >>= fun cpuid ->
-  req "memory" cert Oid.memory int_of_cstruct >>= fun memory ->
+  req "memory" cert Oid.memory int_of_cstruct >>= fun requested_memory ->
   opt cert Oid.block_device string_of_cstruct >>= fun block_device ->
   opt cert Oid.network strings_of_cstruct >>= fun network ->
   req "vmimage" cert Oid.vmimage image_of_cstruct >>= fun vmimage ->
   opt cert Oid.argv strings_of_cstruct >>= fun argv ->
   let vname = id cert in
   let network = match network with None -> [] | Some x -> x in
-  Ok { prefix ; vname ; cpuid ; memory ; block_device ; network ; vmimage ; argv }
+  Ok { prefix ; vname ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
 
 let permissions_of_cert version cert =
   version_of_cert version cert >>= fun () ->

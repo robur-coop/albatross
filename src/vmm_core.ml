@@ -147,7 +147,8 @@ let sub_bridges super sub =
       | Some (`External (nam, supf, supl, gw, nm)),
         `External (nam', subf, subl, gw', nm') ->
         String.compare nam nam' = 0 && nm = nm' &&
-        Ipaddr.V4.compare supf subf <= 0 && Ipaddr.V4.compare supl subl >= 0
+        Ipaddr.V4.compare supf subf <= 0 && Ipaddr.V4.compare supl subl >= 0 &&
+        Ipaddr.V4.compare gw gw' = 0
       | _ -> false)
     sub
 
@@ -169,7 +170,7 @@ type vm_config = {
   prefix : id ;
   vname : string ;
   cpuid : int ;
-  memory : int ;
+  requested_memory : int ;
   block_device : string option ;
   network : string list ;
   vmimage : vmtype * Cstruct.t ;
@@ -189,9 +190,9 @@ let pp_image ppf (typ, blob) =
   let l = Cstruct.len blob in
   Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
 
-let pp_vm_config ppf vm =
+let pp_vm_config ppf (vm : vm_config) =
   Fmt.pf ppf "%s cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
-    vm.vname vm.cpuid vm.memory
+    vm.vname vm.cpuid vm.requested_memory
     Fmt.(option ~none:(unit "no") string) vm.block_device
     Fmt.(list ~sep:(unit ", ") string) vm.network
     pp_image vm.vmimage
@@ -203,7 +204,7 @@ let good_bridge idxs nets =
 
 let vm_matches_res (res : delegation) (vm : vm_config)  =
   res.vms >= 1 && IS.mem vm.cpuid res.cpuids &&
-  vm.memory <= res.memory &&
+  vm.requested_memory <= res.memory &&
   good_bridge vm.network res.bridges
 
 let check_policies vm res =
@@ -232,7 +233,7 @@ let pp_vm ppf vm =
     Bos.Cmd.pp vm.cmd Fpath.pp vm.tmpfile
 
 let translate_tap vm tap =
-  match List.filter (fun (t, b) -> tap = t) (List.combine vm.taps vm.config.network) with
+  match List.filter (fun (t, _) -> tap = t) (List.combine vm.taps vm.config.network) with
   | [ (_, b) ] -> Some b
   | _ -> None
 
@@ -336,7 +337,7 @@ module Log = struct
     name : string ;
   }
 
-  let pp_hdr db ppf hdr =
+  let pp_hdr db ppf (hdr : hdr) =
     let name = translate_serial db hdr.name in
     Fmt.pf ppf "%a: %s" (Ptime.pp_human ~tz_offset_s:0 ()) hdr.ts name
 

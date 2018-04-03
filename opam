@@ -10,7 +10,7 @@ depends: [
   "ocamlfind" {build}
   "ocamlbuild" {build}
   "topkg" {build}
-  "lwt"
+  "lwt" {>= "3.0.0"}
   "ipaddr" {>= "2.2.0"}
   "hex"
   "cstruct"

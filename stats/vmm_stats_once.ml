@@ -45,8 +45,7 @@ let jump _ pids =
   in
   t := st ;
   let pids = fst (List.split pid_taps) in
-  Lwt_main.run (timer pids ()) ;
-  `Ok ()
+  `Ok (Lwt_main.run (timer pids ()))
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();

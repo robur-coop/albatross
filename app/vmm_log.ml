@@ -121,7 +121,7 @@ let jump _ file sock =
   Lwt_main.run
     (Lwt_unix.openfile file Lwt_unix.[O_APPEND;O_CREAT;O_WRONLY] 0o600 >>= fun fd ->
      let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.(Versioned.bind_2 s (ADDR_UNIX sock)) >>= fun () ->
+     Lwt_unix.(bind s (ADDR_UNIX sock)) >>= fun () ->
      Lwt_unix.listen s 1 ;
      let ring = Vmm_ring.create () in
      let rec loop () =
