@@ -125,7 +125,7 @@ let process db tls hdr data =
     | x when x = Client.log_msg_tag && not !f_done ->
       f_done := true ;
       (* issue initial "info" to get all the vm names *)
-      let out = Vmm_wire.Client.cmd `Info !command my_version in
+      let out = Vmm_wire.Client.cmd Info !command my_version in
       command := succ !command ;
       Logs.debug (fun m -> m "writing %a over TLS" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
       (Vmm_tls.write_tls tls out >|= function
@@ -223,7 +223,7 @@ let rec tcp_listener db tcp tls =
             | Error () -> Lwt.return (Error ())
             | Ok () ->
               let vm_id = translate_name db vm in
-              let out = Vmm_wire.Client.cmd `Statistics ~arg:vm_id !command my_version in
+              let out = Vmm_wire.Client.cmd Statistics ~arg:vm_id !command my_version in
               t := IM.add !command (cs, sockaddr, vm) !t ;
               command := succ !command ;
               Vmm_tls.write_tls tls out >|= function

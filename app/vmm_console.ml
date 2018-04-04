@@ -127,9 +127,9 @@ let handle s addr () =
          | Error e -> Lwt.return (Error e)
          | Ok (name, off) ->
            match Console.int_to_op hdr.tag with
-           | Some Add -> add_fifo s name
-           | Some Attach -> attach name
-           | Some Detach -> detach name
+           | Some Add_console -> add_fifo s name
+           | Some Attach_console -> attach name
+           | Some Detach_console -> detach name
            | Some History ->
              (match decode_ts ~off data with
               | Error e -> Lwt.return (Error e)

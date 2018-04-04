@@ -175,7 +175,7 @@ let handle t hdr buf =
         decode_pid cs >>= fun pid ->
         let t = remove_pid t pid in
         Ok (t, success ~msg:"removed" hdr.id my_version)
-      | Some Statistics ->
+      | Some Stat_request ->
         decode_pid cs >>= fun pid ->
         stats t pid >>= fun s ->
         Ok (t, stat_reply hdr.id my_version (encode_stats s))

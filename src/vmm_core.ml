@@ -39,48 +39,47 @@ let permission_of_string = function
   | _ -> None
 
 type cmd =
-  [ `Info
-  | `Destroy_vm
-  | `Create_block
-  | `Destroy_block
-  | `Statistics
-  | `Attach
-  | `Detach
-  | `Log
-  ]
+  | Info
+  | Destroy_vm
+  | Create_block
+  | Destroy_block
+  | Statistics
+  | Attach
+  | Detach
+  | Log
 
 let pp_cmd ppf = function
-  | `Info -> Fmt.pf ppf "info"
-  | `Destroy_vm -> Fmt.pf ppf "destroy"
-  | `Create_block -> Fmt.pf ppf "create-block"
-  | `Destroy_block -> Fmt.pf ppf "destroy-block"
-  | `Statistics -> Fmt.pf ppf "statistics"
-  | `Attach -> Fmt.pf ppf "attach"
-  | `Detach -> Fmt.pf ppf "detach"
-  | `Log -> Fmt.pf ppf "log"
+  | Info -> Fmt.pf ppf "info"
+  | Destroy_vm -> Fmt.pf ppf "destroy"
+  | Create_block -> Fmt.pf ppf "create-block"
+  | Destroy_block -> Fmt.pf ppf "destroy-block"
+  | Statistics -> Fmt.pf ppf "statistics"
+  | Attach -> Fmt.pf ppf "attach"
+  | Detach -> Fmt.pf ppf "detach"
+  | Log -> Fmt.pf ppf "log"
 
 let cmd_of_string = function
-  | x when x = "info" -> Some `Info
-  | x when x = "destroy" -> Some `Destroy_vm
-  | x when x = "create-block" -> Some `Create_block
-  | x when x = "destroy-block" -> Some `Destroy_block
-  | x when x = "statistics" -> Some `Statistics
-  | x when x = "attach" -> Some `Attach
-  | x when x = "detach" -> Some `Detach
-  | x when x = "log" -> Some `Log
+  | x when x = "info" -> Some Info
+  | x when x = "destroy" -> Some Destroy_vm
+  | x when x = "create-block" -> Some Create_block
+  | x when x = "destroy-block" -> Some Destroy_block
+  | x when x = "statistics" -> Some Statistics
+  | x when x = "attach" -> Some Attach
+  | x when x = "detach" -> Some Detach
+  | x when x = "log" -> Some Log
   | _ -> None
 
 let cmd_allowed permissions cmd =
   List.mem `All permissions ||
   let perm = match cmd with
-    | `Info -> `Info
-    | `Destroy_vm -> `Create
-    | `Create_block -> `Block
-    | `Destroy_block -> `Block
-    | `Statistics -> `Statistics
-    | `Attach -> `Console
-    | `Detach -> `Console
-    | `Log -> `Log
+    | Info -> `Info
+    | Destroy_vm -> `Create
+    | Create_block -> `Block
+    | Destroy_block -> `Block
+    | Statistics -> `Statistics
+    | Attach -> `Console
+    | Detach -> `Console
+    | Log -> `Log
   in
   List.mem perm permissions
 

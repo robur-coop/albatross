@@ -209,7 +209,7 @@ let handle_command t s prefix perms hdr buf =
           Vmm_wire.decode_str buf >>= fun (buf, _l) ->
           let arg = if String.length buf = 0 then prefix else prefix @ [buf] in
           match x with
-          | `Info ->
+          | Info ->
             begin match Vmm_resources.find t.resources arg with
               | None ->
                 Logs.debug (fun m -> m "info: couldn't find %a" pp_id arg) ;
@@ -223,7 +223,7 @@ let handle_command t s prefix perms hdr buf =
                 let out = Vmm_wire.Client.info data hdr.Vmm_wire.id t.client_version in
                 Ok (t, [ `Tls (s, out) ])
             end
-          | `Destroy_vm ->
+          | Destroy_vm ->
             begin match Vmm_resources.find_vm t.resources arg with
               | Some vm ->
                 Vmm_commands.destroy vm ;
@@ -232,7 +232,7 @@ let handle_command t s prefix perms hdr buf =
               | _ ->
                 Error (`Msg ("destroy: not found " ^ buf))
             end
-          | `Attach ->
+          | Attach ->
             (* TODO: get (optionally) <since> from client, instead of hardcoding Ptime.epoch below *)
             let name = String.concat ~sep:"." arg in
             let on_success t =
@@ -251,7 +251,7 @@ let handle_command t s prefix perms hdr buf =
             let console_requests = IM.add t.console_counter on_success t.console_requests in
             Ok ({ t with console_counter = succ t.console_counter ; console_requests },
                 [ `Raw (t.console_socket, cons) ])
-          | `Detach ->
+          | Detach ->
             let name = String.concat ~sep:"." arg in
             let cons = Vmm_wire.Console.detach t.console_counter t.console_version name in
             (match String.Map.find name t.console_attached with
@@ -261,7 +261,7 @@ let handle_command t s prefix perms hdr buf =
             let out = Vmm_wire.success hdr.Vmm_wire.id t.client_version in
             Ok ({ t with console_counter = succ t.console_counter ; console_attached },
                 [ `Raw (t.console_socket, cons) ; `Tls (s, out) ])
-          | `Statistics ->
+          | Statistics ->
             begin match t.stats_socket with
               | None -> Error (`Msg "no statistics available")
               | Some _ -> match Vmm_resources.find_vm t.resources arg with
@@ -273,14 +273,14 @@ let handle_command t s prefix perms hdr buf =
                       stat t stat_out)
                 | _ -> Error (`Msg ("statistics: not found " ^ buf))
             end
-          | `Log ->
+          | Log ->
             begin
               let log_out = Vmm_wire.Log.history t.log_counter t.log_version (string_of_id prefix) Ptime.epoch in
               let log_requests = IM.add t.log_counter (s, hdr.Vmm_wire.id) t.log_requests in
               let log_counter = succ t.log_counter in
               Ok ({ t with log_counter ; log_requests }, [ `Raw (t.log_socket, log_out) ])
             end
-          | `Create_block | `Destroy_block -> Error (`Msg "NYI")
+          | Create_block | Destroy_block -> Error (`Msg "NYI")
         end
       | Some _ -> Error (`Msg "unauthorised command")
   in
@@ -399,7 +399,7 @@ let handle_initial t s addr chain ca =
      handle_revocation t s leaf chain ca prefix
    else
      let log_attached =
-       if cmd_allowed perms `Log then
+       if cmd_allowed perms Log then
          let pre = string_of_id prefix in
          let v = match String.Map.find pre t.log_attached with
            | None -> []
@@ -430,7 +430,7 @@ let handle_stat state hdr data =
       let state = { state with stats_requests } in
       let out =
         match Stats.int_to_op hdr.tag with
-        | Some Stats.StatReply ->
+        | Some Stats.Stat_reply ->
           begin match Stats.decode_stats (Cstruct.of_string data) with
             | Ok (ru, vmm, ifs) ->
               let ifs =

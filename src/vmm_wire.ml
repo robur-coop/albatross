@@ -191,9 +191,9 @@ let fail ?msg id version =
 module Console = struct
   [%%cenum
     type op =
-      | Add
-      | Attach
-      | Detach
+      | Add_console
+      | Attach_console
+      | Detach_console
       | History
       | Data
     [@@uint16_t]
@@ -222,11 +222,11 @@ module Console = struct
     in
     encode id v Data ~payload file
 
-  let add id v name = encode id v Add name
+  let add id v name = encode id v Add_console name
 
-  let attach id v name = encode id v Attach name
+  let attach id v name = encode id v Attach_console name
 
-  let detach id v name = encode id v Detach name
+  let detach id v name = encode id v Detach_console name
 
   let history id v name since =
     let payload = encode_ptime since in
@@ -238,8 +238,8 @@ module Stats = struct
     type op =
       | Add
       | Remove
-      | Statistics
-      | StatReply
+      | Stat_request
+      | Stat_reply
     [@@uint16_t]
   ]
 
@@ -358,11 +358,11 @@ module Stats = struct
 
   let remove id v pid = encode id v Remove pid
 
-  let stat id v pid = encode id v Statistics pid
+  let stat id v pid = encode id v Stat_request pid
 
   let stat_reply id version payload =
     let length = Cstruct.len payload
-    and tag = op_to_int StatReply
+    and tag = op_to_int Stat_reply
     in
     let r =
       Cstruct.append (create_header { length ; id ; version ; tag }) payload
@@ -575,23 +575,23 @@ end
 
 module Client = struct
   let cmd_to_int = function
-    | `Info -> 0
-    | `Destroy_vm -> 1
-    | `Create_block -> 2
-    | `Destroy_block -> 3
-    | `Statistics -> 4
-    | `Attach -> 5
-    | `Detach -> 6
-    | `Log -> 7
+    | Info -> 0
+    | Destroy_vm -> 1
+    | Create_block -> 2
+    | Destroy_block -> 3
+    | Statistics -> 4
+    | Attach -> 5
+    | Detach -> 6
+    | Log -> 7
   and cmd_of_int = function
-    | 0 -> Some `Info
-    | 1 -> Some `Destroy_vm
-    | 2 -> Some `Create_block
-    | 3 -> Some `Destroy_block
-    | 4 -> Some `Statistics
-    | 5 -> Some `Attach
-    | 6 -> Some `Detach
-    | 7 -> Some `Log
+    | 0 -> Some Info
+    | 1 -> Some Destroy_vm
+    | 2 -> Some Create_block
+    | 3 -> Some Destroy_block
+    | 4 -> Some Statistics
+    | 5 -> Some Attach
+    | 6 -> Some Detach
+    | 7 -> Some Log
     | _ -> None
 
   let console_msg_tag = 0xFFF0
