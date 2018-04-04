@@ -67,56 +67,71 @@ let handle ca state t =
   | Ok (state', outs, next) ->
     state := state' ;
     process state outs >>= fun () ->
-    (match next with
-     | `Create cont ->
-       (match cont !state t with
-        | Ok (state', outs, vm) ->
-          state := state' ;
-          s := { !s with vm_created = succ !s.vm_created } ;
-          Lwt.async (fun () ->
-              Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
-              let state', outs = Vmm_engine.handle_shutdown !state vm r in
-              s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
-              state := state' ;
-              process state outs) ;
-          process state outs >>= fun () ->
-          begin
-            match Vmm_engine.setup_stats !state vm with
-            | Ok (state', outs) ->
-              state := state' ;
-              process state outs
-            | Error (`Msg e) ->
-              Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
-              Lwt.return_unit
-          end
-        | Error (`Msg e) ->
-          Logs.err (fun m -> m "error while cont %s" e) ;
-          let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in
-          process state [ `Tls (t, err) ]) >>= fun () ->
-       Tls_lwt.Unix.close (fst t)
-     | `Loop (prefix, perms) ->
-       let rec loop () =
-         Vmm_tls.read_tls (fst t) >>= function
-         | Error (`Msg msg) ->
-           Logs.err (fun m -> m "reading client %a error: %s" pp_sockaddr t msg) ;
-           loop ()
-         | Error _ ->
-           Logs.err (fun m -> m "disconnect from %a" pp_sockaddr t) ;
-           let state', cons = Vmm_engine.handle_disconnect !state t in
-           state := state' ;
-           Lwt_list.iter_s (fun (s, data) -> write_raw s data) cons >>= fun () ->
-           Tls_lwt.Unix.close (fst t)
-         | Ok (hdr, buf) ->
-           let state', out = Vmm_engine.handle_command !state t prefix perms hdr buf in
-           state := state' ;
-           process state out >>= fun () ->
-           loop ()
-       in
-       loop ()
-     | `Close socks ->
-       Logs.debug (fun m -> m "closing session with %d active ones" (List.length socks)) ;
-       Lwt_list.iter_s (fun (t, _) -> Tls_lwt.Unix.close t) socks >>= fun () ->
-       Tls_lwt.Unix.close (fst t))
+    begin match next with
+      | `Create (task, next) ->
+        (match task with
+         | None -> Lwt.return_unit
+         | Some (kill, wait) -> kill () ; wait) >>= fun () ->
+        let await, wakeme = Lwt.wait () in
+        begin match next !state await with
+          | Ok (state', outs, cont) ->
+            state := state' ;
+            process state outs >>= fun () ->
+            begin match cont !state t with
+              | Ok (state', outs, vm) ->
+                state := state' ;
+                s := { !s with vm_created = succ !s.vm_created } ;
+                Lwt.async (fun () ->
+                    Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
+                    let state', outs = Vmm_engine.handle_shutdown !state vm r in
+                    s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
+                    state := state' ;
+                    process state outs >|= fun () ->
+                    Lwt.wakeup wakeme ()) ;
+                process state outs >>= fun () ->
+                begin match Vmm_engine.setup_stats !state vm with
+                  | Ok (state', outs) ->
+                    state := state' ;
+                    process state outs
+                  | Error (`Msg e) ->
+                    Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
+                    Lwt.return_unit
+                end
+              | Error (`Msg e) ->
+                Logs.err (fun m -> m "error while create %s" e) ;
+                let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in
+                process state [ `Tls (t, err) ]
+            end
+          | Error (`Msg e) ->
+            Logs.err (fun m -> m "error while cont %s" e) ;
+            let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in
+            process state [ `Tls (t, err) ]
+        end >>= fun () ->
+        Tls_lwt.Unix.close (fst t)
+      | `Loop (prefix, perms) ->
+        let rec loop () =
+          Vmm_tls.read_tls (fst t) >>= function
+          | Error (`Msg msg) ->
+            Logs.err (fun m -> m "reading client %a error: %s" pp_sockaddr t msg) ;
+            loop ()
+          | Error _ ->
+            Logs.err (fun m -> m "disconnect from %a" pp_sockaddr t) ;
+            let state', cons = Vmm_engine.handle_disconnect !state t in
+            state := state' ;
+            Lwt_list.iter_s (fun (s, data) -> write_raw s data) cons >>= fun () ->
+            Tls_lwt.Unix.close (fst t)
+          | Ok (hdr, buf) ->
+            let state', out = Vmm_engine.handle_command !state t prefix perms hdr buf in
+            state := state' ;
+            process state out >>= fun () ->
+            loop ()
+        in
+        loop ()
+      | `Close socks ->
+        Logs.debug (fun m -> m "closing session with %d active ones" (List.length socks)) ;
+        Lwt_list.iter_s (fun (t, _) -> Tls_lwt.Unix.close t) socks >>= fun () ->
+        Tls_lwt.Unix.close (fst t)
+    end
   | Error (`Msg e) ->
     Logs.err (fun m -> m "VMM %a %s" pp_sockaddr t e) ;
     let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in

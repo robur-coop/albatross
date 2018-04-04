@@ -112,12 +112,7 @@ let insert m name v =
 let remove m name vm =
   let rec del m = function
     | [] -> Error (`Msg "should not happen: empty labels in remove")
-    | [l] ->
-      (match String.Map.find l m with
-       | None -> Ok m
-       | Some (Leaf vm') when vm'.pid = vm.pid -> Ok (String.Map.remove l m)
-       | Some (Leaf _) -> Ok m
-       | Some (Subtree _) -> Ok (String.Map.remove l m)) (* TODO: not sure about this case *)
+    | [l] -> Ok (String.Map.remove l m)
     | l::ls -> match String.Map.find l m with
       | None -> Error (`Msg "should not happen: found nothing in remove while still had some labels")
       | Some (Subtree (r, m')) ->

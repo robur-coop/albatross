@@ -178,7 +178,7 @@ type vm_config = {
 
 let fullname vm = vm.prefix @ [ vm.vname ]
 
-let filename vm = string_of_id (fullname vm)
+let vm_id vm = string_of_id (fullname vm)
 
 (* used for block devices *)
 let location vm = match vm.prefix with
@@ -222,14 +222,13 @@ type vm = {
   cmd : Bos.Cmd.t ;
   pid : int ;
   taps : string list ;
-  stdout : Unix.file_descr ; (* ringbuffer thingy *)
-  tmpfile : Fpath.t
+  stdout : Unix.file_descr (* ringbuffer thingy *)
 }
 
 let pp_vm ppf vm =
-  Fmt.pf ppf "pid %d@ taps %a cmdline %a tmpfile %a"
+  Fmt.pf ppf "pid %d@ taps %a cmdline %a"
     vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
-    Bos.Cmd.pp vm.cmd Fpath.pp vm.tmpfile
+    Bos.Cmd.pp vm.cmd
 
 let translate_tap vm tap =
   match List.filter (fun (t, _) -> tap = t) (List.combine vm.taps vm.config.network) with

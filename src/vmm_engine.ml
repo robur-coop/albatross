@@ -7,12 +7,12 @@ open Vmm_core
 open Rresult
 open R.Infix
 
-type ('a, 'b) t = {
+type ('a, 'b, 'c) t = {
   dir : Fpath.t ;
   cmp : 'b -> 'b -> bool ;
   console_socket : 'a ;
   console_counter : int ;
-  console_requests : (('a, 'b) t -> ('a, 'b) t * [ `Raw of 'a * string | `Tls of 'b * string ] list) IM.t ;
+  console_requests : (('a, 'b, 'c) t -> ('a, 'b, 'c) t * [ `Raw of 'a * string | `Tls of 'b * string ] list) IM.t ;
   console_attached : 'b String.Map.t ; (* vm_name -> socket *)
   console_version : Vmm_wire.version ;
   stats_socket : 'a option ;
@@ -30,6 +30,7 @@ type ('a, 'b) t = {
   used_bridges : String.Set.t String.Map.t ;
   (* TODO: used block devices (since each may only be active once) *)
   resources : Vmm_resources.t ;
+  tasks : 'c String.Map.t ;
   crls : X509.CRL.c list ;
 }
 
@@ -61,6 +62,7 @@ let init dir cmp console_socket stats_socket log_socket =
     client_version = `WV0 ;
     used_bridges = String.Map.empty ;
     resources = Vmm_resources.empty ;
+    tasks = String.Map.empty ;
     crls
   }
 
@@ -109,46 +111,20 @@ let handle_disconnect state t =
   in
   { state with console_attached ; console_counter ; log_attached }, out
 
-let handle_create t prefix chain cert force =
-  (* convert certificate to vm_config *)
-  Vmm_asn.vm_of_cert prefix cert >>= fun vm_config ->
-  Logs.debug (fun m -> m "vm %a" pp_vm_config vm_config) ;
-  (* check whether vm with same name is already running *)
+let handle_create t vm_config policies =
   let full = fullname vm_config in
-  (* get names and static resources *)
-  List.fold_left (fun acc ca ->
-      acc >>= fun acc ->
-      Vmm_asn.delegation_of_cert asn_version ca >>= fun res ->
-      let name = id ca in
-      Ok ((name, res) :: acc))
-    (Ok []) chain >>= fun res ->
-  (* check static policies *)
-  Logs.debug (fun m -> m "now checking static policies") ;
-  check_policies vm_config (List.map snd res) >>= fun () ->
-  (* may retract currently running vm to evaluate force-create! *)
-  (if force then
-     match Vmm_resources.find_vm t.resources full with
-     | None -> Ok (t.resources, None)
-     | Some vm ->
-       Vmm_resources.remove t.resources full vm >>= fun r -> Ok (r, Some vm)
-   else if Vmm_resources.exists t.resources full then
+  (if Vmm_resources.exists t.resources full then
      Error (`Msg "VM with same name is already running")
    else
-     Ok (t.resources, None)) >>= fun (resources, vm) ->
-  (* check dynamic usage *)
+     Ok ()) >>= fun () ->
   Logs.debug (fun m -> m "now checking dynamic policies") ;
-  Vmm_resources.check_dynamic resources vm_config res >>= fun () ->
-  (* need to kill *)
-  (match vm with
-   | Some vm -> Vmm_commands.destroy vm
-   | None -> ()) ;
+  Vmm_resources.check_dynamic t.resources vm_config policies >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_commands.prepare vm_config >>= fun (tmpfile, taps) ->
-  Logs.debug (fun m -> m "prepared vm %a" Fpath.pp tmpfile) ;
-  Ok (Fpath.basename tmpfile,
-      fun t s ->
+  Vmm_commands.prepare vm_config >>= fun taps ->
+  Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
+  Ok (fun t s ->
         (* actually execute the vm *)
-        Vmm_commands.exec t.dir vm_config tmpfile taps >>= fun vm ->
+        Vmm_commands.exec t.dir vm_config taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
         let used_bridges =
@@ -161,7 +137,7 @@ let handle_create t prefix chain cert force =
             t.used_bridges vm_config.network taps
         in
         let t = { t with resources ; used_bridges } in
-        let t, out = log t (Log.hdr prefix vm_config.vname, `VM_start (vm.pid, vm.taps, None)) in
+        let t, out = log t (Log.hdr vm_config.prefix vm_config.vname, `VM_start (vm.pid, vm.taps, None)) in
         let tls_out = Vmm_wire.success ~msg:"VM started" 0 t.client_version in
         Ok (t, `Tls (s, tls_out) :: out, vm))
 
@@ -192,7 +168,8 @@ let handle_shutdown t vm r =
       t.used_bridges vm.config.network vm.taps
   in
   let stat_out = Vmm_wire.Stats.remove t.stats_counter t.stats_version vm.pid in
-  let t = { t with stats_counter = succ t.stats_counter ; resources ; used_bridges } in
+  let tasks = String.Map.remove (vm_id vm.config) t.tasks in
+  let t = { t with stats_counter = succ t.stats_counter ; resources ; used_bridges ; tasks } in
   let t, outs = log t (Log.hdr vm.config.prefix vm.config.vname,
                        `VM_stop (vm.pid, r))
   in
@@ -299,12 +276,13 @@ let handle_single_revocation t prefix serial =
   (* also revoke all active sessions!? *)
   (* TODO: maybe we need a vmm_resources like structure for sessions as well!? *)
   let log_attached, kill =
-    match String.Map.find (string_of_id prefix) t.log_attached with
+    let pid = string_of_id prefix in
+    match String.Map.find pid t.log_attached with
     | None -> t.log_attached, []
     | Some xs ->
       (* those where snd v = serial: drop *)
       let drop, keep = List.partition (fun (_, s) -> String.equal s id) xs in
-      String.Map.add (string_of_id prefix) keep t.log_attached, drop
+      String.Map.add pid keep t.log_attached, drop
   in
   (* two things:
      1 revoked LEAF certs need to go (k = prefix, snd v = serial) [see above]
@@ -389,12 +367,50 @@ let handle_initial t s addr chain ca =
   let initial_out = `Tls (s, Vmm_wire.Client.log login_hdr login_ev t.client_version) in
   Vmm_asn.permissions_of_cert asn_version leaf >>= fun perms ->
   (if (List.mem `Create perms || List.mem `Force_create perms) && Vmm_asn.contains_vm leaf then
-     let force = List.mem `Force_create perms in
-     handle_create t prefix chain leaf force >>= fun (file, cont) ->
-     let cons = Vmm_wire.Console.add t.console_counter t.console_version file in
-     Ok ({ t with console_counter = succ t.console_counter },
-         [ `Raw (t.console_socket, cons) ],
-         `Create cont)
+     (* convert certificate to vm_config *)
+     Vmm_asn.vm_of_cert prefix leaf >>= fun vm_config ->
+     Logs.debug (fun m -> m "vm %a" pp_vm_config vm_config) ;
+     (* get names and static resources *)
+     List.fold_left (fun acc ca ->
+         acc >>= fun acc ->
+         Vmm_asn.delegation_of_cert asn_version ca >>= fun res ->
+         let name = id ca in
+         Ok ((name, res) :: acc))
+       (Ok []) chain >>= fun policies ->
+     (* check static policies *)
+     Logs.debug (fun m -> m "now checking static policies") ;
+     check_policies vm_config (List.map snd policies) >>= fun () ->
+     let t, task =
+       let force = List.mem `Force_create perms in
+       if force then
+         let fid = vm_id vm_config in
+         match String.Map.find fid t.tasks with
+         | None -> t, None
+         | Some task ->
+           let kill () =
+             match Vmm_resources.find_vm t.resources (fullname vm_config) with
+             | None ->
+               Logs.err (fun m -> m "found a task, but no vm for %a (%s)"
+                            pp_id (fullname vm_config) fid)
+             | Some vm ->
+               Logs.debug (fun m -> m "killing %a now" pp_vm vm) ;
+               Vmm_commands.destroy vm
+           in
+           let tasks = String.Map.remove fid t.tasks in
+           ({ t with tasks }, Some (kill, task))
+       else
+         t, None
+     in
+     let next t sleeper =
+       handle_create t vm_config policies >>= fun cont ->
+       let id = vm_id vm_config in
+       let cons = Vmm_wire.Console.add t.console_counter t.console_version id in
+       let tasks = String.Map.add id sleeper t.tasks in
+       Ok ({ t with console_counter = succ t.console_counter ; tasks },
+           [ `Raw (t.console_socket, cons) ],
+           cont)
+     in
+     Ok (t, [], `Create (task, next))
    else if List.mem `Crl perms && Vmm_asn.contains_crl leaf then
      handle_revocation t s leaf chain ca prefix
    else
