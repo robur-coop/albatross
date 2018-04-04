@@ -223,7 +223,7 @@ let handle_command t s prefix perms hdr buf =
                 let out = Vmm_wire.Client.info data hdr.Vmm_wire.id t.client_version in
                 Ok (t, [ `Tls (s, out) ])
             end
-          | `Destroy_image ->
+          | `Destroy_vm ->
             begin match Vmm_resources.find_vm t.resources arg with
               | Some vm ->
                 Vmm_commands.destroy vm ;
@@ -280,7 +280,7 @@ let handle_command t s prefix perms hdr buf =
               let log_counter = succ t.log_counter in
               Ok ({ t with log_counter ; log_requests }, [ `Raw (t.log_socket, log_out) ])
             end
-          | _ -> Error (`Msg "NYI")
+          | `Create_block | `Destroy_block -> Error (`Msg "NYI")
         end
       | Some _ -> Error (`Msg "unauthorised command")
   in
