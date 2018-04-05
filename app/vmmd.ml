@@ -220,7 +220,8 @@ let jump _ dir cacert cert priv_key =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let dir = Fpath.v dir in
   Lwt_main.run
-    ((init_sock dir "cons" >|= function
+    (Nocrypto_entropy_lwt.initialize () >>= fun () ->
+     (init_sock dir "cons" >|= function
        | None -> invalid_arg "cannot connect to console socket"
        | Some c -> c) >>= fun c ->
      init_sock dir "stat" >>= fun s ->
