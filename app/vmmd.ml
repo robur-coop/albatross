@@ -216,7 +216,7 @@ let rec stats_loop () =
   Lwt_unix.sleep 600. >>= fun () ->
   stats_loop ()
 
-let jump _ dir cacert cert priv_key =
+let jump _ dir cacert cert priv_key port =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let dir = Fpath.v dir in
   Lwt_main.run
@@ -228,7 +228,7 @@ let jump _ dir cacert cert priv_key =
      (init_sock dir "log" >|= function
        | None -> invalid_arg "cannot connect to log socket"
        | Some l -> l) >>= fun l ->
-     server_socket 1025 >>= fun socket ->
+     server_socket port >>= fun socket ->
      X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
      X509_lwt.certs_of_pem cacert >>= (function
          | [ ca ] -> Lwt.return ca
@@ -305,8 +305,12 @@ let key =
   let doc = "Private key" in
   Arg.(required & pos 3 (some file) None & info [] ~doc)
 
+let port =
+  let doc = "TCP listen port" in
+  Arg.(value & opt int 1025 & info [ "port" ] ~doc)
+
 let cmd =
-  Term.(ret (const jump $ setup_log $ wdir $ cacert $ cert $ key)),
+  Term.(ret (const jump $ setup_log $ wdir $ cacert $ cert $ key $ port)),
   Term.info "vmmd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
