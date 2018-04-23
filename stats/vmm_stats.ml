@@ -156,7 +156,8 @@ let remove_pid t pid =
   let pid_nic = IM.remove pid t.pid_nic in
   { t with pid_nic }
 
-let remove_all t = IM.iter (fun pid _ -> ignore (remove_pid t pid)) t.pid_nic
+let remove_pids t pids =
+  List.fold_left remove_pid t pids
 
 let handle t hdr buf =
   let open Vmm_wire in
@@ -170,19 +171,19 @@ let handle t hdr buf =
       | Some Add ->
         decode_pid_taps cs >>= fun (pid, taps) ->
         add_pid t pid taps >>= fun t ->
-        Ok (t, success ~msg:"added" hdr.id my_version)
+        Ok (t, `Add pid, success ~msg:"added" hdr.id my_version)
       | Some Remove ->
         decode_pid cs >>= fun pid ->
         let t = remove_pid t pid in
-        Ok (t, success ~msg:"removed" hdr.id my_version)
+        Ok (t, `Remove pid, success ~msg:"removed" hdr.id my_version)
       | Some Stat_request ->
         decode_pid cs >>= fun pid ->
         stats t pid >>= fun s ->
-        Ok (t, stat_reply hdr.id my_version (encode_stats s))
+        Ok (t, `None, stat_reply hdr.id my_version (encode_stats s))
       | _ -> Error (`Msg "unknown command")
   in
   match r with
-  | Ok (t, out) -> t, out
+  | Ok (t, action, out) -> t, action, out
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while processing %s" msg) ;
-    t, fail ~msg hdr.id my_version
+    t, `None, fail ~msg hdr.id my_version

@@ -23,24 +23,29 @@ let pp_sockaddr ppf = function
 
 let handle s addr () =
   Logs.info (fun m -> m "handling stats connection %a" pp_sockaddr addr) ;
-  let rec loop () =
+  let rec loop acc =
     Vmm_lwt.read_exactly s >>= function
-    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
-    | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
+    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop acc
+    | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return acc
     | Ok (hdr, data) ->
       Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp (Cstruct.of_string data)) ;
-      let t', out = Vmm_stats.handle !t hdr data in
+      let t', action, out = Vmm_stats.handle !t hdr data in
+      let acc = match action with
+        | `Add pid -> pid :: acc
+        | `Remove pid -> List.filter (fun m -> m <> pid) acc
+        | `None -> acc
+      in
       t := t' ;
       Logs.debug (fun m -> m "sent %a" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
       Vmm_lwt.write_raw s out >>= function
-      | Ok () -> loop ()
-      | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return_unit
+      | Ok () -> loop acc
+      | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return acc
   in
-  loop () >>= fun () ->
+  loop [] >>= fun pids ->
   Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
-  Logs.warn (fun m -> m "disconnect, dropping vmm_stats!") ;
-  Vmm_stats.remove_all !t ;
-  t := Vmm_stats.empty ()
+  Logs.warn (fun m -> m "disconnect, dropping %d pids!" (List.length pids)) ;
+  let t' = Vmm_stats.remove_pids !t pids in
+  t := t'
 
 let rec timer interval () =
   t := Vmm_stats.tick !t ;

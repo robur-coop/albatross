@@ -349,7 +349,7 @@ let cmd =
     `P "$(tname) connects to a server and initiates a TLS handshake" ]
   in
   Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination $ db $ address $ port),
-  Term.info "vmm_client" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "vmm_prometheus_stats" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd
