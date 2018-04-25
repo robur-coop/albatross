@@ -16,7 +16,7 @@ external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
 external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
 external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
 
-let my_version = `WV0
+let my_version = `WV1
 
 let descr = ref []
 
@@ -25,12 +25,13 @@ type t = {
   pid_rusage : rusage IM.t ;
   pid_vmmapi : (string * int64) list IM.t ;
   nic_ifdata : ifdata String.Map.t ;
+  vmid_pid : int String.Map.t ;
 }
 
 let pp_strings pp taps = Fmt.(list ~sep:(unit ",@ ") string) pp taps
 
 let empty () =
-  { pid_nic = IM.empty ; pid_rusage = IM.empty ; pid_vmmapi = IM.empty ; nic_ifdata = String.Map.empty }
+  { pid_nic = IM.empty ; pid_rusage = IM.empty ; pid_vmmapi = IM.empty ; nic_ifdata = String.Map.empty ; vmid_pid = String.Map.empty }
 
 let rec wrap f arg =
   try Some (f arg) with
@@ -91,7 +92,7 @@ let fill_descr ctx =
     end
   | ds -> Logs.info (fun m -> m "%d descr are already present" (List.length ds))
 
-let add_pid t pid nics =
+let add_pid t vmid pid nics =
   let name = "ukvm" ^ string_of_int pid in
   match wrap sysctl_ifcount () with
   | None ->
@@ -117,47 +118,59 @@ let add_pid t pid nics =
        Ok (Some vmctx)) >>= fun vmctx ->
     Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_strings nics
                   (match vmctx with None -> false | Some _ -> true)) ;
-    let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic in
-    Ok { t with pid_nic }
-
-
-let stats t pid =
-  Logs.debug (fun m -> m "querying statistics for %d" pid) ;
-  try
-    let _, nics = IM.find pid t.pid_nic
-    and ru = IM.find pid t.pid_rusage
-    and vmm =
-      try IM.find pid t.pid_vmmapi with
-      | Not_found ->
-        Logs.err (fun m -> m "failed to find vmm stats for %d" pid);
-        []
+    let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic
+    and vmid_pid = String.Map.add vmid pid t.vmid_pid
     in
-    match
-      List.fold_left (fun acc nic ->
-          match String.Map.find nic t.nic_ifdata, acc with
-          | None, _ -> None
-          | _, None -> None
-          | Some ifd, Some acc -> Some (ifd :: acc))
-        (Some []) (snd (List.split nics))
+    Ok { t with pid_nic ; vmid_pid }
+
+
+let stats t vmid =
+  Logs.debug (fun m -> m "querying statistics for vmid %s" vmid) ;
+  match String.Map.find vmid t.vmid_pid with
+  | None -> Error (`Msg ("unknown vm " ^ vmid))
+  | Some pid ->
+    Logs.debug (fun m -> m "querying statistics for %d" pid) ;
+    try
+      let _, nics = IM.find pid t.pid_nic
+      and ru = IM.find pid t.pid_rusage
+      and vmm =
+        try IM.find pid t.pid_vmmapi with
+        | Not_found ->
+          Logs.err (fun m -> m "failed to find vmm stats for %d" pid);
+          []
+      in
+      match
+        List.fold_left (fun acc nic ->
+            match String.Map.find nic t.nic_ifdata, acc with
+            | None, _ -> None
+            | _, None -> None
+            | Some ifd, Some acc -> Some (ifd :: acc))
+          (Some []) (snd (List.split nics))
+      with
+      | None -> Error (`Msg "failed to find interface statistics")
+      | Some ifd -> Ok (ru, vmm, ifd)
     with
-    | None -> Error (`Msg "failed to find interface statistics")
-    | Some ifd -> Ok (ru, vmm, ifd)
-  with
-  | _ -> Error (`Msg "failed to find resource usage")
+    | _ -> Error (`Msg "failed to find resource usage")
 
-let remove_pid t pid =
-  Logs.info (fun m -> m "removing pid %d" pid) ;
-  (try
-     match IM.find pid t.pid_nic with
-     | Some vmctx, _ -> ignore (wrap vmmapi_close vmctx)
-     | None, _ -> ()
-   with
-     _ -> ()) ;
-  let pid_nic = IM.remove pid t.pid_nic in
-  { t with pid_nic }
+let remove_vmid t vmid =
+  Logs.info (fun m -> m "removing vmid %s" vmid) ;
+  match String.Map.find vmid t.vmid_pid with
+  | None -> Logs.warn (fun m -> m "no pid found for %s" vmid) ; t
+  | Some pid ->
+    Logs.info (fun m -> m "removing pid %d" pid) ;
+    (try
+       match IM.find pid t.pid_nic with
+       | Some vmctx, _ -> ignore (wrap vmmapi_close vmctx)
+       | None, _ -> ()
+     with
+       _ -> ()) ;
+    let pid_nic = IM.remove pid t.pid_nic
+    and vmid_pid = String.Map.remove vmid t.vmid_pid
+    in
+    { t with pid_nic ; vmid_pid }
 
-let remove_pids t pids =
-  List.fold_left remove_pid t pids
+let remove_vmids t vmids =
+  List.fold_left remove_vmid t vmids
 
 let handle t hdr buf =
   let open Vmm_wire in
@@ -167,18 +180,17 @@ let handle t hdr buf =
     if not (version_eq my_version hdr.version) then
       Error (`Msg "cannot handle version")
     else
+      decode_string cs >>= fun (name, off) ->
       match int_to_op hdr.tag with
       | Some Add ->
-        decode_pid_taps cs >>= fun (pid, taps) ->
-        add_pid t pid taps >>= fun t ->
-        Ok (t, `Add pid, success ~msg:"added" hdr.id my_version)
+        decode_pid_taps (Cstruct.shift cs off) >>= fun (pid, taps) ->
+        add_pid t name pid taps >>= fun t ->
+        Ok (t, `Add name, success ~msg:"added" hdr.id my_version)
       | Some Remove ->
-        decode_pid cs >>= fun pid ->
-        let t = remove_pid t pid in
-        Ok (t, `Remove pid, success ~msg:"removed" hdr.id my_version)
+        let t = remove_vmid t name in
+        Ok (t, `Remove name, success ~msg:"removed" hdr.id my_version)
       | Some Stat_request ->
-        decode_pid cs >>= fun pid ->
-        stats t pid >>= fun s ->
+        stats t name >>= fun s ->
         Ok (t, `None, stat_reply hdr.id my_version (encode_stats s))
       | _ -> Error (`Msg "unknown command")
   in

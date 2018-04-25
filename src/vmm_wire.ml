@@ -16,21 +16,26 @@ open Astring
 
 open Vmm_core
 
-type version = [ `WV0 ]
+type version = [ `WV0 | `WV1 ]
 
 let version_to_int = function
   | `WV0 -> 0
+  | `WV1 -> 1
 
 let version_of_int = function
   | 0 -> Ok `WV0
+  | 1 -> Ok `WV1
   | _ -> Error (`Msg "unknown wire version")
 
 let version_eq a b = match a, b with
   | `WV0, `WV0 -> true
+  | `WV1, `WV1 -> true
+  | _ -> false
 
 let pp_version ppf v =
   Fmt.string ppf (match v with
-      | `WV0 -> "wire version 0")
+      | `WV0 -> "wire version 0"
+      | `WV1 -> "wire version 1")
 
 type header = {
   length : int ;
@@ -243,16 +248,16 @@ module Stats = struct
     [@@uint16_t]
   ]
 
-  let encode id version op ?payload pid =
-    let pid = encode_pid pid in
+  let encode id version op ?payload nam =
+    let data, l = encode_string nam in
     let length, p =
       match payload with
-      | None -> 4, empty
-      | Some x -> 4 + Cstruct.len x, x
+      | None -> l, empty
+      | Some x -> l + Cstruct.len x, x
     and tag = op_to_int op
     in
     let r =
-      Cstruct.concat [ create_header { length ; version ; id ; tag } ; pid ; p ]
+      Cstruct.concat [ create_header { length ; version ; id ; tag } ; data ; p ]
     in
     Cstruct.to_string r
 
@@ -352,13 +357,13 @@ module Stats = struct
           output_mcast ; input_dropped ; output_dropped },
         l + 116)
 
-  let add id v pid taps =
-    let payload = encode_strings taps in
-    encode id v Add ~payload pid
+  let add id v nam pid taps =
+    let payload = Cstruct.append (encode_pid pid) (encode_strings taps) in
+    encode id v Add ~payload nam
 
-  let remove id v pid = encode id v Remove pid
+  let remove id v nam = encode id v Remove nam
 
-  let stat id v pid = encode id v Stat_request pid
+  let stat id v nam = encode id v Stat_request nam
 
   let stat_reply id version payload =
     let length = Cstruct.len payload

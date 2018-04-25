@@ -120,6 +120,9 @@ let jump _ file sock =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
     (Lwt_unix.openfile file Lwt_unix.[O_APPEND;O_CREAT;O_WRONLY] 0o600 >>= fun fd ->
+     (Lwt_unix.file_exists sock >>= function
+       | true -> Lwt_unix.unlink sock
+       | false -> Lwt.return_unit) >>= fun () ->
      let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
      Lwt_unix.(bind s (ADDR_UNIX sock)) >>= fun () ->
      Lwt_unix.listen s 1 ;
@@ -144,12 +147,13 @@ let setup_log =
         $ Logs_cli.level ())
 
 let socket =
-  let doc = "Socket to listen onto" in
-  Arg.(required & pos 1 (some string) None & info [] ~doc)
+  let doc = "Socket to listen on" in
+  let sock = Fpath.(to_string (Vmm_core.tmpdir / "log" + "sock")) in
+  Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let file =
-  let doc = "File to write to" in
-  Arg.(required & pos 0 (some string) None & info [] ~doc)
+  let doc = "File to write the log to" in
+  Arg.(value & opt string "/var/log/albatross" & info [ "logfile" ] ~doc)
 
 let cmd =
   Term.(ret (const jump $ setup_log $ file $ socket)),

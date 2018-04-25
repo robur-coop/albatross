@@ -216,16 +216,15 @@ let rec stats_loop () =
   Lwt_unix.sleep 600. >>= fun () ->
   stats_loop ()
 
-let jump _ dir cacert cert priv_key port =
+let jump _ cacert cert priv_key port =
   Sys.(set_signal sigpipe Signal_ignore) ;
-  let dir = Fpath.v dir in
   Lwt_main.run
     (Nocrypto_entropy_lwt.initialize () >>= fun () ->
-     (init_sock dir "cons" >|= function
+     (init_sock Vmm_core.tmpdir "cons" >|= function
        | None -> invalid_arg "cannot connect to console socket"
        | Some c -> c) >>= fun c ->
-     init_sock dir "stat" >>= fun s ->
-     (init_sock dir "log" >|= function
+     init_sock Vmm_core.tmpdir "stat" >>= fun s ->
+     (init_sock Vmm_core.tmpdir "log" >|= function
        | None -> invalid_arg "cannot connect to log socket"
        | Some l -> l) >>= fun l ->
      server_socket port >>= fun socket ->
@@ -237,7 +236,7 @@ let jump _ dir cacert cert priv_key port =
        Tls.(Config.server ~version:(Core.TLS_1_2, Core.TLS_1_2)
               ~reneg:true ~certificates:(`Single cert) ())
      in
-     (match Vmm_engine.init dir cmp_s c s l with
+     (match Vmm_engine.init cmp_s c s l with
       | Ok s -> Lwt.return s
       | Error (`Msg m) -> Lwt.fail_with m) >>= fun t ->
      let state = ref t in
@@ -289,28 +288,24 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
-let wdir =
-  let doc = "Working directory (unix domain sockets, etc.)" in
-  Arg.(required & pos 0 (some dir) None & info [] ~doc)
-
 let cacert =
   let doc = "CA certificate" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
+  Arg.(required & pos 0 (some file) None & info [] ~doc)
 
 let cert =
   let doc = "Certificate" in
-  Arg.(required & pos 2 (some file) None & info [] ~doc)
+  Arg.(required & pos 1 (some file) None & info [] ~doc)
 
 let key =
   let doc = "Private key" in
-  Arg.(required & pos 3 (some file) None & info [] ~doc)
+  Arg.(required & pos 2 (some file) None & info [] ~doc)
 
 let port =
   let doc = "TCP listen port" in
   Arg.(value & opt int 1025 & info [ "port" ] ~doc)
 
 let cmd =
-  Term.(ret (const jump $ setup_log $ wdir $ cacert $ cert $ key $ port)),
+  Term.(ret (const jump $ setup_log $ cacert $ cert $ key $ port)),
   Term.info "vmmd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

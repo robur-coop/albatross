@@ -343,10 +343,10 @@ let db =
   Arg.(value & opt (some file) None & info [ "db" ] ~doc)
 
 let cmd =
-  let doc = "VMM TLS client" in
+  let doc = "VMM Prometheus connector" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) connects to a server and initiates a TLS handshake" ]
+    `P "$(tname) connects to a VMMD to gather statistics and serves them for Prometheus via HTTP" ]
   in
   Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination $ db $ address $ port),
   Term.info "vmm_prometheus_stats" ~version:"%%VERSION_NUM%%" ~doc ~man

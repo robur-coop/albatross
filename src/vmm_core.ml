@@ -4,6 +4,9 @@ open Astring
 
 open Rresult.R.Infix
 
+let tmpdir = Fpath.(v "/var" / "run" / "albatross")
+let dbdir = Fpath.(v "/var" / "db" / "albatross")
+
 module I = struct
   type t = int
   let compare : int -> int -> int = compare

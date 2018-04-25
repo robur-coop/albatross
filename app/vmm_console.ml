@@ -56,7 +56,7 @@ let read_console s name ring channel () =
        Lwt_io.close channel)
 
 let open_fifo name =
-  let fifo = Fpath.(v (Filename.get_temp_dir_name ()) / name + "fifo") in
+  let fifo = Fpath.(Vmm_core.tmpdir / name + "fifo") in
   Lwt.catch (fun () ->
       Logs.debug (fun m -> m "opening %a for reading" Fpath.pp fifo) ;
       Lwt_io.open_file ~mode:Lwt_io.Input (Fpath.to_string fifo) >>= fun channel ->
@@ -152,7 +152,10 @@ let handle s addr () =
 let jump _ file =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
-    (let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+    ((Lwt_unix.file_exists file >>= function
+       | true -> Lwt_unix.unlink file
+       | false -> Lwt.return_unit) >>= fun () ->
+     let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
      Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
      Lwt_unix.listen s 1 ;
      let rec loop () =
@@ -175,8 +178,9 @@ let setup_log =
         $ Logs_cli.level ())
 
 let socket =
-  let doc = "Socket to listen onto" in
-  Arg.(required & pos 0 (some string) None & info [] ~doc)
+  let doc = "Socket to listen on" in
+  let sock = Fpath.(to_string (Vmm_core.tmpdir / "cons" + "sock")) in
+  Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket)),

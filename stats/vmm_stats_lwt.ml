@@ -41,10 +41,10 @@ let handle s addr () =
       | Ok () -> loop acc
       | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return acc
   in
-  loop [] >>= fun pids ->
+  loop [] >>= fun vmids ->
   Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
-  Logs.warn (fun m -> m "disconnect, dropping %d pids!" (List.length pids)) ;
-  let t' = Vmm_stats.remove_pids !t pids in
+  Logs.warn (fun m -> m "disconnect, dropping %d vms!" (List.length vmids)) ;
+  let t' = Vmm_stats.remove_vmids !t vmids in
   t := t'
 
 let rec timer interval () =
@@ -56,7 +56,10 @@ let jump _ file interval =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run
-    (let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+    ((Lwt_unix.file_exists file >>= function
+       | true -> Lwt_unix.unlink file
+       | false -> Lwt.return_unit) >>= fun () ->
+     let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
      Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
      Lwt_unix.listen s 1 ;
      Lwt.async (timer interval) ;
@@ -80,8 +83,9 @@ let setup_log =
         $ Logs_cli.level ())
 
 let socket =
-  let doc = "Socket to listen onto" in
-  Arg.(value & pos 0 string "" & info [] ~doc)
+  let doc = "Socket to listen on" in
+  let sock = Fpath.(to_string (Vmm_core.tmpdir / "stat" + "sock")) in
+  Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in

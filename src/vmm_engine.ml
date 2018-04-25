@@ -8,7 +8,6 @@ open Rresult
 open R.Infix
 
 type ('a, 'b, 'c) t = {
-  dir : Fpath.t ;
   cmp : 'b -> 'b -> bool ;
   console_socket : 'a ;
   console_counter : int ;
@@ -34,9 +33,9 @@ type ('a, 'b, 'c) t = {
   crls : X509.CRL.c list ;
 }
 
-let init dir cmp console_socket stats_socket log_socket =
+let init cmp console_socket stats_socket log_socket =
   (* error hard on permission denied etc. *)
-  let crls = Fpath.(dir / "crls") in
+  let crls = Fpath.(dbdir / "crls") in
   (Bos.OS.Dir.exists crls >>= function
     | true -> Ok true
     | false -> Bos.OS.Dir.create crls) >>= fun _ ->
@@ -49,14 +48,14 @@ let init dir cmp console_socket stats_socket log_socket =
        | None -> R.error_msgf "couldn't parse CRL %a" Fpath.pp f
        | Some crl -> Ok (crl :: acc))
     (Ok [])
-    Fpath.(dir / "crls") >>= fun crls ->
+    crls >>= fun crls ->
   crls >>= fun crls ->
   Ok {
-    dir ; cmp ;
+    cmp ;
     console_socket ; console_counter = 1 ; console_requests = IM.empty ;
     console_attached = String.Map.empty ; console_version = `WV0 ;
     stats_socket ; stats_counter = 1 ; stats_requests = IM.empty ;
-    stats_version = `WV0 ;
+    stats_version = `WV1 ;
     log_socket ; log_counter = 1 ; log_attached = String.Map.empty ;
     log_version = `WV0 ; log_requests = IM.empty ;
     client_version = `WV0 ;
@@ -124,7 +123,7 @@ let handle_create t vm_config policies =
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   Ok (fun t s ->
         (* actually execute the vm *)
-        Vmm_commands.exec t.dir vm_config taps >>= fun vm ->
+        Vmm_commands.exec vm_config taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
         let used_bridges =
@@ -142,8 +141,8 @@ let handle_create t vm_config policies =
         Ok (t, `Tls (s, tls_out) :: out, vm))
 
 let setup_stats t vm =
-  Vmm_commands.setup_freebsd_kludge vm.Vmm_core.pid >>= fun () ->
-  let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version vm.pid vm.taps in
+  Vmm_commands.setup_freebsd_kludge vm.pid >>= fun () ->
+  let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version (vm_id vm.config) vm.pid vm.taps in
   let t = { t with stats_counter = succ t.stats_counter } in
   Ok (t, stat t stat_out)
 
@@ -167,7 +166,7 @@ let handle_shutdown t vm r =
         String.Map.add br (String.Set.remove ta old) b)
       t.used_bridges vm.config.network vm.taps
   in
-  let stat_out = Vmm_wire.Stats.remove t.stats_counter t.stats_version vm.pid in
+  let stat_out = Vmm_wire.Stats.remove t.stats_counter t.stats_version (vm_id vm.config) in
   let tasks = String.Map.remove (vm_id vm.config) t.tasks in
   let t = { t with stats_counter = succ t.stats_counter ; resources ; used_bridges ; tasks } in
   let t, outs = log t (Log.hdr vm.config.prefix vm.config.vname,
@@ -185,6 +184,7 @@ let handle_command t s prefix perms hdr buf =
         begin
           Vmm_wire.decode_str buf >>= fun (buf, _l) ->
           let arg = if String.length buf = 0 then prefix else prefix @ [buf] in
+          let vmid = string_of_id arg in
           match x with
           | Info ->
             begin match Vmm_resources.find t.resources arg with
@@ -211,29 +211,27 @@ let handle_command t s prefix perms hdr buf =
             end
           | Attach ->
             (* TODO: get (optionally) <since> from client, instead of hardcoding Ptime.epoch below *)
-            let name = String.concat ~sep:"." arg in
             let on_success t =
-              let cons = Vmm_wire.Console.history t.console_counter t.console_version name Ptime.epoch in
-              let old = match String.Map.find name t.console_attached with
+              let cons = Vmm_wire.Console.history t.console_counter t.console_version vmid Ptime.epoch in
+              let old = match String.Map.find vmid t.console_attached with
                 | None -> []
                 | Some s ->
                   let out = Vmm_wire.success hdr.Vmm_wire.id t.client_version in
                   [ `Tls (s, out) ]
               in
-              let console_attached = String.Map.add name s t.console_attached in
+              let console_attached = String.Map.add vmid s t.console_attached in
               { t with console_counter = succ t.console_counter ; console_attached },
               `Raw (t.console_socket, cons) :: old
             in
-            let cons = Vmm_wire.Console.attach t.console_counter t.console_version name in
+            let cons = Vmm_wire.Console.attach t.console_counter t.console_version vmid in
             let console_requests = IM.add t.console_counter on_success t.console_requests in
             Ok ({ t with console_counter = succ t.console_counter ; console_requests },
                 [ `Raw (t.console_socket, cons) ])
           | Detach ->
-            let name = String.concat ~sep:"." arg in
-            let cons = Vmm_wire.Console.detach t.console_counter t.console_version name in
-            (match String.Map.find name t.console_attached with
+            let cons = Vmm_wire.Console.detach t.console_counter t.console_version vmid in
+            (match String.Map.find vmid t.console_attached with
              | None -> Error (`Msg "not attached")
-             | Some x when t.cmp x s -> Ok (String.Map.remove name t.console_attached)
+             | Some x when t.cmp x s -> Ok (String.Map.remove vmid t.console_attached)
              | Some _ -> Error (`Msg "this socket is not attached")) >>= fun console_attached ->
             let out = Vmm_wire.success hdr.Vmm_wire.id t.client_version in
             Ok ({ t with console_counter = succ t.console_counter ; console_attached },
@@ -243,7 +241,7 @@ let handle_command t s prefix perms hdr buf =
               | None -> Error (`Msg "no statistics available")
               | Some _ -> match Vmm_resources.find_vm t.resources arg with
                 | Some vm ->
-                  let stat_out = Vmm_wire.Stats.stat t.stats_counter t.stats_version vm.pid in
+                  let stat_out = Vmm_wire.Stats.stat t.stats_counter t.stats_version vmid in
                   let d = (s, hdr.Vmm_wire.id, translate_tap vm) in
                   let stats_requests = IM.add t.stats_counter d t.stats_requests in
                   Ok ({ t with stats_counter = succ t.stats_counter ; stats_requests },
@@ -326,7 +324,7 @@ let handle_revocation t s leaf chain ca prefix =
      | Some _, None -> Error (`Msg "CRL number not present")
      | Some x, Some y -> if y > x then Ok () else Error (`Msg "CRL number not increased")) >>= fun () ->
   (* filename should be whatever_dir / crls / <id> *)
-  let filename = Fpath.(t.dir / "crls" / string_of_id prefix) in
+  let filename = Fpath.(dbdir / "crls" / string_of_id prefix) in
   Bos.OS.File.delete filename >>= fun () ->
   Bos.OS.File.write filename (Cstruct.to_string (X509.Encoding.crl_to_cstruct crl)) >>= fun () ->
   (* remove crl with same issuer from crls, and inject this one into state *)

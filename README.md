@@ -71,15 +71,15 @@ DEV> mirage configure -t ukvm
 DEV> mirage build
 DEV> mv ukvm-bin /tmp/ukvm-bin.net
 DEV> cd ../../..
-DEV> COPY /tmp/ukvm-bin.none /tmp/ukvm-bin.net SRV:
-DEV> COPY vmm_console vmm_log vmm_stats_lwt vmmd SRV:
+DEV> COPY /tmp/ukvm-bin.none /tmp/ukvm-bin.net SRV:/var/db/albatross
+DEV> COPY vmm_console vmm_log vmm_stats_lwt vmmd SRV:/opt/bin/
 ```
 
 ```
-SRV> vmm_console -vv cons.sock &
-SRV> vmm_log -vv log.out log.sock &
-SRV> vmm_stats_lwt -vv stat.sock & #optional
-SRV# vmmd -vv . cacert.pem server.pem server.key
+SRV> vmm_console -vv &
+SRV> vmm_log -vv &
+SRV> vmm_stats_lwt -vv & #optional
+SRV# vmmd -vv cacert.pem server.pem server.key
 ```
 
 Some setup for network interfaces is needed, depending on your operating system.

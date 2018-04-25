@@ -49,7 +49,7 @@ let rec close fd =
 let close_no_err fd = try close fd with _ -> ()
 
 (* own code starts here
-   (c) 2017 Hannes Mehnert, all rights reserved *)
+   (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Vmm_core
 
@@ -58,9 +58,8 @@ let rec mkfifo name =
   | Unix.Unix_error (Unix.EINTR, _, _) -> mkfifo name
 
 let image_file, fifo_file =
-  let tmp = Fpath.v (Filename.get_temp_dir_name ()) in
-  ((fun vm -> Fpath.(tmp / (vm_id vm) + "img")),
-   (fun vm -> Fpath.(tmp / (vm_id vm) + "fifo")))
+  ((fun vm -> Fpath.(tmpdir / (vm_id vm) + "img")),
+   (fun vm -> Fpath.(tmpdir / (vm_id vm) + "fifo")))
 
 let rec fifo_exists file =
   try Ok (Unix.((stat @@ Fpath.to_string file).st_kind = S_FIFO)) with
@@ -157,13 +156,13 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec dir vm taps =
+let exec vm taps =
   (* TODO: --net-mac=xx *)
   let net = List.map (fun t -> "--net=" ^ t) taps in
   let argv = match vm.argv with None -> [] | Some xs -> xs in
   (match taps with
-   | [] -> Ok Fpath.(dir / "ukvm-bin.none")
-   | [_] -> Ok Fpath.(dir / "ukvm-bin.net")
+   | [] -> Ok Fpath.(dbdir / "ukvm-bin.none")
+   | [_] -> Ok Fpath.(dbdir / "ukvm-bin.net")
    | _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   cpuset vm.cpuid >>= fun cpuset ->
   let mem = "--mem=" ^ string_of_int vm.requested_memory in

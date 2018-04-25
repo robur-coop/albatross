@@ -8,7 +8,7 @@ val prepare : vm_config -> (string list, [> R.msg ]) result
 
 val shutdown : vm -> (unit, [> R.msg ]) result
 
-val exec : Fpath.t -> vm_config -> string list -> (vm, [> R.msg ]) result
+val exec : vm_config -> string list -> (vm, [> R.msg ]) result
 
 val destroy : vm -> unit
 
