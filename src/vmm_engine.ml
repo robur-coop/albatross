@@ -141,7 +141,6 @@ let handle_create t vm_config policies =
         Ok (t, `Tls (s, tls_out) :: out, vm))
 
 let setup_stats t vm =
-  Vmm_commands.setup_freebsd_kludge vm.pid >>= fun () ->
   let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version (vm_id vm.config) vm.pid vm.taps in
   let t = { t with stats_counter = succ t.stats_counter } in
   Ok (t, stat t stat_out)

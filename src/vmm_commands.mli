@@ -17,5 +17,3 @@ val close_no_err : Unix.file_descr -> unit
 val create_tap : string -> (string, [> R.msg ]) result
 
 val create_bridge : string -> (unit, [> R.msg ]) result
-
-val setup_freebsd_kludge : int -> (unit, [> R.msg ]) result

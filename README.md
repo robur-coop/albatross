@@ -96,6 +96,20 @@ SRV# sysctl net.link.tap.up_on_open=1
 SRV# brctl addbr ext
 ```
 
+At least on FreeBSD, in order to monitor unikernels write permissions to
+`/dev/vmm/<vm>` are needed.  To achieve this (otherwise `vmm_stats` won't be
+able to collect statistics unless running as a privileged user, the following
+`devfs` ruleset can be used in `/etc/devfs.rules` (in case you created an
+`albatross` group):
+
+```
+[albatross=10]
+add path 'vmm/ukvm*' mode 0660 group albatross
+```
+
+Also need to activate by adding `devfs_system_ruleset="albatross"` to
+`/etc/rc.conf` and `service devd restart` on the host system.
+
 ## Provision our first virtual machine
 
 We will delegate some resource to a certificate and key we keep on our

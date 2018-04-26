@@ -190,13 +190,3 @@ let exec vm taps =
     R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_error e
 
 let destroy vm = Unix.kill vm.pid 15 (* 15 is SIGTERM *)
-
-let setup_freebsd_kludge pid =
-  (* on FreeBSD we need to chmod g+rw /dev/vmm/ukvm$pid to run
-     bhyvectl --get-stats --vm=ukvm$pid as non-priviliged user *)
-  Lazy.force (uname ()) >>= fun (sys, _) ->
-  match sys with
-  | x when x = "FreeBSD" ->
-    let dev = "/dev/vmm/ukvm" ^ string_of_int pid in
-    Bos.OS.Cmd.run Bos.Cmd.(v "chmod" % "g+rw" % dev)
-  | _ -> Ok ()
