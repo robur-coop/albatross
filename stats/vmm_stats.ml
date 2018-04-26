@@ -21,7 +21,7 @@ let my_version = `WV1
 let descr = ref []
 
 type t = {
-  pid_nic : (vmctx option * (int * string) list) IM.t ;
+  pid_nic : ((vmctx, int) result * (int * string) list) IM.t ;
   pid_rusage : rusage IM.t ;
   pid_vmmapi : (string * int64) list IM.t ;
   nic_ifdata : ifdata String.Map.t ;
@@ -40,11 +40,50 @@ let rec wrap f arg =
     Logs.err (fun m -> m "exception %s" (Printexc.to_string e)) ;
     None
 
+let fill_descr ctx =
+  match !descr with
+  | [] ->
+    begin match wrap vmmapi_statnames ctx with
+      | None ->
+        Logs.err (fun m -> m "vmmapi_statnames failed, shouldn't happen") ;
+        ()
+      | Some d ->
+        Logs.info (fun m -> m "descr are %a" pp_strings d) ;
+        descr := d
+    end
+  | ds -> Logs.info (fun m -> m "%d descr are already present" (List.length ds))
+
+let open_vmmapi ?(retries = 4) pid =
+  let name = "ukvm" ^ string_of_int pid in
+  if retries = 0 then begin
+    Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %d" pid) ;
+    Error 0
+  end else
+    match wrap vmmapi_open name with
+    | None ->
+      let left = max 0 (pred retries) in
+      Logs.warn (fun m -> m "(ignored, %d attempts left) vmmapi_open failed for %d" left pid) ;
+      Error left
+    | Some vmctx ->
+      Logs.info (fun m -> m "vmmapi_open succeeded for %d" pid) ;
+      fill_descr vmctx ;
+      Ok vmctx
+
+let try_open_vmmapi pid_nic =
+  IM.fold (fun pid (vmctx, nics) fresh ->
+      let vmctx =
+        match vmctx with
+        | Ok vmctx -> Ok vmctx
+        | Error retries -> open_vmmapi ~retries pid
+      in
+      IM.add pid (vmctx, nics) fresh)
+    pid_nic IM.empty
+
 let gather pid vmctx nics =
   wrap sysctl_rusage pid,
   (match vmctx with
-   | None -> None
-   | Some vmctx -> wrap vmmapi_stats vmctx),
+   | Error _ -> None
+   | Ok vmctx -> wrap vmmapi_stats vmctx),
   List.fold_left (fun ifd (nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
@@ -77,23 +116,10 @@ let tick t =
         String.Map.union (fun _k a _b -> Some a) ifd ifds)
       t.pid_nic (IM.empty, IM.empty, String.Map.empty)
   in
-  { t with pid_rusage ; pid_vmmapi ; nic_ifdata }
-
-let fill_descr ctx =
-  match !descr with
-  | [] ->
-    begin match wrap vmmapi_statnames ctx with
-      | None ->
-        Logs.err (fun m -> m "vmmapi_statnames failed, shouldn't happen") ;
-        ()
-      | Some d ->
-        Logs.info (fun m -> m "descr are %a" pp_strings d) ;
-        descr := d
-    end
-  | ds -> Logs.info (fun m -> m "%d descr are already present" (List.length ds))
+  let pid_nic = try_open_vmmapi t.pid_nic in
+  { t with pid_rusage ; pid_vmmapi ; nic_ifdata ; pid_nic }
 
 let add_pid t vmid pid nics =
-  let name = "ukvm" ^ string_of_int pid in
   match wrap sysctl_ifcount () with
   | None ->
     Logs.err (fun m -> m "sysctl ifcount failed for %d %a" pid pp_strings nics) ;
@@ -109,15 +135,9 @@ let add_pid t vmid pid nics =
         List.rev acc
     in
     Ok (go (List.length nics) [] max_nic) >>= fun nic_ids ->
-    (match wrap vmmapi_open name with
-     | None ->
-       Logs.warn (fun m -> m "(ignored) vmmapi_open failed for %d" pid) ;
-       Ok None
-     | Some vmctx ->
-       fill_descr vmctx ;
-       Ok (Some vmctx)) >>= fun vmctx ->
+    let vmctx = open_vmmapi pid in
     Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_strings nics
-                  (match vmctx with None -> false | Some _ -> true)) ;
+                  (match vmctx with Error _ -> false | Ok _ -> true)) ;
     let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic
     and vmid_pid = String.Map.add vmid pid t.vmid_pid
     in
@@ -160,8 +180,8 @@ let remove_vmid t vmid =
     Logs.info (fun m -> m "removing pid %d" pid) ;
     (try
        match IM.find pid t.pid_nic with
-       | Some vmctx, _ -> ignore (wrap vmmapi_close vmctx)
-       | None, _ -> ()
+       | Ok vmctx, _ -> ignore (wrap vmmapi_close vmctx)
+       | Error _, _ -> ()
      with
        _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
