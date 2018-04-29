@@ -26,12 +26,12 @@ let rec openfile fn mode perm = try Unix.openfile fn mode perm with
   | Unix.Unix_error (Unix.EINTR, _, _) -> openfile fn mode perm
 
 let fd_for_file flag f =
-  try Ok (openfile (Fpath.to_string f) flag 0o644)
+  try Ok (openfile (Fpath.to_string f) (Unix.O_CLOEXEC :: flag) 0o644)
   with Unix.Unix_error (e, _, _) -> err_file f e
 
-let read_fd_for_file = fd_for_file [Unix.O_RDONLY]
+let read_fd_for_file = fd_for_file Unix.[ O_RDONLY ]
 
-let write_fd_for_file = fd_for_file [Unix.O_WRONLY ; Unix.O_APPEND]
+let write_fd_for_file = fd_for_file Unix.[ O_WRONLY ; O_APPEND ]
 
 let null = match read_fd_for_file (Fpath.v "/dev/null") with
   | Ok fd -> fd
@@ -123,7 +123,6 @@ let prepare vm =
        | Error () -> Error (`Msg "failed to uncompress")
      end
    | `Ukvm_arm64, _ -> Error (`Msg "no amd64 ukvm image found")) >>= fun image ->
-  Bos.OS.File.write (image_file vm) (Cstruct.to_string image) >>= fun () ->
   let fifo = fifo_file vm in
   (match fifo_exists fifo with
    | Ok true -> Ok ()
@@ -138,6 +137,7 @@ let prepare vm =
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
     (Ok []) vm.network >>= fun taps ->
+  Bos.OS.File.write (image_file vm) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
 let shutdown vm =
