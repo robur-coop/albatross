@@ -9,7 +9,7 @@
    - remove pid
    - statistics pid
 
-   every 15 seconds, statistics of all registered pids are recorded. `statistics`
+   every 10 seconds, statistics of all registered pids are recorded. `statistics`
    reports last recorded stats *)
 
 open Lwt.Infix
@@ -89,7 +89,7 @@ let socket =
 
 let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in
-  Arg.(value & opt int 15 & info [ "internval" ] ~doc)
+  Arg.(value & opt int 10 & info [ "internval" ] ~doc)
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket $ interval)),
