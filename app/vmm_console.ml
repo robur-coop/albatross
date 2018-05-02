@@ -25,23 +25,22 @@ let pp_sockaddr ppf = function
 
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
-let active = ref String.Set.empty
+let active = ref String.Map.empty
 
-let read_console s name ring channel () =
+let read_console name ring channel () =
   Lwt.catch (fun () ->
       let rec loop () =
         Lwt_io.read_line channel >>= fun line ->
         Logs.debug (fun m -> m "read %s" line) ;
         let t = Ptime_clock.now () in
         Vmm_ring.write ring (t, line) ;
-        (if String.Set.mem name !active then
-           Vmm_lwt.write_raw s (data my_version name t line)
-         else
-           Lwt.return (Ok ())) >>= function
-        | Ok () -> loop ()
-        | Error _ ->
-          Logs.err (fun m -> m "error reading console") ;
-          Lwt_io.close channel
+        (match String.Map.find name !active with
+         | None -> Lwt.return_unit
+         | Some fd ->
+           Vmm_lwt.write_raw fd (data my_version name t line) >>= function
+           | Error _ -> Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
+           | Ok () -> Lwt.return_unit) >>=
+        loop
       in
       loop ())
     (fun e ->
@@ -71,28 +70,28 @@ let open_fifo name =
 
 let t = ref String.Map.empty
 
-let add_fifo s name =
+let add_fifo name =
   open_fifo name >|= function
   | Some f ->
     let ring = Vmm_ring.create () in
     Logs.debug (fun m -> m "inserting %s" name) ;
     let map = String.Map.add name ring !t in
     t := map ;
-    Lwt.async (read_console s name ring f) ;
+    Lwt.async (read_console name ring f) ;
     Ok "reading"
   | None ->
     Error (`Msg "opening")
 
-let attach name =
+let attach s name =
   Logs.debug (fun m -> m "attempting to attach %s" name) ;
   match String.Map.find name !t with
   | None -> Lwt.return (Error (`Msg "not found"))
   | Some _ ->
-    active := String.Set.add name !active ;
+    active := String.Map.add name s !active ;
     Lwt.return (Ok "attached")
 
 let detach name =
-  active := String.Set.remove name !active ;
+  active := String.Map.remove name !active ;
   Lwt.return (Ok "removed")
 
 let history s name since =
@@ -127,8 +126,8 @@ let handle s addr () =
          | Error e -> Lwt.return (Error e)
          | Ok (name, off) ->
            match Console.int_to_op hdr.tag with
-           | Some Add_console -> add_fifo s name
-           | Some Attach_console -> attach name
+           | Some Add_console -> add_fifo name
+           | Some Attach_console -> attach s name
            | Some Detach_console -> detach name
            | Some History ->
              (match decode_ts ~off data with
