@@ -180,7 +180,6 @@ let rec read_sock_write_tcp db c ?fd addr addrtype =
                    (str_of_e e)) ;
       Lwt.return_unit
     | Ok (hdr, data) ->
-      Logs.debug (fun m -> m "%d read %d data" hdr.id (String.length data)) ;
       if not (version_eq hdr.version my_version) then begin
         Logs.err (fun m -> m "unknown wire protocol version") ;
         Lwt.return_unit
