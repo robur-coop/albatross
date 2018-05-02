@@ -38,7 +38,7 @@ module P = struct
       [ p "HELP" help ; p "TYPE" (t_s typ) ; name ^ " " ^ value ]
 
   let tv (sec, usec) = Printf.sprintf "%Lu.%06d" sec usec
-  let i64 = Int64.to_string
+  let i64 i = Printf.sprintf "%Lu" i
 
   let encode_ru vm ru =
     let p = p vm in
@@ -87,7 +87,7 @@ module P = struct
     String.concat ~sep:"\n"
       (List.map (fun (k, v) -> p (massage k) k (i64 v)) xs)
 
-  let i32 = Int32.to_string
+  let i32 i = Printf.sprintf "%lu" i
 
   let encode_if vm ifd =
     let p = p (vm ^ "_" ^ ifd.name) in
