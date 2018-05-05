@@ -178,11 +178,11 @@ let rec read_sock_write_tcp db c ?fd addr addrtype =
     | Error e ->
       Logs.err (fun m -> m "error %s while reading vmm socket (return)"
                    (str_of_e e)) ;
-      Lwt.return_unit
+      safe_close fd
     | Ok (hdr, data) ->
       if not (version_eq hdr.version my_version) then begin
         Logs.err (fun m -> m "unknown wire protocol version") ;
-        Lwt.return_unit
+        safe_close fd
       end else
         let name = IM.find hdr.id !req in
         req := IM.remove hdr.id !req ;
@@ -256,10 +256,10 @@ let client stat_socket influxhost influxport db prefix interval =
   (* loop *)
   let rec loop c =
     Lwt.catch (fun () ->
-        Lwt.pick [
-          query_sock prefix db c interval ;
-          read_sock_write_tcp db c addr addrtype
-        ])
+        Lwt.pick [ query_sock prefix db c interval ; read_sock_write_tcp db c addr addrtype ] >>= fun () ->
+        safe_close c >>= fun () ->
+        maybe_connect stat_socket >>= fun c ->
+        loop c)
       (fun _ ->
          safe_close c >>= fun () ->
          maybe_connect stat_socket >>= fun c ->
