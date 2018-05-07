@@ -153,14 +153,23 @@ let str_of_e = function
   | `Msg m -> m
 
 (* how many times did I write this now? *)
-let safe_close s = Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit)
+let safe_close s =
+  Lwt.catch
+    (fun () -> Lwt_unix.close s)
+    (fun e ->
+       Logs.err (fun m -> m "exception %s while closing" (Printexc.to_string e)) ;
+       Lwt.return_unit)
 
 let rec read_sock_write_tcp db c ?fd addr addrtype =
   match fd with
   | None ->
+    Logs.debug (fun m -> m "new connection to TCP") ;
     let fd = Lwt_unix.socket addrtype Lwt_unix.SOCK_STREAM 0 in
     Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
-    Lwt.catch (fun () -> Lwt_unix.connect fd addr)
+    Lwt.catch
+      (fun () ->
+         Lwt_unix.connect fd addr >|= fun () ->
+         Logs.debug (fun m -> m "connected to TCP"))
       (fun e ->
          let addr', port = match addr with
            | Lwt_unix.ADDR_INET (ip, port) -> Unix.string_of_inet_addr ip, port
@@ -174,6 +183,7 @@ let rec read_sock_write_tcp db c ?fd addr addrtype =
     read_sock_write_tcp db c ~fd addr addrtype
   | Some fd ->
     let open Vmm_wire in
+    Logs.debug (fun m -> m "reading from unix socket") ;
     Vmm_lwt.read_exactly c >>= function
     | Error e ->
       Logs.err (fun m -> m "error %s while reading vmm socket (return)"
@@ -198,8 +208,11 @@ let rec read_sock_write_tcp db c ?fd addr addrtype =
               let vmm = P.encode_vmm name vmm in
               let taps = List.map (P.encode_if name) ifs in
               let out = (String.concat ~sep:"\n" (ru :: vmm :: taps)) ^ "\n" in
+              Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
               Vmm_lwt.write_raw fd out >>= function
-              | Ok () -> read_sock_write_tcp db c ~fd addr addrtype
+              | Ok () ->
+                Logs.debug (fun m -> m "wrote successfully") ;
+                read_sock_write_tcp db c ~fd addr addrtype
               | Error e ->
                 Logs.err (fun m -> m "error %s while writing to tcp (%s)"
                              (str_of_e e) name) ;
@@ -221,8 +234,11 @@ let rec query_sock prefix db c interval =
       let request = Vmm_wire.Stats.stat !command my_version id in
       req := IM.add !command name !req ;
       incr command ;
+      Logs.debug (fun m -> m "%d requesting %s via socket" !command id) ;
       Vmm_lwt.write_raw c request >>= function
-      | Ok () -> Lwt.return_unit
+      | Ok () ->
+        Logs.debug (fun m -> m "%d done" !command) ;
+        Lwt.return_unit
       | Error e ->
         Logs.err (fun m -> m "error while writing to vmm socket %s: %s"
                      id (str_of_e e)) ;
@@ -235,7 +251,9 @@ let maybe_connect stat_socket =
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
   Lwt.catch
     (fun () ->
+       Logs.debug (fun m -> m "connecting to %s" stat_socket) ;
        Lwt_unix.(connect c (ADDR_UNIX stat_socket)) >>= fun () ->
+       Logs.debug (fun m -> m "connected") ;
        Lwt.return c)
     (fun e ->
        Logs.warn (fun m -> m "error %s connecting to socket %s"
