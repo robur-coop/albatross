@@ -119,11 +119,11 @@ let handle_create t vm_config policies =
   Logs.debug (fun m -> m "now checking dynamic policies") ;
   Vmm_resources.check_dynamic t.resources vm_config policies >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_commands.prepare vm_config >>= fun taps ->
+  Vmm_unix.prepare vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   Ok (fun t s ->
         (* actually execute the vm *)
-        Vmm_commands.exec vm_config taps >>= fun vm ->
+        Vmm_unix.exec vm_config taps >>= fun vm ->
         Logs.debug (fun m -> m "exec()ed vm") ;
         Vmm_resources.insert t.resources full vm >>= fun resources ->
         let used_bridges =
@@ -146,7 +146,7 @@ let setup_stats t vm =
   Ok (t, stat t stat_out)
 
 let handle_shutdown t vm r =
-  (match Vmm_commands.shutdown vm with
+  (match Vmm_unix.shutdown vm with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
   let resources =
@@ -202,7 +202,7 @@ let handle_command t s prefix perms hdr buf =
           | Destroy_vm ->
             begin match Vmm_resources.find_vm t.resources arg with
               | Some vm ->
-                Vmm_commands.destroy vm ;
+                Vmm_unix.destroy vm ;
                 let out = Vmm_wire.success hdr.Vmm_wire.id t.client_version in
                 Ok (t, [ `Tls (s, out) ])
               | _ ->
@@ -269,7 +269,7 @@ let handle_single_revocation t prefix serial =
   let id = identifier serial in
   (match Vmm_resources.find t.resources (prefix @ [ id ]) with
    | None -> ()
-   | Some e -> Vmm_resources.iter Vmm_commands.destroy e) ;
+   | Some e -> Vmm_resources.iter Vmm_unix.destroy e) ;
   (* also revoke all active sessions!? *)
   (* TODO: maybe we need a vmm_resources like structure for sessions as well!? *)
   let log_attached, kill =
@@ -391,7 +391,7 @@ let handle_initial t s addr chain ca =
                             pp_id (fullname vm_config) fid)
              | Some vm ->
                Logs.debug (fun m -> m "killing %a now" pp_vm vm) ;
-               Vmm_commands.destroy vm
+               Vmm_unix.destroy vm
            in
            let tasks = String.Map.remove fid t.tasks in
            ({ t with tasks }, Some (kill, task))
