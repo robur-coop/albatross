@@ -24,11 +24,11 @@ let pp_sockaddr ppf = function
 let handle s addr () =
   Logs.info (fun m -> m "handling stats connection %a" pp_sockaddr addr) ;
   let rec loop acc =
-    Vmm_lwt.read_exactly s >>= function
+    Vmm_lwt.read_wire s >>= function
     | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop acc
     | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return acc
     | Ok (hdr, data) ->
-      Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp (Cstruct.of_string data)) ;
+      Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp data) ;
       let t', action, out = Vmm_stats.handle !t hdr data in
       let acc = match action with
         | `Add pid -> pid :: acc
@@ -36,8 +36,8 @@ let handle s addr () =
         | `None -> acc
       in
       t := t' ;
-      Logs.debug (fun m -> m "sent %a" Cstruct.hexdump_pp (Cstruct.of_string out)) ;
-      Vmm_lwt.write_raw s out >>= function
+      Logs.debug (fun m -> m "sent %a" Cstruct.hexdump_pp out) ;
+      Vmm_lwt.write_wire s out >>= function
       | Ok () -> loop acc
       | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return acc
   in

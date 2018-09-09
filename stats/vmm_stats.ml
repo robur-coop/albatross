@@ -192,10 +192,9 @@ let remove_vmid t vmid =
 let remove_vmids t vmids =
   List.fold_left remove_vmid t vmids
 
-let handle t hdr buf =
+let handle t hdr cs =
   let open Vmm_wire in
   let open Vmm_wire.Stats in
-  let cs = Cstruct.of_string buf in
   let r =
     if not (version_eq my_version hdr.version) then
       Error (`Msg "cannot handle version")
@@ -205,11 +204,11 @@ let handle t hdr buf =
       | Some Add ->
         decode_pid_taps (Cstruct.shift cs off) >>= fun (pid, taps) ->
         add_pid t name pid taps >>= fun t ->
-        Ok (t, `Add name, success ~msg:"added" hdr.id my_version)
+        Ok (t, `Add name, success ~msg:"added" my_version hdr.id (op_to_int Add))
       | Some Remove ->
         let t = remove_vmid t name in
-        Ok (t, `Remove name, success ~msg:"removed" hdr.id my_version)
-      | Some Stat_request ->
+        Ok (t, `Remove name, success ~msg:"removed" my_version hdr.id (op_to_int Remove))
+      | Some Stats ->
         stats t name >>= fun s ->
         Ok (t, `None, stat_reply hdr.id my_version (encode_stats s))
       | _ -> Error (`Msg "unknown command")
@@ -218,4 +217,4 @@ let handle t hdr buf =
   | Ok (t, action, out) -> t, action, out
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while processing %s" msg) ;
-    t, `None, fail ~msg hdr.id my_version
+    t, `None, fail ~msg my_version hdr.id

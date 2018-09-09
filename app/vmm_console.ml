@@ -13,21 +13,14 @@ open Lwt.Infix
 
 open Astring
 
-open Vmm_wire
-open Vmm_wire.Console
-
-let my_version = `WV0
-
-let pp_sockaddr ppf = function
-  | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
-  | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
-                                         (Unix.string_of_inet_addr addr) port
+let my_version = `WV2
 
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
 let active = ref String.Map.empty
 
 let read_console name ring channel () =
+  let id = Vmm_core.id_of_string name in
   Lwt.catch (fun () ->
       let rec loop () =
         Lwt_io.read_line channel >>= fun line ->
@@ -37,8 +30,10 @@ let read_console name ring channel () =
         (match String.Map.find name !active with
          | None -> Lwt.return_unit
          | Some fd ->
-           Vmm_lwt.write_raw fd (data my_version name t line) >>= function
-           | Error _ -> Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
+           Vmm_lwt.write_wire fd (Vmm_wire.Console.data my_version id t line) >>= function
+           | Error _ ->
+             Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit) >|= fun () ->
+             active := String.Map.remove name !active
            | Ok () -> Lwt.return_unit) >>=
         loop
       in
@@ -70,7 +65,8 @@ let open_fifo name =
 
 let t = ref String.Map.empty
 
-let add_fifo name =
+let add_fifo id =
+  let name = Vmm_core.string_of_id id in
   open_fifo name >|= function
   | Some f ->
     let ring = Vmm_ring.create () in
@@ -82,63 +78,68 @@ let add_fifo name =
   | None ->
     Error (`Msg "opening")
 
-let attach s name =
-  Logs.debug (fun m -> m "attempting to attach %s" name) ;
+let attach s id =
+  let name = Vmm_core.string_of_id id in
+  Logs.debug (fun m -> m "attempting to attach %a" Vmm_core.pp_id id) ;
   match String.Map.find name !t with
   | None -> Lwt.return (Error (`Msg "not found"))
   | Some _ ->
     active := String.Map.add name s !active ;
     Lwt.return (Ok "attached")
 
-let detach name =
+let detach id =
+  let name = Vmm_core.string_of_id id in
   active := String.Map.remove name !active ;
   Lwt.return (Ok "removed")
 
 let history s name since =
-  match String.Map.find name !t with
-  | None -> Lwt.return (Rresult.R.error_msgf "ring %s not found (%d): %a"
-                          name (String.Map.cardinal !t)
+  match String.Map.find (Vmm_core.string_of_id name) !t with
+  | None -> Lwt.return (Rresult.R.error_msgf "ring %a not found (%d): %a"
+                          Vmm_core.pp_id name (String.Map.cardinal !t)
                           Fmt.(list ~sep:(unit ";") string)
                           (List.map fst (String.Map.bindings !t)))
   | Some r ->
     let entries = Vmm_ring.read_history r since in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
-        Vmm_lwt.write_raw s (data my_version name i v) >|= fun _ -> ())
+        Vmm_lwt.write_wire s (Vmm_wire.Console.data my_version name i v) >|= fun _ -> ())
       entries >|= fun () ->
     Ok "success"
 
 let handle s addr () =
-  Logs.info (fun m -> m "handling connection %a" pp_sockaddr addr) ;
+  Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
   let rec loop () =
-    Vmm_lwt.read_exactly s >>= function
+    Vmm_lwt.read_wire s >>= function
     | Error (`Msg msg) ->
       Logs.err (fun m -> m "error while reading %s" msg) ;
       loop ()
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
+    | Ok (hdr, _) when Vmm_wire.is_reply hdr ->
+      Logs.err (fun m -> m "unexpected reply") ;
+      loop ()
     | Ok (hdr, data) ->
-      (if not (version_eq hdr.version my_version) then
+      (if not (Vmm_wire.version_eq hdr.version my_version) then
          Lwt.return (Error (`Msg "ignoring data with bad version"))
        else
-         match decode_str data with
+         match Vmm_wire.decode_strings data with
          | Error e -> Lwt.return (Error e)
-         | Ok (name, off) ->
-           match Console.int_to_op hdr.tag with
-           | Some Add_console -> add_fifo name
-           | Some Attach_console -> attach s name
-           | Some Detach_console -> detach name
-           | Some History ->
-             (match decode_ts ~off data with
+         | Ok (id, off) -> match Vmm_wire.Console.int_to_op hdr.tag with
+           | Some Vmm_wire.Console.Add_console -> add_fifo id
+           | Some Vmm_wire.Console.Attach_console -> attach s id
+           | Some Vmm_wire.Console.Detach_console -> detach id
+           | Some Vmm_wire.Console.History ->
+             (match Vmm_wire.decode_ptime ~off data with
               | Error e -> Lwt.return (Error e)
-              | Ok since -> history s name since)
-           | _ ->
+              | Ok since -> history s id since)
+           | Some Vmm_wire.Console.Data -> Lwt.return (Error (`Msg "unexpected Data"))
+           | None ->
              Lwt.return (Error (`Msg "unknown command"))) >>= (function
-          | Ok msg -> Vmm_lwt.write_raw s (success ~msg hdr.id my_version)
+          | Ok msg -> Vmm_lwt.write_wire s (Vmm_wire.success ~msg my_version hdr.Vmm_wire.id hdr.Vmm_wire.tag)
           | Error (`Msg msg) ->
             Logs.err (fun m -> m "error while processing command: %s" msg) ;
-            Vmm_lwt.write_raw s (fail ~msg hdr.id my_version)) >>= function
+            Vmm_lwt.write_wire s (Vmm_wire.fail ~msg my_version hdr.Vmm_wire.id)) >>= function
       | Ok () -> loop ()
       | Error _ ->
         Logs.err (fun m -> m "exception while writing to socket") ;

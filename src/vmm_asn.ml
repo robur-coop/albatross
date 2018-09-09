@@ -38,15 +38,16 @@ end
 
 let perms : permission list Asn.t =
   Asn.S.bit_string_flags [
-    0, `All ;
+    0, `All ; (* no *)
     1, `Info ;
     2, `Create ;
-    3, `Block ;
+    3, `Block ; (* create [name] [size] ; destroy [name] *)
     4, `Statistics ;
     5, `Console ;
     6, `Log ;
     7, `Crl ;
     9, `Force_create ;
+    (* 10, `Destroy ; (* [name] *) *)
   ]
 
 open Rresult.R.Infix

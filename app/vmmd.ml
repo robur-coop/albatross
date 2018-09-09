@@ -16,136 +16,86 @@ let pp_stats ppf s =
 
 open Lwt.Infix
 
-let write_raw s data =
-  Vmm_lwt.write_raw s data >|= fun _ -> ()
+type out = [
+  | `Cons of Cstruct.t
+  | `Stat of Cstruct.t
+  | `Log of Cstruct.t
+]
 
-let write_tls state t data =
-  Vmm_tls.write_tls (fst t) data >>= function
-  | Ok () -> Lwt.return_unit
-  | Error `Exception ->
-    let state', out = Vmm_engine.handle_disconnect !state t in
-    state := state' ;
-    Lwt_list.iter_s (fun (s, data) -> write_raw s data) out >>= fun () ->
-    Tls_lwt.Unix.close (fst t)
-
-let to_ipaddr (_, sa) = match sa with
-  | Lwt_unix.ADDR_UNIX _ -> invalid_arg "cannot convert unix address"
-  | Lwt_unix.ADDR_INET (addr, port) -> Ipaddr_unix.V4.of_inet_addr_exn addr, port
-
-let pp_sockaddr ppf (_, sa) = match sa with
-  | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
-  | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
-                                         (Unix.string_of_inet_addr addr) port
-
-let process state xs =
-  Lwt_list.iter_s (function
-      | `Raw (s, str) -> write_raw s str
-      | `Tls (s, str) -> write_tls state s str)
-    xs
-
-let handle ca state t =
-  Logs.debug (fun m -> m "connection from %a" pp_sockaddr t) ;
-  let authenticator =
-    let time = Ptime_clock.now () in
-    X509.Authenticator.chain_of_trust ~time ~crls:!state.Vmm_engine.crls [ca]
+let handle state out c_fd fd addr =
+  (* out is for `Log | `Stat | `Cons (including reconnect semantics) *)
+  (* need to handle data out (+ die on write failure) *)
+  Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
+  (* now we need to read a packet and handle it
+    (1)
+     (a) easy for info (look up name/prefix in resources)
+     (b) destroy looks up vm in resources, executes kill (wait for pid will do the cleanup)
+         logs "destroy issued"
+     (c) create initiates the vm startup procedure:
+         write image file, create fifo, create tap(s), send fifo to console
+         -- Lwt effects happen (console) --
+         executes ukvm-bin + waiter, send stats pid and taps, inserts await into state, logs "created vm"
+         -- Lwt effects happen (stats, logs, wait_and_clear) --
+    (2) goto (1)
+  *)
+  let process xs =
+    Lwt_list.iter_p (function
+        | #out as o -> out o
+        | `Data cs ->
+          (* rather: terminate connection *)
+          Vmm_lwt.write_wire fd cs >|= fun _ -> ()) xs
   in
-  Lwt.catch
-    (fun () -> Tls_lwt.Unix.reneg ~authenticator (fst t))
-    (fun e ->
-       (match e with
-        | Tls_lwt.Tls_alert a -> Logs.err (fun m -> m "TLS ALERT %s" (Tls.Packet.alert_type_to_string a))
-        | Tls_lwt.Tls_failure f -> Logs.err (fun m -> m "TLS FAILURE %s" (Tls.Engine.string_of_failure f))
-        | exn -> Logs.err (fun m -> m "%s" (Printexc.to_string exn))) ;
-       Tls_lwt.Unix.close (fst t) >>= fun () ->
-       Lwt.fail e) >>= fun () ->
-  (match Tls_lwt.Unix.epoch (fst t) with
-   | `Ok epoch -> Lwt.return epoch.Tls.Core.peer_certificate_chain
-   | `Error ->
-     Tls_lwt.Unix.close (fst t) >>= fun () ->
-     Lwt.fail_with "error while getting epoch") >>= fun chain ->
-  match Vmm_engine.handle_initial !state t (to_ipaddr t) chain ca with
-  | Ok (state', outs, next) ->
-    state := state' ;
-    process state outs >>= fun () ->
-    begin match next with
-      | `Create (task, next) ->
-        (match task with
-         | None -> Lwt.return_unit
-         | Some (kill, wait) -> kill () ; wait) >>= fun () ->
-        let await, wakeme = Lwt.wait () in
-        begin match next !state await with
-          | Ok (state', outs, cont) ->
-            state := state' ;
-            process state outs >>= fun () ->
-            begin match cont !state t with
-              | Ok (state', outs, vm) ->
-                state := state' ;
-                s := { !s with vm_created = succ !s.vm_created } ;
-                Lwt.async (fun () ->
-                    Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
-                    let state', outs = Vmm_engine.handle_shutdown !state vm r in
-                    s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
-                    state := state' ;
-                    process state outs >|= fun () ->
-                    Lwt.wakeup wakeme ()) ;
-                process state outs >>= fun () ->
-                begin match Vmm_engine.setup_stats !state vm with
-                  | Ok (state', outs) ->
-                    state := state' ;
-                    process state outs
-                  | Error (`Msg e) ->
-                    Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
-                    Lwt.return_unit
-                end
-              | Error (`Msg e) ->
-                Logs.err (fun m -> m "error while create %s" e) ;
-                let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in
-                process state [ `Tls (t, err) ]
-            end
-          | Error (`Msg e) ->
-            Logs.err (fun m -> m "error while cont %s" e) ;
-            let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in
-            process state [ `Tls (t, err) ]
-        end >>= fun () ->
-        Tls_lwt.Unix.close (fst t)
-      | `Loop (prefix, perms) ->
-        let rec loop () =
-          Vmm_tls.read_tls (fst t) >>= function
-          | Error (`Msg msg) ->
-            Logs.err (fun m -> m "reading client %a error: %s" pp_sockaddr t msg) ;
-            loop ()
-          | Error _ ->
-            Logs.err (fun m -> m "disconnect from %a" pp_sockaddr t) ;
-            let state', cons = Vmm_engine.handle_disconnect !state t in
-            state := state' ;
-            Lwt_list.iter_s (fun (s, data) -> write_raw s data) cons >>= fun () ->
-            Tls_lwt.Unix.close (fst t)
-          | Ok (hdr, buf) ->
-            let state', out = Vmm_engine.handle_command !state t prefix perms hdr buf in
-            state := state' ;
-            process state out >>= fun () ->
-            loop ()
-        in
-        loop ()
-      | `Close socks ->
-        Logs.debug (fun m -> m "closing session with %d active ones" (List.length socks)) ;
-        Lwt_list.iter_s (fun (t, _) -> Tls_lwt.Unix.close t) socks >>= fun () ->
-        Tls_lwt.Unix.close (fst t)
-    end
-  | Error (`Msg e) ->
-    Logs.err (fun m -> m "VMM %a %s" pp_sockaddr t e) ;
-    let err = Vmm_wire.fail ~msg:e 0 !state.Vmm_engine.client_version in
-    process state [`Tls (t, err)] >>= fun () ->
-    Tls_lwt.Unix.close (fst t)
-
-let server_socket port =
-  let open Lwt_unix in
-  let s = socket PF_INET SOCK_STREAM 0 in
-  set_close_on_exec s ;
-  setsockopt s SO_REUSEADDR true ;
-  bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
-  listen s 10 ;
-  Lwt.return s
+  Logs.debug (fun m -> m "now reading") ;
+  (Vmm_lwt.read_wire fd >>= function
+    | Error _ ->
+      Logs.err (fun m -> m "error while reading") ;
+      Lwt.return_unit
+    | Ok (hdr, buf) ->
+      Logs.debug (fun m -> m "read sth") ;
+      let state', data, next = Vmm_engine.handle_command !state hdr buf in
+      state := state' ;
+      process data >>= fun () ->
+      match next with
+      | `End -> Lwt.return_unit
+      | `Wait (task, out) -> task >>= fun () -> process out
+      | `Create cont ->
+        (* data contained a write to console, we need to wait for its reply first *)
+        Vmm_lwt.read_wire c_fd >>= function
+        | Ok (_, data) when Vmm_wire.is_fail hdr ->
+          Logs.err (fun m -> m "console failed with %s" (Cstruct.to_string data)) ;
+          Lwt.return_unit
+        | Ok (_, _) when Vmm_wire.is_reply hdr ->
+          (* assert hdr.id = id! *)
+          (* TODO slightly more tricky, since we need to "Vmm_lwt.wait_and_clear" in here *)
+          let await, wakeme = Lwt.wait () in
+          begin match cont !state await with
+            | Error (`Msg msg) ->
+              Logs.err (fun m -> m "create continuation failed %s" msg) ;
+              Lwt.return_unit
+            | Ok (state'', out, vm) ->
+              state := state'' ;
+              s := { !s with vm_created = succ !s.vm_created } ;
+              Lwt.async (fun () ->
+                  Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
+                  let state', out' = Vmm_engine.handle_shutdown !state vm r in
+                  s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
+                  state := state' ;
+                  process out' >|= fun () ->
+                  Lwt.wakeup wakeme ()) ;
+              process out >>= fun () ->
+              begin match Vmm_engine.setup_stats !state vm with
+                | Ok (state', out) ->
+                  state := state' ;
+                  process out (* TODO: need to read from stats socket! *)
+                | Error (`Msg e) ->
+                  Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
+                  Lwt.return_unit
+              end
+          end
+        | _ ->
+          Logs.err (fun m -> m "error while reading from console") ;
+          Lwt.return_unit) >>= fun () ->
+  Vmm_lwt.safe_close fd
 
 let init_sock dir name =
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
@@ -159,120 +109,63 @@ let init_sock dir name =
        (Lwt.catch (fun () -> Lwt_unix.close c) (fun _ -> Lwt.return_unit)) >|= fun () ->
        None)
 
-let rec read_log state s =
-  Vmm_lwt.read_exactly s >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "reading log error %s" msg) ;
-    read_log state s
-  | Error _ ->
-    Logs.err (fun m -> m "exception while reading log") ;
-    invalid_arg "log socket communication issue"
-  | Ok (hdr, data) ->
-    let state', outs = Vmm_engine.handle_log !state hdr data in
-    state := state' ;
-    process state outs >>= fun () ->
-    read_log state s
+let create_mbox name =
+  init_sock Vmm_core.tmpdir name >|= function
+  | None -> None
+  | Some fd ->
+    let mvar = Lwt_mvar.create_empty () in
+    (* could be more elaborate:
+       if <log> fails, we can reconnect and spit our more log messages to the new socket
+       if <console> fails, all running VMs terminate, so we can terminate as well ;)
+       if <stat> fails, we'd need to retransmit all VM info to stat (or stat has to ask at connect) *)
+    let rec loop () =
+      Lwt_mvar.take mvar >>= fun data ->
+      Vmm_lwt.write_wire fd data >>= function
+      | Ok () -> loop ()
+      | Error `Exception -> invalid_arg ("exception while writing to " ^ name) ;
+    in
+    Lwt.async loop ;
+    Some (mvar, fd)
 
-let rec read_cons state s =
-  Vmm_lwt.read_exactly s >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "reading console error %s" msg) ;
-    read_cons state s
-  | Error _ ->
-    Logs.err (fun m -> m "exception while reading console socket") ;
-    invalid_arg "console socket communication issue"
-  | Ok (hdr, data) ->
-    let state', outs = Vmm_engine.handle_cons !state hdr data in
-    state := state' ;
-    process state outs >>= fun () ->
-    read_cons state s
-
-let rec read_stats state s =
-  Vmm_lwt.read_exactly s >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "reading stats error %s" msg) ;
-    read_stats state s
-  | Error _ ->
-    Logs.err (fun m -> m "exception while reading stats") ;
-    Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
-    invalid_arg "stat socket communication issue"
-  | Ok (hdr, data) ->
-    let state', outs = Vmm_engine.handle_stat !state hdr data in
-    state := state' ;
-    process state outs >>= fun () ->
-    read_stats state s
-
-let cmp_s (_, a) (_, b) =
-  let open Lwt_unix in
-  match a, b with
-  | ADDR_UNIX str, ADDR_UNIX str' -> String.compare str str' = 0
-  | ADDR_INET (addr, port), ADDR_INET (addr', port') ->
-    port = port' &&
-    String.compare (Unix.string_of_inet_addr addr) (Unix.string_of_inet_addr addr') = 0
-  | _ -> false
+let server_socket dir name =
+  let file = Fpath.(dir / name + "sock") in
+  let sock = Fpath.to_string file in
+  (Lwt_unix.file_exists sock >>= function
+    | true -> Lwt_unix.unlink sock
+    | false -> Lwt.return_unit) >>= fun () ->
+  let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  Lwt_unix.(bind s (ADDR_UNIX sock)) >|= fun () ->
+  Lwt_unix.listen s 1 ;
+  s
 
 let rec stats_loop () =
   Logs.info (fun m -> m "%a" pp_stats !s) ;
   Lwt_unix.sleep 600. >>= fun () ->
   stats_loop ()
 
-let jump _ cacert cert priv_key port =
+let jump _ =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
-    (Nocrypto_entropy_lwt.initialize () >>= fun () ->
-     (init_sock Vmm_core.tmpdir "cons" >|= function
+    (server_socket Vmm_core.tmpdir "vmmd" >>= fun ss ->
+     (create_mbox "cons" >|= function
        | None -> invalid_arg "cannot connect to console socket"
-       | Some c -> c) >>= fun c ->
-     init_sock Vmm_core.tmpdir "stat" >>= fun s ->
-     (init_sock Vmm_core.tmpdir "log" >|= function
+       | Some c -> c) >>= fun (c, c_fd) ->
+     create_mbox "stat" >>= fun s ->
+     (create_mbox "log" >|= function
        | None -> invalid_arg "cannot connect to log socket"
-       | Some l -> l) >>= fun l ->
-     server_socket port >>= fun socket ->
-     X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
-     X509_lwt.certs_of_pem cacert >>= (function
-         | [ ca ] -> Lwt.return ca
-         | _ -> Lwt.fail_with "expect single ca as cacert") >>= fun ca ->
-     let config =
-       Tls.(Config.server ~version:(Core.TLS_1_2, Core.TLS_1_2)
-              ~reneg:true ~certificates:(`Single cert) ())
+       | Some l -> l) >>= fun (l, _l_fd) ->
+     let state = ref (Vmm_engine.init ()) in
+     let out = function
+       | `Stat data -> (match s with None -> Lwt.return_unit | Some (s, _s_fd) -> Lwt_mvar.put s data)
+       | `Log data -> Lwt_mvar.put l data
+       | `Cons data -> Lwt_mvar.put c data
      in
-     (match Vmm_engine.init cmp_s c s l with
-      | Ok s -> Lwt.return s
-      | Error (`Msg m) -> Lwt.fail_with m) >>= fun t ->
-     let state = ref t in
-     Lwt.async (fun () -> read_cons state c) ;
-     (match s with
-      | None -> ()
-      | Some s -> Lwt.async (fun () -> read_stats state s)) ;
-     Lwt.async (fun () -> read_log state l) ;
      Lwt.async stats_loop ;
      let rec loop () =
-       Lwt.catch (fun () ->
-           Lwt_unix.accept socket >>= fun (fd, addr) ->
-           Lwt_unix.set_close_on_exec fd ;
-           Lwt.catch
-             (fun () -> Tls_lwt.Unix.server_of_fd config fd >|= fun t -> (t, addr))
-             (fun exn ->
-                Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit) >>= fun () ->
-                Lwt.fail exn) >>= fun t ->
-           Lwt.async (fun () ->
-               Lwt.catch
-                 (fun () -> handle ca state t)
-                 (fun e ->
-                    Logs.err (fun m -> m "error while handle() %s"
-                                 (Printexc.to_string e)) ;
-                    Lwt.return_unit)) ;
-           loop ())
-         (function
-           | Unix.Unix_error (e, f, _) ->
-             Logs.err (fun m -> m "Unix error %s in %s" (Unix.error_message e) f) ;
-             loop ()
-           | Tls_lwt.Tls_failure a ->
-             Logs.err (fun m -> m "tls failure: %s" (Tls.Engine.string_of_failure a)) ;
-             loop ()
-           | exn ->
-             Logs.err (fun m -> m "exception %s" (Printexc.to_string exn)) ;
-             loop ())
+       Lwt_unix.accept ss >>= fun (fd, addr) ->
+       Lwt_unix.set_close_on_exec fd ;
+       Lwt.async (fun () -> handle state out c_fd fd addr) ;
+       loop ()
      in
      loop ())
 
@@ -288,24 +181,8 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
-let cacert =
-  let doc = "CA certificate" in
-  Arg.(required & pos 0 (some file) None & info [] ~doc)
-
-let cert =
-  let doc = "Certificate" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
-
-let key =
-  let doc = "Private key" in
-  Arg.(required & pos 2 (some file) None & info [] ~doc)
-
-let port =
-  let doc = "TCP listen port" in
-  Arg.(value & opt int 1025 & info [ "port" ] ~doc)
-
 let cmd =
-  Term.(ret (const jump $ setup_log $ cacert $ cert $ key $ port)),
+  Term.(ret (const jump $ setup_log)),
   Term.info "vmmd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

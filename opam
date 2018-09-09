@@ -14,7 +14,6 @@ depends: [
   "ipaddr" {>= "2.2.0"}
   "hex"
   "cstruct"
-  "ppx_cstruct" {build & >= "3.0.0"}
   "logs"
   "rresult"
   "bos"

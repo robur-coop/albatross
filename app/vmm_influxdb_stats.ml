@@ -142,9 +142,9 @@ end
 
 let my_version = `WV1
 
-let command = ref 1
+let command = ref 1L
 
-let (req : string IM.t ref) = ref IM.empty
+let (req : string IM64.t ref) = ref IM64.empty
 
 let str_of_e = function
   | `Eof -> "end of file"
@@ -192,54 +192,53 @@ let rec read_sock_write_tcp closing db c ?fd addr addrtype =
     else begin
       let open Vmm_wire in
       Logs.debug (fun m -> m "reading from unix socket") ;
-      Vmm_lwt.read_exactly c >>= function
+      Vmm_lwt.read_wire c >>= function
       | Error e ->
         Logs.err (fun m -> m "error %s while reading vmm socket (return)"
                      (str_of_e e)) ;
         closing := true ;
         safe_close fd
       | Ok (hdr, data) ->
-        if not (version_eq hdr.version my_version) then begin
-          Logs.err (fun m -> m "unknown wire protocol version") ;
-          closing := true ;
-          safe_close fd
-        end else
-          let name =
-            try IM.find hdr.id !req
-            with Not_found -> "not found"
-          in
-          req := IM.remove hdr.id !req ;
-          begin match Stats.int_to_op hdr.tag with
-            | Some Stats.Stat_reply ->
-              begin match Vmm_wire.Stats.decode_stats (Cstruct.of_string data) with
-                | Error (`Msg msg) ->
-                  Logs.warn (fun m -> m "error %s while decoding stats %s, ignoring"
-                                msg name) ;
-                  Lwt.return (Some fd)
-                | Ok (ru, vmm, ifs) ->
-                  let ru = P.encode_ru name ru in
-                  let vmm = P.encode_vmm name vmm in
-                  let taps = List.map (P.encode_if name) ifs in
-                  let out = (String.concat ~sep:"\n" (ru :: vmm :: taps)) ^ "\n" in
-                  Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
-                  Vmm_lwt.write_raw fd out >>= function
-                  | Ok () ->
-                    Logs.debug (fun m -> m "wrote successfully") ;
-                    Lwt.return (Some fd)
-                  | Error e ->
-                    Logs.err (fun m -> m "error %s while writing to tcp (%s)"
-                                 (str_of_e e) name) ;
-                    safe_close fd >|= fun () ->
-                    None
-              end
-            | _ when hdr.tag = fail_tag ->
-              Logs.err (fun m -> m "failed to retrieve statistics for %s" name) ;
-              Lwt.return (Some fd)
-            | _ ->
-              Logs.err (fun m -> m "unhandled tag %d for %s" hdr.tag name) ;
-              Lwt.return (Some fd)
-          end >>= fun fd ->
-          read_sock_write_tcp closing db c ?fd addr addrtype
+        let name =
+          try IM64.find hdr.id !req
+          with Not_found -> "not found"
+        in
+        req := IM64.remove hdr.id !req ;
+        (if not (version_eq hdr.version my_version) then begin
+            Logs.err (fun m -> m "unknown wire protocol version") ;
+            closing := true ;
+            safe_close fd >|= fun () ->
+            None
+          end else if Vmm_wire.is_fail hdr then begin
+           Logs.err (fun m -> m "failed to retrieve statistics for %s" name) ;
+           Lwt.return (Some fd)
+         end else if Vmm_wire.is_reply hdr then
+           begin match Vmm_wire.Stats.decode_stats data with
+             | Error (`Msg msg) ->
+               Logs.warn (fun m -> m "error %s while decoding stats %s, ignoring"
+                             msg name) ;
+               Lwt.return (Some fd)
+             | Ok (ru, vmm, ifs) ->
+               let ru = P.encode_ru name ru in
+               let vmm = P.encode_vmm name vmm in
+               let taps = List.map (P.encode_if name) ifs in
+               let out = (String.concat ~sep:"\n" (ru :: vmm :: taps)) ^ "\n" in
+               Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
+               Vmm_lwt.write_wire fd (Cstruct.of_string out) >>= function
+               | Ok () ->
+                 Logs.debug (fun m -> m "wrote successfully") ;
+                 Lwt.return (Some fd)
+               | Error e ->
+                 Logs.err (fun m -> m "error %s while writing to tcp (%s)"
+                              (str_of_e e) name) ;
+                 safe_close fd >|= fun () ->
+                 None
+           end
+         else begin
+           Logs.err (fun m -> m "unhandled tag %lu for %s" hdr.tag name) ;
+           Lwt.return (Some fd)
+         end) >>= fun fd ->
+        read_sock_write_tcp closing db c ?fd addr addrtype
     end
 
 let rec query_sock closing prefix db c interval =
@@ -252,12 +251,12 @@ let rec query_sock closing prefix db c interval =
         | Error e -> Lwt.return (Error e)
         | Ok () ->
           let id = identifier id in
-          let id = match prefix with None -> id | Some p -> p ^ "." ^ id in
+          let id = match prefix with None -> [ id ] | Some p -> [ p ; id ] in
           let request = Vmm_wire.Stats.stat !command my_version id in
-          req := IM.add !command name !req ;
-          incr command ;
-          Logs.debug (fun m -> m "%d requesting %s via socket" !command id) ;
-          Vmm_lwt.write_raw c request)
+          req := IM64.add !command name !req ;
+          command := Int64.succ !command  ;
+          Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id id) ;
+          Vmm_lwt.write_wire c request)
       (Ok ()) db >>= function
     | Error e ->
       Logs.err (fun m -> m "error %s while writing to vmm socket" (str_of_e e)) ;

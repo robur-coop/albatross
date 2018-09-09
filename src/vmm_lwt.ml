@@ -2,6 +2,11 @@
 
 open Lwt.Infix
 
+let pp_sockaddr ppf = function
+  | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
+  | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
+                                         (Unix.string_of_inet_addr addr) port
+
 let pp_process_status ppf = function
   | Unix.WEXITED c -> Fmt.pf ppf "exited with %d" c
   | Unix.WSIGNALED s -> Fmt.pf ppf "killed by signal %a" Fmt.Dump.signal s
@@ -36,8 +41,8 @@ let wait_and_clear pid stdout =
     Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
     ret s
 
-let read_exactly s =
-  let buf = Bytes.create 8 in
+let read_wire s =
+  let buf = Bytes.create (Int32.to_int Vmm_wire.header_size) in
   let rec r b i l =
     Lwt.catch (fun () ->
         Lwt_unix.read s b i l >>= function
@@ -53,29 +58,28 @@ let read_exactly s =
          let err = Printexc.to_string e in
          Logs.err (fun m -> m "exception %s while reading" err) ;
          Lwt.return (Error `Exception))
-
   in
-  r buf 0 8 >>= function
+  r buf 0 (Int32.to_int Vmm_wire.header_size) >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
-    match Vmm_wire.parse_header (Bytes.to_string buf) with
+    match Vmm_wire.decode_header (Cstruct.of_bytes buf) with
     | Error (`Msg m) -> Lwt.return (Error (`Msg m))
     | Ok hdr ->
-      let l = hdr.Vmm_wire.length in
+      let l = Int32.to_int hdr.Vmm_wire.length in
       if l > 0 then
         let b = Bytes.create l in
         r b 0 l >|= function
         | Error e -> Error e
         | Ok () ->
-          (* Logs.debug (fun m -> m "read hdr %a, body %a"
+          Logs.debug (fun m -> m "read hdr %a, body %a"
                          Cstruct.hexdump_pp (Cstruct.of_bytes buf)
-                         Cstruct.hexdump_pp (Cstruct.of_bytes b)) ; *)
-          Ok (hdr, Bytes.to_string b)
+                         Cstruct.hexdump_pp (Cstruct.of_bytes b)) ;
+          Ok (hdr, Cstruct.of_bytes b)
       else
-        Lwt.return (Ok (hdr, ""))
+        Lwt.return (Ok (hdr, Cstruct.empty))
 
-let write_raw s buf =
-  let buf = Bytes.unsafe_of_string buf in
+let write_wire s buf =
+  let buf = Cstruct.to_bytes buf in
   let rec w off l =
     Lwt.catch (fun () ->
         Lwt_unix.send s buf off l [] >>= fun n ->
@@ -87,5 +91,10 @@ let write_raw s buf =
          Logs.err (fun m -> m "exception %s while writing" (Printexc.to_string e)) ;
          Lwt.return (Error `Exception))
   in
-  (* Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
+  Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ;
   w 0 (Bytes.length buf)
+
+let safe_close fd =
+  Lwt.catch
+    (fun () -> Lwt_unix.close fd)
+    (fun _ -> Lwt.return_unit)

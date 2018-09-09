@@ -3,124 +3,148 @@
 (* the wire protocol - length prepended binary data *)
 
 (* each message (on all channels) is prefixed by a common header:
-   - length (16 bit) spanning the message (excluding the 8 bytes header)
-   - id (16 bit) unique id chosen by sender (for request/reply) - 0 shouldn't be used (reserved for log/console messages which do not correspond to a request)
-   - version (16 bit) the version used on this channel
-   - tag (16 bit) the type of message
+   - tag (32 bit) the type of message
+      it is only 31 bit, the highest (leftmost) bit indicates query (0) or reply (1)
+      a failure is reported with the special tag 0xFFFFFFFF (all bits set) - data is a string
+      every request leads to a reply
+      WV0 and WV1 used 16 bit only
+   - version (16 bit) the version used on this channel (used to be byte 4-6)
+   - padding (16 bit)
+   - id (64 bit) unique id chosen by sender (for request/reply) - 0 shouldn't be used (reserved for log/console messages which do not correspond to a request)
+   - length (32 bit) spanning the message (excluding the 20 bytes header)
+   - full VM name (i.e. foo.bar.baz) encoded as size of list followed by list of strings
+   - replies do not contain the VM name
 
    Version and tag are protocol-specific - the channel between vmm and console
    uses different tags and mayuse a different version than between vmm and
-   client. *)
+   client.
+
+   every command issued is replied to with success or failure.  broadcast
+   communication (console data, log events) are not acknowledged by the
+   recipient.
+ *)
+
+
+(* TODO unlikely that this is 32bit clean *)
 
 open Astring
 
 open Vmm_core
 
-type version = [ `WV0 | `WV1 ]
+type version = [ `WV0 | `WV1 | `WV2 ]
 
 let version_to_int = function
   | `WV0 -> 0
   | `WV1 -> 1
+  | `WV2 -> 2
 
 let version_of_int = function
   | 0 -> Ok `WV0
   | 1 -> Ok `WV1
+  | 2 -> Ok `WV2
   | _ -> Error (`Msg "unknown wire version")
 
 let version_eq a b = match a, b with
   | `WV0, `WV0 -> true
   | `WV1, `WV1 -> true
+  | `WV2, `WV2 -> true
   | _ -> false
 
 let pp_version ppf v =
   Fmt.string ppf (match v with
       | `WV0 -> "wire version 0"
-      | `WV1 -> "wire version 1")
+      | `WV1 -> "wire version 1"
+      | `WV2 -> "wire version 2")
 
 type header = {
-  length : int ;
-  id : int ;
   version : version ;
-  tag : int ;
+  tag : int32 ;
+  length : int32 ;
+  id : int64 ;
 }
+
+let header_size = 20l
+
+let max_size = 0x7FFFFFFFl
+
+(* Throughout this module, we don't expect any cstruct bigger than the above
+   max_size (encode checks this!) *)
 
 open Rresult
 open R.Infix
 
+
+let cs_create len = Cstruct.create (Int32.to_int len)
+
+let cs_len cs =
+  let l = Cstruct.len cs in
+  assert (l lsr 31 = 0) ;
+  Int32.of_int l
+
 let check_len cs l =
-  if Cstruct.len cs < l then
+  if Int32.compare (cs_len cs) l = -1 then
     Error (`Msg "underflow")
   else
     Ok ()
 
+let cs_shift cs num =
+  check_len cs (Int32.of_int num) >>= fun () ->
+  Ok (Cstruct.shift cs num)
+
 let check_exact cs l =
-  if Cstruct.len cs = l then
+  if cs_len cs = l then
     Ok ()
   else
     Error (`Msg "bad length")
 
-let empty = Cstruct.create 0
-
 let null cs = if Cstruct.len cs = 0 then Ok () else Error (`Msg "trailing bytes")
 
-let parse_header buf =
-  let cs = Cstruct.of_string buf in
-  check_len cs 8 >>= fun () ->
-  let length = Cstruct.BE.get_uint16 cs 0
-  and id = Cstruct.BE.get_uint16 cs 2
-  and version = Cstruct.BE.get_uint16 cs 4
-  and tag = Cstruct.BE.get_uint16 cs 6
-  in
-  version_of_int version >>= fun version ->
-  Ok { length ; id ; version ; tag }
+let decode_header cs =
+  check_len cs 8l >>= fun () ->
+  let version = Cstruct.BE.get_uint16 cs 4 in
+  version_of_int version >>= function
+  | `WV0 | `WV1 -> Error (`Msg "unsupported version")
+  | `WV2 as version ->
+    check_len cs header_size >>= fun () ->
+    let tag = Cstruct.BE.get_uint32 cs 0
+    and id = Cstruct.BE.get_uint64 cs 8
+    and length = Cstruct.BE.get_uint32 cs 16
+    in
+    Ok { length ; id ; version ; tag }
 
-let create_header { length ; id ; version ; tag } =
-  let hdr = Cstruct.create 8 in
-  Cstruct.BE.set_uint16 hdr 0 length ;
-  Cstruct.BE.set_uint16 hdr 2 id ;
-  Cstruct.BE.set_uint16 hdr 4 (version_to_int version) ;
-  Cstruct.BE.set_uint16 hdr 6 tag ;
-  hdr
+let encode_header { length ; id ; version ; tag } =
+  match version with
+  | `WV0 | `WV1 -> invalid_arg "version no longer supported"
+  | `WV2 ->
+    let hdr = cs_create header_size in
+    Cstruct.BE.set_uint32 hdr 0 tag ;
+    Cstruct.BE.set_uint16 hdr 4 (version_to_int version) ;
+    Cstruct.BE.set_uint64 hdr 8 id ;
+    Cstruct.BE.set_uint32 hdr 16 length ;
+    hdr
+
+let max_str_len = 0xFFFF
 
 let decode_string cs =
-  check_len cs 2 >>= fun () ->
+  check_len cs 2l >>= fun () ->
   let l = Cstruct.BE.get_uint16 cs 0 in
-  check_len cs (2 + l) >>= fun () ->
+  check_len cs (Int32.add 2l (Int32.of_int l)) >>= fun () ->
   let str = Cstruct.(to_string (sub cs 2 l)) in
   Ok (str, l + 2)
 
-(* external use only *)
-let decode_str str =
-  if String.length str = 0 then
-    Ok ("", 0)
-  else
-    decode_string (Cstruct.of_string str)
-
-let decode_strings cs =
-  let rec go acc buf =
-    if Cstruct.len buf = 0 then
-      Ok (List.rev acc)
-    else
-      decode_string buf >>= fun (x, l) ->
-      go (x :: acc) (Cstruct.shift buf l)
-  in
-  go [] cs
-
 let encode_string str =
   let l = String.length str in
+  assert (l < max_str_len) ;
   let cs = Cstruct.create (2 + l) in
   Cstruct.BE.set_uint16 cs 0 l ;
   Cstruct.blit_from_string str 0 cs 2 l ;
-  cs, 2 + l
-
-let encode_strings xs =
-  Cstruct.concat
-    (List.map (fun s -> fst (encode_string s)) xs)
+  cs
 
 let max = Int64.of_int max_int
 let min = Int64.of_int min_int
 
 let decode_int ?(off = 0) cs =
+  check_len cs Int32.(add (of_int off) 8l) >>= fun () ->
   let i = Cstruct.BE.get_uint64 cs off in
   if i > max then
     Error (`Msg "int too big")
@@ -134,34 +158,63 @@ let encode_int i =
   Cstruct.BE.set_uint64 cs 0 (Int64.of_int i) ;
   cs
 
-(* TODO: 32 bit system clean *)
-let decode_pid cs =
-  check_len cs 4 >>= fun () ->
-  let pid = Cstruct.BE.get_uint32 cs 0 in
-  Ok (Int32.to_int pid)
+let decode_list inner buf =
+  decode_int buf >>= fun len ->
+  let rec go acc idx = function
+    | 0 -> Ok (List.rev acc, idx)
+    | n ->
+      cs_shift buf idx >>= fun cs' ->
+      inner cs' >>= fun (data, len) ->
+      go (data :: acc) (idx + len) (pred n)
+  in
+  go [] 8 len
 
-(* TODO: can we do sth more appropriate than raise? *)
-let encode_pid pid =
-  let cs = Cstruct.create 4 in
-  if Int32.to_int Int32.max_int > pid &&
-     Int32.to_int Int32.min_int < pid
-  then begin
-    Cstruct.BE.set_uint32 cs 0 (Int32.of_int pid) ;
-    cs
-  end else
-    invalid_arg "pid too big"
+let encode_list inner data =
+  let cs = encode_int (List.length data) in
+  Cstruct.concat (cs :: (List.map inner data))
 
-let decode_ptime cs =
-  check_len cs 16 >>= fun () ->
-  decode_int cs >>= fun d ->
-  let ps = Cstruct.BE.get_uint64 cs 8 in
+let decode_strings = decode_list decode_string
+
+let encode_strings = encode_list encode_string
+
+let encode ?name ?body version id tag =
+  let vm = match name with None -> Cstruct.empty | Some id -> encode_strings id in
+  let payload = match body with None -> Cstruct.empty | Some x -> x in
+  let header =
+    let length = Int32.(add (cs_len payload) (cs_len vm)) in
+    { length ; id ; version ; tag }
+  in
+  Cstruct.concat [ encode_header header ; vm ; payload ]
+
+let maybe_str = function
+  | None -> Cstruct.empty
+  | Some c -> encode_string c
+
+let fail_tag = 0xFFFFFFFFl
+
+let reply_tag = 0x80000000l
+
+let is_tag v tag = Int32.logand v tag = v
+
+let is_reply { tag ; _ } = is_tag reply_tag tag
+
+let is_fail { tag ; _ } = is_tag fail_tag tag
+
+let reply ?body version id tag =
+  encode ?body version id (Int32.logor reply_tag tag)
+
+let fail ?msg version id =
+  encode ~body:(maybe_str msg) version id fail_tag
+
+let success ?msg version id tag =
+  reply ~body:(maybe_str msg) version id tag
+
+let decode_ptime ?(off = 0) cs =
+  cs_shift cs off >>= fun cs' ->
+  check_len cs' 16l >>= fun () ->
+  decode_int cs' >>= fun d ->
+  let ps = Cstruct.BE.get_uint64 cs' 8 in
   Ok (Ptime.v (d, ps))
-
-(* EXPORT only *)
-let decode_ts ?(off = 0) buf =
-  let cs = Cstruct.of_string buf in
-  let cs = Cstruct.shift cs off in
-  decode_ptime cs
 
 let encode_ptime ts =
   let d, ps = Ptime.(Span.to_d_ps (to_span ts)) in
@@ -170,99 +223,70 @@ let encode_ptime ts =
   Cstruct.BE.set_uint64 cs 8 ps ;
   cs
 
-let fail_tag = 0xFFFE
-let success_tag = 0xFFFF
-
-let may_enc_str = function
-  | None -> empty, 0
-  | Some msg -> encode_string msg
-
-let success ?msg id version =
-  let data, length = may_enc_str msg in
-  let r =
-    Cstruct.append
-      (create_header { length ; id ; version ; tag = success_tag }) data
-  in
-  Cstruct.to_string r
-
-let fail ?msg id version =
-  let data, length = may_enc_str msg in
-  let r =
-    Cstruct.append
-      (create_header { length ; id ; version ; tag =  fail_tag }) data
-  in
-  Cstruct.to_string r
-
 module Console = struct
-  [%%cenum
-    type op =
-      | Add_console
-      | Attach_console
-      | Detach_console
-      | History
-      | Data
-    [@@uint16_t]
-  ]
+  type op =
+    | Add_console
+    | Attach_console
+    | Detach_console
+    | History
+    | Data (* is a reply, never acked *)
 
-  let encode id version op ?payload nam =
-    let data, l = encode_string nam in
-    let length, p =
-      match payload with
-      | None -> l, empty
-      | Some x -> l + Cstruct.len x, x
-    and tag = op_to_int op
-    in
-    let r =
-      Cstruct.concat
-        [ (create_header { length ; id ; version ; tag }) ; data ; p ]
-    in
-    Cstruct.to_string r
+  let op_to_int = function
+    | Add_console -> 0x0100l
+    | Attach_console -> 0x0101l
+    | Detach_console -> 0x0102l
+    | History -> 0x0103l
+    | Data -> 0x0104l
 
-  let data ?(id = 0) v file ts msg =
-    let payload =
+  let int_to_op = function
+    | 0x0100l -> Some Add_console
+    | 0x0101l -> Some Attach_console
+    | 0x0102l -> Some Detach_console
+    | 0x0103l -> Some History
+    | 0x0104l -> Some Data
+    | _ -> None
+
+  let data version name ts msg =
+    let body =
       let ts = encode_ptime ts
-      and data, _ = encode_string msg
+      and data = encode_string msg
       in
       Cstruct.append ts data
     in
-    encode id v Data ~payload file
+    encode version ~name ~body 0L (op_to_int Data)
 
-  let add id v name = encode id v Add_console name
+  let add id version name = encode ~name version id (op_to_int Add_console)
 
-  let attach id v name = encode id v Attach_console name
+  let attach id version name = encode ~name version id (op_to_int Attach_console)
 
-  let detach id v name = encode id v Detach_console name
+  let detach id version name = encode ~name version id (op_to_int Detach_console)
 
-  let history id v name since =
-    let payload = encode_ptime since in
-    encode id v History ~payload name
+  let history id version name since =
+    let body = encode_ptime since in
+    encode ~name ~body version id (op_to_int History)
 end
 
 module Stats = struct
-  [%%cenum
-    type op =
-      | Add
-      | Remove
-      | Stat_request
-      | Stat_reply
-    [@@uint16_t]
-  ]
+  type op =
+    | Add
+    | Remove
+    | Stats
 
-  let encode id version op ?payload nam =
-    let data, l = encode_string nam in
-    let length, p =
-      match payload with
-      | None -> l, empty
-      | Some x -> l + Cstruct.len x, x
-    and tag = op_to_int op
-    in
-    let r =
-      Cstruct.concat [ create_header { length ; version ; id ; tag } ; data ; p ]
-    in
-    Cstruct.to_string r
+  let op_to_int = function
+    | Add -> 0x0200l
+    | Remove -> 0x0201l
+    | Stats -> 0x0202l
+
+  let int_to_op = function
+    | 0x0200l -> Some Add
+    | 0x0201l -> Some Remove
+    | 0x0202l -> Some Stats
+    | _ -> None
+
+  let rusage_len = 144l
 
   let encode_rusage ru =
-    let cs = Cstruct.create (18 * 8) in
+    let cs = cs_create rusage_len in
     Cstruct.BE.set_uint64 cs 0 (fst ru.utime) ;
     Cstruct.BE.set_uint64 cs 8 (Int64.of_int (snd ru.utime)) ;
     Cstruct.BE.set_uint64 cs 16 (fst ru.stime) ;
@@ -284,7 +308,7 @@ module Stats = struct
     cs
 
   let decode_rusage cs =
-    check_exact cs 144 >>= fun () ->
+    check_exact cs rusage_len >>= fun () ->
     (decode_int ~off:8 cs >>= fun ms ->
      Ok (Cstruct.BE.get_uint64 cs 0, ms)) >>= fun utime ->
     (decode_int ~off:24 cs >>= fun ms ->
@@ -307,9 +331,11 @@ module Stats = struct
     Ok { utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ;
          nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw }
 
+  let ifdata_len = 116l
+
   let encode_ifdata i =
-    let name, _ = encode_string i.name in
-    let cs = Cstruct.create (12 * 8 + 5 * 4) in
+    let name = encode_string i.name in
+    let cs = cs_create ifdata_len in
     Cstruct.BE.set_uint32 cs 0 i.flags ;
     Cstruct.BE.set_uint32 cs 4 i.send_length ;
     Cstruct.BE.set_uint32 cs 8 i.max_send_length ;
@@ -331,8 +357,8 @@ module Stats = struct
 
   let decode_ifdata buf =
     decode_string buf >>= fun (name, l) ->
-    check_len buf (l + 116) >>= fun () ->
-    let cs = Cstruct.shift buf l in
+    cs_shift buf l >>= fun cs ->
+    check_len cs ifdata_len >>= fun () ->
     let flags = Cstruct.BE.get_uint32 cs 0
     and send_length = Cstruct.BE.get_uint32 cs 4
     and max_send_length = Cstruct.BE.get_uint32 cs 8
@@ -355,24 +381,18 @@ module Stats = struct
           baudrate ; input_packets ; input_errors ; output_packets ;
           output_errors ; collisions ; input_bytes ; output_bytes ; input_mcast ;
           output_mcast ; input_dropped ; output_dropped },
-        l + 116)
+        Int32.(to_int ifdata_len) + l)
 
-  let add id v nam pid taps =
-    let payload = Cstruct.append (encode_pid pid) (encode_strings taps) in
-    encode id v Add ~payload nam
+  let add id version name pid taps =
+    let body = Cstruct.append (encode_int pid) (encode_strings taps) in
+    encode ~name ~body version id (op_to_int Add)
 
-  let remove id v nam = encode id v Remove nam
+  let remove id version name = encode ~name version id (op_to_int Remove)
 
-  let stat id v nam = encode id v Stat_request nam
+  let stat id version name = encode ~name version id (op_to_int Stats)
 
-  let stat_reply id version payload =
-    let length = Cstruct.len payload
-    and tag = op_to_int Stat_reply
-    in
-    let r =
-      Cstruct.append (create_header { length ; id ; version ; tag }) payload
-    in
-    Cstruct.to_string r
+  let stat_reply id version body =
+    reply ~body version id (op_to_int Stats)
 
   let encode_int64 i =
     let cs = Cstruct.create 8 in
@@ -380,87 +400,76 @@ module Stats = struct
     cs
 
   let decode_int64 ?(off = 0) cs =
-    check_len cs (8 + off) >>= fun () ->
+    check_len cs (Int32.add 8l (Int32.of_int off)) >>= fun () ->
     Ok (Cstruct.BE.get_uint64 cs off)
 
-  let encode_vmm_stats xs =
-    encode_int (List.length xs) ::
-    List.flatten
-      (List.map (fun (k, v) -> [ fst (encode_string k) ; encode_int64 v ]) xs)
+  let encode_vmm_stats =
+    encode_list
+      (fun (k, v) -> Cstruct.append (encode_string k) (encode_int64 v))
 
-  let decode_vmm_stats cs =
-    let rec go acc ctr buf =
-      if ctr = 0 then
-        Ok (List.rev acc, buf)
-      else
+  let decode_vmm_stats =
+    decode_list (fun buf ->
         decode_string buf >>= fun (str, off) ->
         decode_int64 ~off buf >>= fun v ->
-        go ((str, v) :: acc) (pred ctr) (Cstruct.shift buf (off + 8))
-    in
-    decode_int cs >>= fun stat_num ->
-    go [] stat_num (Cstruct.shift cs 8)
+        Ok ((str, v), off + 8))
 
   let encode_stats (ru, vmm, ifd) =
     Cstruct.concat
-      (encode_rusage ru ::
-       encode_vmm_stats vmm @
-       encode_int (List.length ifd) :: List.map encode_ifdata ifd)
+      [ encode_rusage ru ;
+        encode_vmm_stats vmm ;
+        encode_list encode_ifdata ifd ]
 
   let decode_stats cs =
-    check_len cs 144 >>= fun () ->
-    let ru, rest = Cstruct.split cs 144 in
+    check_len cs rusage_len >>= fun () ->
+    let ru, rest = Cstruct.split cs (Int32.to_int rusage_len) in
     decode_rusage ru >>= fun ru ->
-    decode_vmm_stats rest >>= fun (vmm, rest) ->
-    let rec go acc ctr buf =
-      if ctr = 0 then
-        Ok (List.rev acc, buf)
-      else
-        decode_ifdata buf >>= fun (this, used) ->
-        go (this :: acc) (pred ctr) (Cstruct.shift buf used)
-    in
-    decode_int rest >>= fun num_if ->
-    go [] num_if (Cstruct.shift rest 8) >>= fun (ifs, _rest) ->
+    decode_vmm_stats rest >>= fun (vmm, off) ->
+    cs_shift rest off >>= fun rest' ->
+    decode_list decode_ifdata rest' >>= fun (ifs, _) ->
     Ok (ru, vmm, ifs)
 
   let decode_pid_taps data =
-    decode_pid data >>= fun pid ->
-    decode_strings (Cstruct.shift data 4) >>= fun taps ->
+    decode_int data >>= fun pid ->
+    decode_strings (Cstruct.shift data 8) >>= fun (taps, _off) ->
     Ok (pid, taps)
 end
 
+let decode_id_ts cs =
+  decode_strings cs >>= fun (id, off) ->
+  decode_ptime ~off cs >>= fun ts ->
+  Ok ((id, ts), off + 16)
+
+let split_id id = match List.rev id with
+  | [] -> Error (`Msg "bad header")
+  | name::rest -> Ok (name, List.rev rest)
+
 module Log = struct
-  [%%cenum
-    type op =
-      | Data
-      | History
-    [@@uint16_t]
-  ]
+  type op =
+    | Log
+    | History
+    | Broadcast
+    | Subscribe
 
-  let history id version ctx ts =
-    let tag = op_to_int History in
-    let nam, _ = encode_string ctx in
-    let payload = Cstruct.append nam (encode_ptime ts) in
-    let length = Cstruct.len payload in
-    let r =
-      Cstruct.append (create_header { length ; version ; id ; tag }) payload
-    in
-    Cstruct.to_string r
+  let op_to_int = function
+    | Log -> 0x0300l
+    | History -> 0x0301l
+    | Broadcast -> 0x0302l
+    | Subscribe -> 0x0303l
 
-  let encode_log_hdr ?(drop_context = false) hdr =
-    let ts = encode_ptime hdr.Log.ts
-    and ctx, _ = encode_string (if drop_context then "" else (string_of_id hdr.Log.context))
-    and name, _ = encode_string hdr.Log.name
-    in
-    Cstruct.concat [ ts ; ctx ; name ]
+  let int_to_op = function
+    | 0x0300l -> Some Log
+    | 0x0301l -> Some History
+    | 0x0302l -> Some Broadcast
+    | 0x0303l -> Some Subscribe
+    | _ -> None
+
+  let history id version name ts =
+    encode ~name ~body:(encode_ptime ts) version id (op_to_int History)
 
   let decode_log_hdr cs =
-    decode_ptime cs >>= fun ts ->
-    let r = Cstruct.shift cs 16 in
-    decode_string r >>= fun (ctx, l) ->
-    let context = id_of_string ctx in
-    let r = Cstruct.shift r l in
-    decode_string r >>= fun (name, l) ->
-    Ok ({ Log.ts ; context ; name }, Cstruct.shift r l)
+    decode_id_ts cs >>= fun ((id, ts), off) ->
+    split_id id >>= fun (name, context) ->
+    Ok ({ Log.ts ; context ; name }, Cstruct.shift cs (16 + off))
 
   let encode_addr ip port =
     let cs = Cstruct.create 6 in
@@ -469,24 +478,25 @@ module Log = struct
     cs
 
   let decode_addr cs =
-    check_len cs 6 >>= fun () ->
+    check_len cs 6l >>= fun () ->
     let ip = Ipaddr.V4.of_int32 (Cstruct.BE.get_uint32 cs 0)
     and port = Cstruct.BE.get_uint16 cs 4
     in
     Ok (ip, port)
 
   let encode_vm (pid, taps, block) =
-    let cs = encode_pid pid in
-    let bl, _ = encode_string (match block with None -> "" | Some x -> x) in
+    let cs = encode_int pid in
+    let bl = encode_string (match block with None -> "" | Some x -> x) in
     let taps = encode_strings taps in
     Cstruct.concat [ cs ; bl ; taps ]
 
   let decode_vm cs =
-    decode_pid cs >>= fun pid ->
-    let r = Cstruct.shift cs 4 in
+    decode_int cs >>= fun pid ->
+    let r = Cstruct.shift cs 8 in
     decode_string r >>= fun (block, l) ->
     let block = if block = "" then None else Some block in
-    decode_strings (Cstruct.shift r l) >>= fun taps ->
+    cs_shift r l >>= fun r' ->
+    decode_strings r' >>= fun taps ->
     Ok (pid, taps, block)
 
   let encode_pid_exit pid c =
@@ -495,19 +505,17 @@ module Log = struct
       | `Signal n -> 1, n
       | `Stop n -> 2, n
     in
-    let cs = Cstruct.create 1 in
-    Cstruct.set_uint8 cs 0 r ;
-    let pid = encode_pid pid
-    and code = encode_int c
+    let r_cs = encode_int r
+    and pid_cs = encode_int pid
+    and c_cs = encode_int c
     in
-    Cstruct.concat [ pid ; cs ; code ]
+    Cstruct.concat [ pid_cs ; r_cs ; c_cs ]
 
   let decode_pid_exit cs =
-    check_len cs 13 >>= fun () ->
-    decode_pid cs >>= fun pid ->
-    let r = Cstruct.get_uint8 cs 4 in
-    let code = Cstruct.shift cs 5 in
-    decode_int code >>= fun c ->
+    check_len cs 24l >>= fun () ->
+    decode_int cs >>= fun pid ->
+    decode_int ~off:8 cs >>= fun r ->
+    decode_int ~off:16 cs >>= fun c ->
     (match r with
      | 0 -> Ok (`Exit c)
      | 1 -> Ok (`Signal c)
@@ -515,43 +523,20 @@ module Log = struct
      | _ -> Error (`Msg "couldn't parse exit status")) >>= fun r ->
     Ok (pid, r)
 
-  let encode_block nam siz =
-    Cstruct.append (fst (encode_string nam)) (encode_int siz)
-
-  let decode_block cs =
-    decode_string cs >>= fun (nam, l) ->
-    check_len cs (l + 8) >>= fun () ->
-    decode_int ~off:l cs >>= fun siz ->
-    Ok (nam, siz)
-
-  let encode_delegate bridges bs =
-    Cstruct.append
-      (fst (encode_string (match bs with None -> "" | Some x -> x)))
-      (encode_strings bridges)
-
-  let decode_delegate buf =
-    decode_string buf >>= fun (bs, l) ->
-    let bs = if bs = "" then None else Some bs in
-    decode_strings (Cstruct.shift buf l) >>= fun bridges ->
-    Ok (bridges, bs)
-
   let encode_event ev =
     let tag, data = match ev with
-      | `Startup -> 0, empty
+      | `Startup -> 0, Cstruct.empty
       | `Login (ip, port) -> 1, encode_addr ip port
       | `Logout (ip, port) -> 2, encode_addr ip port
       | `VM_start vm -> 3, encode_vm vm
       | `VM_stop (pid, c) -> 4, encode_pid_exit pid c
-      | `Block_create (nam, siz) -> 5, encode_block nam siz
-      | `Block_destroy nam -> 6, fst (encode_string nam)
-      | `Delegate (bridges, bs) -> 7, encode_delegate bridges bs
     in
     let cs = Cstruct.create 2 in
     Cstruct.BE.set_uint16 cs 0 tag ;
     Cstruct.append cs data
 
   let decode_event cs =
-    check_len cs 2 >>= fun () ->
+    check_len cs 2l >>= fun () ->
     let data = Cstruct.(shift cs 2) in
     match Cstruct.BE.get_uint16 cs 0 with
      | 0 -> Ok `Startup
@@ -559,55 +544,139 @@ module Log = struct
      | 2 -> decode_addr data >>= fun addr -> Ok (`Logout addr)
      | 3 -> decode_vm data >>= fun vm -> Ok (`VM_start vm)
      | 4 -> decode_pid_exit data >>= fun ex -> Ok (`VM_stop ex)
-     | 5 -> decode_block data >>= fun bl -> Ok (`Block_create bl)
-     | 6 -> decode_string data >>= fun (nam, _) -> Ok (`Block_destroy nam)
-     | 7 -> decode_delegate data >>= fun d -> Ok (`Delegate d)
      | x -> R.error_msgf "couldn't parse event type %d" x
 
-  let data id version hdr event =
-    let hdr = encode_log_hdr hdr
-    and ev = encode_event event
+  let log id version hdr event =
+    let body = Cstruct.append (encode_ptime hdr.Log.ts) (encode_event event)
+    and name = hdr.Log.context @ [ hdr.Log.name ]
     in
-    let payload = Cstruct.append hdr ev in
-    let length = Cstruct.len payload
-    and tag = op_to_int Data
-    in
-    let r =
-      Cstruct.append (create_header { length ; id ; version ; tag }) payload
-    in
-    Cstruct.to_string r
+    encode ~name ~body version id (op_to_int Log)
 end
 
-module Client = struct
-  let cmd_to_int = function
-    | Info -> 0
-    | Destroy_vm -> 1
-    | Create_block -> 2
-    | Destroy_block -> 3
-    | Statistics -> 4
-    | Attach -> 5
-    | Detach -> 6
-    | Log -> 7
-  and cmd_of_int = function
-    | 0 -> Some Info
-    | 1 -> Some Destroy_vm
-    | 2 -> Some Create_block
-    | 3 -> Some Destroy_block
-    | 4 -> Some Statistics
-    | 5 -> Some Attach
-    | 6 -> Some Detach
-    | 7 -> Some Log
+module Vm = struct
+  type op =
+    | Create
+    | Destroy
+    | Info
+    (* | Add_policy *)
+
+  let op_to_int = function
+    | Create -> 0x0400l
+    | Destroy -> 0x0401l
+    | Info -> 0x0402l
+
+  let int_to_op = function
+    | 0x0400l -> Some Create
+    | 0x0401l -> Some Destroy
+    | 0x0402l -> Some Info
     | _ -> None
 
-  let console_msg_tag = 0xFFF0
-  let log_msg_tag = 0xFFF1
-  let stat_msg_tag = 0xFFF2
-  let info_msg_tag = 0xFFF3
+  let info id version name =
+    encode ~name version id (op_to_int Info)
+
+  let encode_vm vm =
+    let name = encode_strings (vm.config.prefix @ [ vm.config.vname ])
+    and memory = encode_int vm.config.requested_memory
+    and cs = encode_string (Bos.Cmd.to_string vm.cmd)
+    and pid = encode_int vm.pid
+    and taps = encode_strings vm.taps
+    in
+    Cstruct.concat [ name ; memory ; cs ; pid ; taps ]
+
+  let info_reply id version vms =
+    let body = encode_list encode_vm vms in
+    reply ~body version id (op_to_int Info)
+
+  let decode_vm cs =
+    decode_strings cs >>= fun (id, l) ->
+    cs_shift cs l >>= fun cs' ->
+    decode_int cs' >>= fun memory ->
+    cs_shift cs' 8 >>= fun cs'' ->
+    decode_string cs'' >>= fun (cmd, l') ->
+    cs_shift cs'' l' >>= fun cs''' ->
+    decode_int cs''' >>= fun pid ->
+    cs_shift cs''' 8 >>= fun cs'''' ->
+    decode_strings cs'''' >>= fun (taps, l'') ->
+    Ok ((id, memory, cmd, pid, taps), l + 8 + l' + l'')
+
+  let decode_vms buf = decode_list decode_vm buf
+
+  let encode_vm_config vm =
+    let cpu = encode_int vm.cpuid
+    and mem = encode_int vm.requested_memory
+    and block = encode_string (match vm.block_device with None -> "" | Some x -> x)
+    and network = encode_strings vm.network
+    and vmimage = Cstruct.concat [ encode_int (vmtype_to_int (fst vm.vmimage)) ;
+                                   encode_int (Cstruct.len (snd vm.vmimage)) ;
+                                   snd vm.vmimage ]
+    and args = encode_strings (match vm.argv with None -> [] | Some args -> args)
+    in
+    Cstruct.concat [ cpu ; mem ; block ; network ; vmimage ; args ]
+
+  let decode_vm_config buf =
+    decode_strings buf >>= fun (id, off) ->
+    Logs.debug (fun m -> m "vm_config id %a" pp_id id) ;
+    split_id id >>= fun (vname, prefix) ->
+    cs_shift buf off >>= fun buf' ->
+    decode_int buf' >>= fun cpuid ->
+    Logs.debug (fun m -> m "cpuid %d" cpuid) ;
+    decode_int ~off:8 buf' >>= fun requested_memory ->
+    Logs.debug (fun m -> m "mem %d" requested_memory) ;
+    cs_shift buf' 16 >>= fun buf'' ->
+    decode_string buf'' >>= fun (block, off) ->
+    Logs.debug (fun m -> m "block %s" block) ;
+    cs_shift buf'' off >>= fun buf''' ->
+    let block_device = if block = "" then None else Some block in
+    decode_strings buf''' >>= fun (network, off') ->
+    cs_shift buf''' off' >>= fun buf'''' ->
+    decode_int buf'''' >>= fun vmtype ->
+    (match int_to_vmtype vmtype with
+     | Some x -> Ok x
+     | None -> Error (`Msg "unknown vmtype")) >>= fun vmtype ->
+    decode_int ~off:8 buf'''' >>= fun size ->
+    check_len buf'''' (Int32.of_int size) >>= fun () ->
+    let vmimage = (vmtype, Cstruct.sub buf'''' 16 size) in
+    cs_shift buf'''' (16 + size) >>= fun buf''''' ->
+    decode_strings buf''''' >>= fun (argv, _) ->
+    let argv = match argv with [] -> None | xs -> Some xs in
+    Ok { vname ; prefix ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
+
+  let create id version vm =
+    let body = encode_vm_config vm in
+    let name = vm.prefix @ [ vm.vname ] in
+    encode ~name ~body version id (op_to_int Create)
+
+  let destroy id version name =
+    encode ~name version id (op_to_int Destroy)
+end
+
+(*
+module Client = struct
+  let cmd_to_int = function
+    | Info -> 0x0500l
+    | Destroy_vm -> 0x0501l
+    | Create_block -> 0x0502l
+    | Destroy_block -> 0x0503l
+    | Statistics -> 0x0504l
+    | Attach -> 0x0505l
+    | Detach -> 0x0506l
+    | Log -> 0x0507l
+  and cmd_of_int = function
+    | 0x0500l -> Some Info
+    | 0x0501l -> Some Destroy_vm
+    | 0x0502l -> Some Create_block
+    | 0x0503l -> Some Destroy_block
+    | 0x0504l -> Some Statistics
+    | 0x0505l -> Some Attach
+    | 0x0506l -> Some Detach
+    | 0x0507l -> Some Log
+    | _ -> None
 
   let cmd ?arg it id version =
     let pay, length = may_enc_str arg
     and tag = cmd_to_int it
     in
+    let length = Int32.of_int length in
     let hdr = create_header { length ; id ; version ; tag } in
     Cstruct.(to_string (append hdr pay))
 
@@ -617,17 +686,17 @@ module Client = struct
         (Log.encode_log_hdr ~drop_context:true hdr)
         (Log.encode_event event)
     in
-    let length = Cstruct.len payload in
+    let length = cs_len payload in
     let r =
       Cstruct.append
-        (create_header { length ; id = 0 ; version ; tag = log_msg_tag })
+        (create_header { length ; id = 0L ; version ; tag = Log.(op_to_int Data) })
         payload
     in
     Cstruct.to_string r
 
   let stat data id version =
-    let length = String.length data in
-    let hdr = create_header { length ; id ; version ; tag = stat_msg_tag } in
+    let length = Int32.of_int (String.length data) in
+    let hdr = create_header { length ; id ; version ; tag = Stats.(op_to_int Stat_reply) } in
     Cstruct.to_string hdr ^ data
 
   let console off name payload version =
@@ -640,15 +709,16 @@ module Client = struct
       let p' = Astring.String.drop ~max:off payload in
       p', l + String.length p'
     in
+    let length = Int32.of_int length in
     let hdr =
-      create_header { length ; id = 0 ; version ; tag = console_msg_tag }
+      create_header { length ; id = 0L ; version ; tag = Console.(op_to_int Data) }
     in
     Cstruct.(to_string (append hdr nam)) ^ payload
 
   let encode_vm name vm =
-    let name, _ = encode_string name
-    and cs, _ = encode_string (Bos.Cmd.to_string vm.cmd)
-    and pid = encode_pid vm.pid
+    let name = encode_string name
+    and cs = encode_string (Bos.Cmd.to_string vm.cmd)
+    and pid = encode_int vm.pid
     and taps = encode_strings vm.taps
     in
     let tapc = encode_int (Cstruct.len taps) in
@@ -657,13 +727,14 @@ module Client = struct
 
   let info data id version =
     let length = String.length data in
-    let hdr = create_header { length ; id ; version ; tag = info_msg_tag } in
+    let length = Int32.of_int length in
+    let hdr = create_header { length ; id ; version ; tag = success_tag } in
     Cstruct.to_string hdr ^ data
 
   let decode_vm cs =
     decode_string cs >>= fun (name, l) ->
     decode_string (Cstruct.shift cs l) >>= fun (cmd, l') ->
-    decode_pid (Cstruct.shift cs (l + l')) >>= fun pid ->
+    decode_int (Cstruct.shift cs (l + l')) >>= fun pid ->
     decode_int ~off:(l + l' + 4) cs >>= fun tapc ->
     let taps = Cstruct.sub cs (l + l' + 12) tapc in
     decode_strings taps >>= fun taps ->
@@ -695,3 +766,4 @@ module Client = struct
     decode_string (Cstruct.shift cs (l + 16)) >>= fun (line, _) ->
     Ok (name, ts, line)
 end
+                *)

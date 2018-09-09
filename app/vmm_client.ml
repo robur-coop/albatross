@@ -4,7 +4,7 @@ open Lwt.Infix
 
 open Vmm_core
 
-let my_version = `WV0
+let my_version = `WV2
 let command = ref 1
 
 let process db hdr data =

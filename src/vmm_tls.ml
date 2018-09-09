@@ -26,14 +26,14 @@ let read_tls t =
             Logs.err (fun m -> m "TLS read exception %s" (Printexc.to_string e)) ;
             Lwt.return (Error `Exception))
   in
-  let buf = Cstruct.create 8 in
-  r_n buf 0 8 >>= function
+  let buf = Cstruct.create (Int32.to_int Vmm_wire.header_size) in
+  r_n buf 0 (Int32.to_int Vmm_wire.header_size) >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
-    match Vmm_wire.parse_header (Cstruct.to_string buf) with
+    match Vmm_wire.decode_header buf with
     | Error (`Msg m) -> Lwt.return (Error (`Msg m))
     | Ok hdr ->
-      let l = hdr.Vmm_wire.length in
+      let l = Int32.to_int hdr.Vmm_wire.length in
       if l > 0 then
         let b = Cstruct.create l in
         r_n b 0 l >|= function

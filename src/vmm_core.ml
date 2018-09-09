@@ -14,6 +14,7 @@ end
 
 module IS = Set.Make(I)
 module IM = Map.Make(I)
+module IM64 = Map.Make(Int64)
 
 type permission =
   [ `All | `Info | `Create | `Block | `Statistics | `Console | `Log | `Crl | `Force_create]
@@ -87,6 +88,17 @@ let cmd_allowed permissions cmd =
   List.mem perm permissions
 
 type vmtype = [ `Ukvm_amd64 | `Ukvm_arm64 | `Ukvm_amd64_compressed ]
+
+let vmtype_to_int = function
+  | `Ukvm_amd64 -> 0
+  | `Ukvm_arm64 -> 1
+  | `Ukvm_amd64_compressed -> 2
+
+let int_to_vmtype = function
+  | 0 -> Some `Ukvm_amd64
+  | 1 -> Some `Ukvm_arm64
+  | 2 -> Some `Ukvm_amd64_compressed
+  | _ -> None
 
 let pp_vmtype ppf = function
   | `Ukvm_amd64 -> Fmt.pf ppf "ukvm-amd64"
@@ -340,7 +352,7 @@ module Log = struct
 
   let pp_hdr db ppf (hdr : hdr) =
     let name = translate_serial db hdr.name in
-    Fmt.pf ppf "%a: %s" (Ptime.pp_human ~tz_offset_s:0 ()) hdr.ts name
+    Fmt.pf ppf "%a: %s" (Ptime.pp_human ()) hdr.ts name
 
   let hdr context name = { ts = Ptime_clock.now () ; context ; name }
 
@@ -350,10 +362,6 @@ module Log = struct
     | `Logout of Ipaddr.V4.t * int
     | `VM_start of int * string list * string option
     | `VM_stop of int * [ `Exit of int | `Signal of int | `Stop of int ]
-    | `Block_create of string * int
-    | `Block_destroy of string
-    | `Delegate of string list * string option
-      (* | `CRL of string *)
     ]
 
   let pp_event ppf = function
@@ -371,14 +379,6 @@ module Log = struct
         | `Stop n -> "stop", n
       in
       Fmt.pf ppf "STOPPED %d with %s %a" pid s Fmt.Dump.signal c
-    | `Block_create (name, size) ->
-      Fmt.pf ppf "BLOCK_CREATE %s %d" name size
-    | `Block_destroy name -> Fmt.pf ppf "BLOCK_DESTROY %s" name
-    | `Delegate (bridges, block) ->
-      Fmt.pf ppf "DELEGATE %a, block %a"
-        Fmt.(list ~sep:(unit "; ") string) bridges
-        Fmt.(option ~none:(unit "no") string) block
-      (* | `CRL of string *)
 
   type msg = hdr * event
 
