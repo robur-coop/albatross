@@ -227,23 +227,17 @@ module Console = struct
   type op =
     | Add_console
     | Attach_console
-    | Detach_console
-    | History
     | Data (* is a reply, never acked *)
 
   let op_to_int = function
     | Add_console -> 0x0100l
     | Attach_console -> 0x0101l
-    | Detach_console -> 0x0102l
-    | History -> 0x0103l
-    | Data -> 0x0104l
+    | Data -> 0x0102l
 
   let int_to_op = function
     | 0x0100l -> Some Add_console
     | 0x0101l -> Some Attach_console
-    | 0x0102l -> Some Detach_console
-    | 0x0103l -> Some History
-    | 0x0104l -> Some Data
+    | 0x0102l -> Some Data
     | _ -> None
 
   let data version name ts msg =
@@ -255,15 +249,11 @@ module Console = struct
     in
     encode version ~name ~body 0L (op_to_int Data)
 
-  let add id version name = encode ~name version id (op_to_int Add_console)
+  let add id version name =
+    encode ~name version id (op_to_int Add_console)
 
-  let attach id version name = encode ~name version id (op_to_int Attach_console)
-
-  let detach id version name = encode ~name version id (op_to_int Detach_console)
-
-  let history id version name since =
-    let body = encode_ptime since in
-    encode ~name ~body version id (op_to_int History)
+  let attach id version name =
+    encode ~name version id (op_to_int Attach_console)
 end
 
 module Stats = struct

@@ -62,10 +62,8 @@ module Oid : sig
 
   (** {2 OID used in administrative certificates} *)
 
-  (** [permissions] is a [BIT_STRING] denoting the permissions this certificate
-      has: 0 for All, 1 for Info, 2 for Image, 3 for Block, 4 for Statistics, 5
-      for Console, 6 for Log. *)
-  val permissions : Asn.OID.t
+  (** [command] is a [BIT_STRING] denoting the command this certificate. *)
+  val command : Asn.OID.t
 
 
   (** [crl] is a [OCTET_STRING] denoting the revocation list of the intermediate
@@ -76,7 +74,7 @@ end
 (** {1 Encoding and decoding functions} *)
 
 (** The type of versions of the ASN.1 grammar defined above. *)
-type version = [ `AV0 ]
+type version = [ `AV0 | `AV1 ]
 
 (** [version_eq a b] is true if [a] and [b] are equal. *)
 val version_eq : version -> version -> bool
@@ -91,12 +89,12 @@ val version_to_cstruct : version -> Cstruct.t
     encoding [buffer] or an error. *)
 val version_of_cstruct : Cstruct.t -> (version, [> `Msg of string ]) result
 
-(** [permissions_to_cstruct perms] is the DER encoded permission list. *)
-val permissions_to_cstruct : Vmm_core.permission list -> Cstruct.t
+(** [command_to_cstruct perms] is the DER encoded command. *)
+val command_to_cstruct : Vmm_core.command -> Cstruct.t
 
-(** [permissions_of_cstruct buffer] is either a decoded permissions list of
-    the DER encoded [buffer] or an error. *)
-val permissions_of_cstruct : Cstruct.t -> (Vmm_core.permission list, [> `Msg of string ]) result
+(** [command_of_cstruct buffer] is either a decoded command of the DER encoded
+   [buffer] or an error. *)
+val command_of_cstruct : Cstruct.t -> (Vmm_core.command, [> `Msg of string ]) result
 
 (** [bridges_to_cstruct bridges] is the DER encoded bridges. *)
 val bridges_to_cstruct : Vmm_core.bridge list -> Cstruct.t
@@ -157,5 +155,11 @@ val crl_of_cert : X509.t -> (X509.CRL.c, [> `Msg of string ]) result
 (** [delegation_of_cert version cert] is either the decoded delegation, or an error. *)
 val delegation_of_cert : version -> X509.t -> (Vmm_core.delegation, [> `Msg of string ]) result
 
-(** [permissions_of_cert version cert] is either the decoded permission list, or an error. *)
-val permissions_of_cert : version -> X509.t -> (Vmm_core.permission list, [> `Msg of string ]) result
+(** [command_of_cert version cert] is either the decoded command, or an error. *)
+val command_of_cert : version -> X509.t -> (Vmm_core.command, [> `Msg of string ]) result
+
+(** [block_device_of_cert version cert] is either the decoded block device, or an error. *)
+val block_device_of_cert : version -> X509.t -> (string, [> `Msg of string ]) result
+
+(** [block_size_of_cert version cert] is either the decoded block size, or an error. *)
+val block_size_of_cert : version -> X509.t -> (int, [> `Msg of string ]) result

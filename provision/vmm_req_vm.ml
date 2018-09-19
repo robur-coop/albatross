@@ -16,7 +16,7 @@ let vm_csr key name image cpu mem args block net force compression =
   and net = match net with
     | [] -> []
     | xs -> [ (false, `Unsupported (Oid.network, strings_to_cstruct xs)) ]
-  and cmd = if force then `Force_create else `Create
+  and cmd = if force then `Force_create_vm else `Create_vm
   in
   let image = match compression with
     | 0 -> image_to_cstruct (`Ukvm_amd64, image)
@@ -29,7 +29,7 @@ let vm_csr key name image cpu mem args block net force compression =
       (false, `Unsupported (Oid.cpuid, int_to_cstruct cpu)) ;
       (false, `Unsupported (Oid.memory, int_to_cstruct mem)) ;
       (false, `Unsupported (Oid.vmimage, image)) ;
-      (false, `Unsupported (Oid.permissions, permissions_to_cstruct [ cmd ])) ;
+      (false, `Unsupported (Oid.command, command_to_cstruct cmd)) ;
     ] @ block @ arg @ net
   and name = [ `CN name ]
   in

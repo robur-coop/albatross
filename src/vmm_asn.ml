@@ -19,7 +19,7 @@ module Oid = struct
   let cpuids = m <| 4
   (* TODO: embed host URL (well, or use common name / SubjectAlternativeName with IP, and static port?) *)
 
-  (* used in both CA and VM certs *)
+  (* used in both CA and VM certs, also for block_create *)
   let memory = m <| 5
 
   (* used only in VM certs *)
@@ -29,26 +29,29 @@ module Oid = struct
   let vmimage = m <| 9
   let argv = m <| 10
 
-  (* used in VM certs and other leaf certs *)
-  let permissions = m <| 42
+  (* used in leaf certs *)
+  let command = m <| 42
 
   (* used in CRL certs *)
   let crl = m <| 43
 end
 
-let perms : permission list Asn.t =
-  Asn.S.bit_string_flags [
-    0, `All ; (* no *)
-    1, `Info ;
-    2, `Create ;
-    3, `Block ; (* create [name] [size] ; destroy [name] *)
+let command : command Asn.t =
+  let alist = [
+    0, `Info ;
+    1, `Create_vm ;
+    2, `Force_create_vm ;
+    3, `Destroy_vm ;
     4, `Statistics ;
     5, `Console ;
     6, `Log ;
     7, `Crl ;
-    9, `Force_create ;
-    (* 10, `Destroy ; (* [name] *) *)
+    8, `Create_block ;
+    9, `Destroy_block ;
   ]
+  in
+  let rev = List.map (fun (k, v) -> (v, k)) alist in
+  Asn.S.enumerated (fun i -> List.assoc i alist) (fun k -> List.assoc k rev)
 
 open Rresult.R.Infix
 
@@ -118,7 +121,7 @@ let image =
 
 let image_of_cstruct, image_to_cstruct = projections_of image
 
-let permissions_of_cstruct, permissions_to_cstruct = projections_of perms
+let command_of_cstruct, command_to_cstruct = projections_of command
 
 let req label cert oid f =
   match X509.Extension.unsupported cert oid with
@@ -130,23 +133,28 @@ let opt cert oid f =
   | None -> Ok None
   | Some (_, data) -> f data >>| fun s -> Some s
 
-type version = [ `AV0 ]
+type version = [ `AV0 | `AV1 ]
 
 let version_of_int = function
   | 0 -> Ok `AV0
+  | 1 -> Ok `AV1
   | _ -> Error (`Msg "couldn't parse version")
 
 let version_to_int = function
   | `AV0 -> 0
+  | `AV1 -> 1
 
 let pp_version ppf v =
   Fmt.int ppf
     (match v with
-     | `AV0 -> 0)
+     | `AV0 -> 0
+     | `AV1 -> 1)
 
 let version_eq a b =
   match a, b with
   | `AV0, `AV0 -> true
+  | `AV1, `AV1 -> true
+  | _ -> false
 
 let version_to_cstruct v = int_to_cstruct (version_to_int v)
 
@@ -209,6 +217,14 @@ let vm_of_cert prefix cert =
   let network = match network with None -> [] | Some x -> x in
   Ok { prefix ; vname ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
 
-let permissions_of_cert version cert =
+let command_of_cert version cert =
   version_of_cert version cert >>= fun () ->
-  req "permissions" cert Oid.permissions permissions_of_cstruct
+  req "command" cert Oid.command command_of_cstruct
+
+let block_device_of_cert version cert =
+  version_of_cert version cert >>= fun () ->
+  req "block-device" cert Oid.block_device string_of_cstruct
+
+let block_size_of_cert version cert =
+  version_of_cert version cert >>= fun () ->
+  req "block-size" cert Oid.memory int_of_cstruct

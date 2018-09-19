@@ -154,6 +154,8 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
+(* TODO needs CRL as well, plus socket(s) *)
+
 let cacert =
   let doc = "CA certificate" in
   Arg.(required & pos 0 (some file) None & info [] ~doc)

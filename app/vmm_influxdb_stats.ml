@@ -354,7 +354,7 @@ let host_port : (string * int) Arg.converter =
 
 let socket =
   let doc = "Stat socket to connect onto" in
-  let sock = Fpath.(to_string (Vmm_core.tmpdir / "stat" + "sock")) in
+  let sock = Vmm_core.socket_path `Stats in
   Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let influx =

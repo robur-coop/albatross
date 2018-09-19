@@ -237,7 +237,7 @@ let setup_log =
 
 let socket =
   let doc = "Socket to listen on" in
-  let sock = Fpath.(to_string (Vmm_core.tmpdir / "log" + "sock")) in
+  let sock = Vmm_core.socket_path `Log in
   Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let file =

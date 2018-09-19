@@ -1,6 +1,6 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-let asn_version = `AV0
+let asn_version = `AV1
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();

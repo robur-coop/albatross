@@ -2,12 +2,13 @@
 
 (* the process responsible for buffering console IO *)
 
-(* communication channel is a single unix domain socket shared between vmmd and
-   vmm_console.  The vmmd can issue the following commands:
-    - Add name --> creates a new console slurper for name
-    - Attach name since --> attaches console of name since counter, whenever
-       console output to name is reported, this will be forwarded as Data
-    - Detach name --> detaches console *)
+(* communication channel is a single unix domain socket. The following commands
+   can be issued:
+    - Add name (by vmmd) --> creates a new console slurper for name,
+       and starts a read_console task
+    - Attach name --> attaches console of name: send existing stuff to client,
+       and record the requesting socket to receive further messages. A potential
+       earlier subscriber to the same console is closed. *)
 
 open Lwt.Infix
 
@@ -83,28 +84,18 @@ let attach s id =
   Logs.debug (fun m -> m "attempting to attach %a" Vmm_core.pp_id id) ;
   match String.Map.find name !t with
   | None -> Lwt.return (Error (`Msg "not found"))
-  | Some _ ->
-    active := String.Map.add name s !active ;
-    Lwt.return (Ok "attached")
-
-let detach id =
-  let name = Vmm_core.string_of_id id in
-  active := String.Map.remove name !active ;
-  Lwt.return (Ok "removed")
-
-let history s name since =
-  match String.Map.find (Vmm_core.string_of_id name) !t with
-  | None -> Lwt.return (Rresult.R.error_msgf "ring %a not found (%d): %a"
-                          Vmm_core.pp_id name (String.Map.cardinal !t)
-                          Fmt.(list ~sep:(unit ";") string)
-                          (List.map fst (String.Map.bindings !t)))
   | Some r ->
-    let entries = Vmm_ring.read_history r since in
+    let entries = Vmm_ring.read r in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
-        Vmm_lwt.write_wire s (Vmm_wire.Console.data my_version name i v) >|= fun _ -> ())
-      entries >|= fun () ->
-    Ok "success"
+        let msg = Vmm_wire.Console.data my_version id i v in
+        Vmm_lwt.write_wire s msg >|= fun _ -> ())
+      entries >>= fun () ->
+    (match String.Map.find name !active with
+     | None -> Lwt.return_unit
+     | Some s -> Vmm_lwt.safe_close s) >|= fun () ->
+    active := String.Map.add name s !active ;
+    Ok "attached"
 
 let handle s addr () =
   Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
@@ -120,22 +111,16 @@ let handle s addr () =
       Logs.err (fun m -> m "unexpected reply") ;
       loop ()
     | Ok (hdr, data) ->
-      (if not (Vmm_wire.version_eq hdr.version my_version) then
+      (if not (Vmm_wire.version_eq hdr.Vmm_wire.version my_version) then
          Lwt.return (Error (`Msg "ignoring data with bad version"))
        else
          match Vmm_wire.decode_strings data with
          | Error e -> Lwt.return (Error e)
-         | Ok (id, off) -> match Vmm_wire.Console.int_to_op hdr.tag with
+         | Ok (id, _) -> match Vmm_wire.Console.int_to_op hdr.Vmm_wire.tag with
            | Some Vmm_wire.Console.Add_console -> add_fifo id
            | Some Vmm_wire.Console.Attach_console -> attach s id
-           | Some Vmm_wire.Console.Detach_console -> detach id
-           | Some Vmm_wire.Console.History ->
-             (match Vmm_wire.decode_ptime ~off data with
-              | Error e -> Lwt.return (Error e)
-              | Ok since -> history s id since)
            | Some Vmm_wire.Console.Data -> Lwt.return (Error (`Msg "unexpected Data"))
-           | None ->
-             Lwt.return (Error (`Msg "unknown command"))) >>= (function
+           | None -> Lwt.return (Error (`Msg "unknown command"))) >>= (function
           | Ok msg -> Vmm_lwt.write_wire s (Vmm_wire.success ~msg my_version hdr.Vmm_wire.id hdr.Vmm_wire.tag)
           | Error (`Msg msg) ->
             Logs.err (fun m -> m "error while processing command: %s" msg) ;
@@ -179,7 +164,7 @@ let setup_log =
 
 let socket =
   let doc = "Socket to listen on" in
-  let sock = Fpath.(to_string (Vmm_core.tmpdir / "cons" + "sock")) in
+  let sock = Vmm_core.socket_path `Console in
   Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let cmd =

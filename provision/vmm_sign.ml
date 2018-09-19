@@ -59,7 +59,7 @@ let sign dbname cacert key csr days =
   (match has Vmm_asn.Oid.vmimage req_exts, has Vmm_asn.Oid.vms req_exts with
    | true, false -> Ok `Vm
    | false, true -> Ok `Delegation
-   | false, false -> Ok `Permission
+   | false, false -> Ok `Command
    | _ -> Error (`Msg "cannot categorise signing request")) >>= (function
       | `Vm ->
         Logs.app (fun m -> m "categorised as a virtual machine request") ;
@@ -160,20 +160,9 @@ let sign dbname cacert key csr days =
           | None -> s_exts
           | Some a -> (Vmm_asn.Oid.argv, Vmm_asn.strings_to_cstruct a) :: s_exts
         in
-        opt Vmm_asn.Oid.permissions req_exts Vmm_asn.permissions_of_cstruct >>= fun perms ->
-        Logs.app (fun m -> m "using permission %a"
-                     Fmt.(option ~none:(unit "none")
-                            (list ~sep:(unit ", ") Vmm_core.pp_permission)) perms) ;
-        let perm = match perms with
-          | Some [ `Force_create ] -> [ `Force_create ]
-          | Some [ `Create ] -> [ `Create ]
-          | _ ->
-            Logs.warn (fun m -> m "weird permissions (%a), replaced with create"
-                          Fmt.(option ~none:(unit "none")
-                                 (list ~sep:(unit ", ") Vmm_core.pp_permission)) perms) ;
-            [ `Create ]
-        in
-        let s_exts = (Vmm_asn.Oid.permissions, Vmm_asn.permissions_to_cstruct perm) :: s_exts in
+        req Vmm_asn.Oid.command req_exts Vmm_asn.command_of_cstruct >>= fun command ->
+        Logs.app (fun m -> m "using command %a" Vmm_core.pp_command command) ;
+        let s_exts = (Vmm_asn.Oid.command, Vmm_asn.command_to_cstruct command) :: s_exts in
         let exts = List.map (fun x -> (false, `Unsupported x)) s_exts in
         Ok (exts @ l_exts)
       | `Delegation ->
@@ -254,11 +243,23 @@ let sign dbname cacert key csr days =
          | Some (Some x) when x >= succ len -> Ok ()
          | Some _ -> Error (`Msg "cannot delegate that deep")) >>= fun () ->
         Ok (exts @ d_exts ~len ())
-      | `Permission ->
-        req Vmm_asn.Oid.permissions req_exts Vmm_asn.permissions_of_cstruct >>= fun perms ->
-        Logs.app (fun m -> m "an interactive certificate with permissions %a"
-                     Fmt.(list ~sep:(unit ", ") Vmm_core.pp_permission) perms) ;
-        let s_exts = (Vmm_asn.Oid.permissions, Vmm_asn.permissions_to_cstruct perms) :: s_exts in
+      | `Command ->
+        req Vmm_asn.Oid.command req_exts Vmm_asn.command_of_cstruct >>= fun command ->
+        Logs.app (fun m -> m "a leaf certificate with command %a"
+                     Vmm_core.pp_command command) ;
+        let s_exts = (Vmm_asn.Oid.command, Vmm_asn.command_to_cstruct command) :: s_exts in
+        (match command with
+         | `Create_block | `Destroy_block ->
+           req Vmm_asn.Oid.block_device req_exts Vmm_asn.string_of_cstruct >>| fun block_device ->
+           Logs.app (fun m -> m "block device %s" block_device) ;
+           (Vmm_asn.Oid.block_device, Vmm_asn.string_to_cstruct block_device) :: s_exts
+         | _ -> Ok s_exts) >>= fun s_exts ->
+        (match command with
+         | `Create_block ->
+           req Vmm_asn.Oid.memory req_exts Vmm_asn.int_of_cstruct >>| fun block_size ->
+           Logs.app (fun m -> m "block size %dMB" block_size) ;
+           (Vmm_asn.Oid.memory, Vmm_asn.int_to_cstruct block_size) :: s_exts
+          | _ -> Ok s_exts) >>= fun s_exts ->
         let exts = List.map (fun x -> (false, `Unsupported x)) s_exts in
         Ok (exts @ l_exts)) >>= fun extensions ->
   sign ~dbname extensions issuer key csr (Duration.of_day days)

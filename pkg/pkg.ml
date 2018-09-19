@@ -12,7 +12,7 @@ let () =
     (* Pkg.bin "app/vmm_client" ; *)
     (* Pkg.bin "app/vmm_tls_endpoint" ; *)
     Pkg.bin "app/vmmc" ;
-    Pkg.bin "provision/vmm_req_permissions" ;
+    Pkg.bin "provision/vmm_req_command" ;
     Pkg.bin "provision/vmm_req_delegation" ;
     Pkg.bin "provision/vmm_req_vm" ;
     Pkg.bin "provision/vmm_sign" ;

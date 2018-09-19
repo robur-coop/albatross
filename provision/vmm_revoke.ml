@@ -45,7 +45,7 @@ let jump _ db cacert cakey crl cn serial =
     priv_key None name >>= fun key ->
     let csr = X509.CA.request [ `CN name ] key in
     let extensions = [ (false, `Unsupported (Vmm_asn.Oid.version, Vmm_asn.version_to_cstruct asn_version)) ;
-                       (false, `Unsupported (Vmm_asn.Oid.permissions, Vmm_asn.permissions_to_cstruct [ `Crl ])) ;
+                       (false, `Unsupported (Vmm_asn.Oid.command, Vmm_asn.command_to_cstruct `Crl)) ;
                        (false, `Unsupported (Vmm_asn.Oid.crl, crl_cs)) ] @ l_exts
     in
     sign ~dbname:(Fpath.v db) extensions issuer cakey csr (Duration.of_hour 1)

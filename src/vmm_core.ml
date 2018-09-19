@@ -7,6 +7,19 @@ open Rresult.R.Infix
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
 
+let socket_path =
+  let path name = Fpath.(to_string (tmpdir / name + "sock")) in
+  function
+  | `Console -> path "console"
+  | `Vmmd -> path "vmmd"
+  | `Stats -> path "stat"
+  | `Log -> path "log"
+
+let pp_socket ppf t =
+  let name = socket_path t in
+  Fmt.pf ppf "socket: %s" name
+
+
 module I = struct
   type t = int
   let compare : int -> int -> int = compare
@@ -16,76 +29,36 @@ module IS = Set.Make(I)
 module IM = Map.Make(I)
 module IM64 = Map.Make(Int64)
 
-type permission =
-  [ `All | `Info | `Create | `Block | `Statistics | `Console | `Log | `Crl | `Force_create]
+type command =
+  [ `Info | `Create_vm | `Force_create_vm | `Destroy_vm
+  | `Statistics | `Console | `Log | `Crl
+  | `Create_block | `Destroy_block ]
 
-let pp_permission ppf = function
-  | `All -> Fmt.pf ppf "all"
-  | `Info -> Fmt.pf ppf "info"
-  | `Create -> Fmt.pf ppf "create"
-  | `Block -> Fmt.pf ppf "block"
-  | `Statistics -> Fmt.pf ppf "statistics"
-  | `Console -> Fmt.pf ppf "console"
-  | `Log -> Fmt.pf ppf "log"
-  | `Crl -> Fmt.pf ppf "crl"
-  | `Force_create -> Fmt.pf ppf "force-create"
+let pp_command ppf cmd =
+  Fmt.string ppf @@ match cmd with
+  | `Info -> "info"
+  | `Create_vm -> "create-vm"
+  | `Force_create_vm -> "force-create-vm"
+  | `Destroy_vm -> "destroy-vm"
+  | `Statistics -> "statistics"
+  | `Console -> "console"
+  | `Log -> "log"
+  | `Crl -> "crl"
+  | `Create_block -> "create-block"
+  | `Destroy_block -> "destroy-block"
 
-let permission_of_string = function
-  | x when x = "all" -> Some `All
+let command_of_string = function
   | x when x = "info" -> Some `Info
-  | x when x = "create" -> Some `Create
-  | x when x = "block" -> Some `Block
+  | x when x = "create-vm" -> Some `Create_vm
+  | x when x = "force-create-vm" -> Some `Force_create_vm
+  | x when x = "destroy-vm" -> Some `Destroy_vm
   | x when x = "statistics" -> Some `Statistics
   | x when x = "console" -> Some `Console
   | x when x = "log" -> Some `Log
   | x when x = "crl" -> Some `Crl
-  | x when x = "force-create" -> Some `Force_create
+  | x when x = "create-block" -> Some `Create_block
+  | x when x = "destroy-block" -> Some `Destroy_block
   | _ -> None
-
-type cmd =
-  | Info
-  | Destroy_vm
-  | Create_block
-  | Destroy_block
-  | Statistics
-  | Attach
-  | Detach
-  | Log
-
-let pp_cmd ppf = function
-  | Info -> Fmt.pf ppf "info"
-  | Destroy_vm -> Fmt.pf ppf "destroy"
-  | Create_block -> Fmt.pf ppf "create-block"
-  | Destroy_block -> Fmt.pf ppf "destroy-block"
-  | Statistics -> Fmt.pf ppf "statistics"
-  | Attach -> Fmt.pf ppf "attach"
-  | Detach -> Fmt.pf ppf "detach"
-  | Log -> Fmt.pf ppf "log"
-
-let cmd_of_string = function
-  | x when x = "info" -> Some Info
-  | x when x = "destroy" -> Some Destroy_vm
-  | x when x = "create-block" -> Some Create_block
-  | x when x = "destroy-block" -> Some Destroy_block
-  | x when x = "statistics" -> Some Statistics
-  | x when x = "attach" -> Some Attach
-  | x when x = "detach" -> Some Detach
-  | x when x = "log" -> Some Log
-  | _ -> None
-
-let cmd_allowed permissions cmd =
-  List.mem `All permissions ||
-  let perm = match cmd with
-    | Info -> `Info
-    | Destroy_vm -> `Create
-    | Create_block -> `Block
-    | Destroy_block -> `Block
-    | Statistics -> `Statistics
-    | Attach -> `Console
-    | Detach -> `Console
-    | Log -> `Log
-  in
-  List.mem perm permissions
 
 type vmtype = [ `Ukvm_amd64 | `Ukvm_arm64 | `Ukvm_amd64_compressed ]
 

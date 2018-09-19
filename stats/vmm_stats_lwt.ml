@@ -84,7 +84,7 @@ let setup_log =
 
 let socket =
   let doc = "Socket to listen on" in
-  let sock = Fpath.(to_string (Vmm_core.tmpdir / "stat" + "sock")) in
+  let sock = Vmm_core.socket_path `Stats in
   Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
 
 let interval =

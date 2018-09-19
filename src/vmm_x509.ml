@@ -1,5 +1,5 @@
 
-let asn_version = `AV0
+let asn_version = `AV1
 
 let handle_single_revocation t prefix serial =
   let id = identifier serial in
