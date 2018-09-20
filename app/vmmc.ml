@@ -43,8 +43,7 @@ let connect socket_path =
 let info_ _ opt_socket name =
   Lwt_main.run (
     connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let name' = Astring.String.cuts ~empty:false ~sep:"." name in
-    let info = Vmm_wire.Vm.info my_command my_version name' in
+    let info = Vmm_wire.Vm.info my_command my_version name in
     (Vmm_lwt.write_wire fd info >>= function
       | Ok () ->
         (process fd >|= function
@@ -65,7 +64,7 @@ let info_ _ opt_socket name =
 
 let really_destroy opt_socket name =
   connect (socket `Vmmd opt_socket) >>= fun fd ->
-  let cmd = Vmm_wire.Vm.destroy my_command my_version (Astring.String.cuts ~empty:false ~sep:"." name) in
+  let cmd = Vmm_wire.Vm.destroy my_command my_version name in
   (Vmm_lwt.write_wire fd cmd >>= function
     | Ok () ->
       (process fd >|= function
@@ -83,7 +82,7 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
     | Ok data -> data
     | Error (`Msg s) -> invalid_arg s
   in
-  let prefix, vname = match List.rev (Astring.String.cuts ~empty:false ~sep:"." name) with
+  let prefix, vname = match List.rev name with
     | [ name ] -> [], name
     | name::tl -> List.rev tl, name
     | [] -> assert false
@@ -116,7 +115,7 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
 let console _ opt_socket name =
   Lwt_main.run (
     connect (socket `Console opt_socket) >>= fun fd ->
-    let cmd = Vmm_wire.Console.attach my_command my_version (Astring.String.cuts ~empty:false ~sep:"." name) in
+    let cmd = Vmm_wire.Console.attach my_command my_version name in
     (Vmm_lwt.write_wire fd cmd >>= function
       | Error `Exception ->
         Logs.err (fun m -> m "couldn't write to socket") ;
@@ -147,7 +146,7 @@ let console _ opt_socket name =
               let r =
                 let open Rresult.R.Infix in
                 match Vmm_wire.Console.int_to_op hdr.Vmm_wire.tag with
-                | Some Data ->
+                | Some Vmm_wire.Console.Data ->
                   Vmm_wire.decode_id_ts data >>= fun ((name, ts), off) ->
                   Vmm_wire.decode_string (Cstruct.shift data off) >>= fun (msg, _) ->
                   Logs.app (fun m -> m "%a %a: %s" Ptime.pp ts Vmm_core.pp_id name msg) ;
@@ -162,6 +161,62 @@ let console _ opt_socket name =
                 Lwt.return_unit
         in
         loop ()) >>= fun () ->
+    Vmm_lwt.safe_close fd) ;
+  `Ok ()
+
+let stats _ opt_socket vms =
+  Lwt_main.run (
+    connect (socket `Stats opt_socket) >>= fun fd ->
+    let count = ref 0L in
+    Lwt_list.iter_s (fun name ->
+        let cmd = Vmm_wire.Stats.stat !count my_version name in
+        count := Int64.succ !count ;
+        Vmm_lwt.write_wire fd cmd >>= function
+        | Error `Exception -> Lwt.fail_with "write error"
+        | Ok () -> Lwt.return_unit) vms >>= fun () ->
+    (* now we busy read and process stat output *)
+    let rec loop () =
+      Vmm_lwt.read_wire fd >>= function
+      | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
+      | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
+      | Ok (hdr, data) ->
+        if Vmm_wire.is_fail hdr then
+          let msg = match Vmm_wire.decode_string data with
+            | Error _ -> None
+            | Ok (m, _) -> Some m
+          in
+          Logs.err (fun m -> m "operation failed: %a" Fmt.(option ~none:(unit "") string) msg) ;
+          Lwt.return_unit
+        else if Vmm_wire.is_reply hdr then
+          let msg = match Vmm_wire.decode_string data with
+            | Error _ -> None
+            | Ok (m, _) -> Some m
+          in
+          Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
+          loop ()
+        else
+          let r =
+            let open Rresult.R.Infix in
+            match Vmm_wire.Stats.int_to_op hdr.Vmm_wire.tag with
+            | Some Vmm_wire.Stats.Data ->
+              Vmm_wire.decode_strings data >>= fun (id, off) ->
+              Vmm_wire.Stats.decode_stats (Cstruct.shift data off) >>| fun stats ->
+              (Astring.String.concat ~sep:"." id, stats)
+            | _ ->
+              Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag))
+          in
+          match r with
+          | Ok (name, (ru, vmm, ifs)) ->
+            Logs.app (fun m -> m "stats %s: %a %a %a"
+                         name Vmm_core.pp_rusage ru
+                         Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) vmm
+                         Fmt.(list ~sep:(unit "@.") Vmm_core.pp_ifdata) ifs) ;
+            loop ()
+          | Error (`Msg msg) ->
+            Logs.err (fun m -> m "%s" msg) ;
+            Lwt.return_unit
+    in
+    loop () >>= fun () ->
     Vmm_lwt.safe_close fd) ;
   `Ok ()
 
@@ -194,9 +249,14 @@ let image =
   let doc = "File of virtual machine image." in
   Arg.(required & pos 1 (some file) None & info [] ~doc)
 
+let vm_c =
+  let parse s = `Ok (Vmm_core.id_of_string s)
+  in
+  (parse, Vmm_core.pp_id)
+
 let vm_name =
   let doc = "Name virtual machine." in
-  Arg.(required & pos 0 (some string) None & info [] ~doc)
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc)
 
 let destroy_cmd =
   let doc = "destroys a virtual machine" in
@@ -246,13 +306,26 @@ let create_cmd =
   Term.info "create" ~doc ~man
 
 let console_cmd =
-  let doc = "console of a VMs" in
+  let doc = "console of a VM" in
   let man =
     [`S "DESCRIPTION";
-     `P "Shows console output of a VMs."]
+     `P "Shows console output of a VM."]
   in
   Term.(ret (const console $ setup_log $ socket $ vm_name)),
   Term.info "console" ~doc ~man
+
+let vm_names =
+  let doc = "Name virtual machine." in
+  Arg.(value & opt_all vm_c [] & info [ "n" ; "name" ] ~doc)
+
+let stats_cmd =
+  let doc = "statistics of VMs" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Shows statistics of VMs."]
+  in
+  Term.(ret (const stats $ setup_log $ socket $ vm_names)),
+  Term.info "stats" ~doc ~man
 
 let help_cmd =
   let topic =
@@ -276,7 +349,7 @@ let default_cmd =
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
   Term.info "vmmc" ~version:"%%VERSION_NUM%%" ~doc ~man
 
-let cmds = [ help_cmd ; info_cmd ; destroy_cmd ; create_cmd ; console_cmd ]
+let cmds = [ help_cmd ; info_cmd ; destroy_cmd ; create_cmd ; console_cmd ; stats_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds

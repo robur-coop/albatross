@@ -16,22 +16,24 @@ external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
 external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
 external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
 
-let my_version = `WV1
+let my_version = `WV2
 
 let descr = ref []
 
-type t = {
+type 'a t = {
   pid_nic : ((vmctx, int) result * (int * string) list) IM.t ;
-  pid_rusage : rusage IM.t ;
-  pid_vmmapi : (string * int64) list IM.t ;
-  nic_ifdata : ifdata String.Map.t ;
   vmid_pid : int String.Map.t ;
+  name_sockets : 'a String.Map.t ;
 }
 
 let pp_strings pp taps = Fmt.(list ~sep:(unit ",@ ") string) pp taps
 
 let empty () =
-  { pid_nic = IM.empty ; pid_rusage = IM.empty ; pid_vmmapi = IM.empty ; nic_ifdata = String.Map.empty ; vmid_pid = String.Map.empty }
+  { pid_nic = IM.empty ; vmid_pid = String.Map.empty ; name_sockets = String.Map.empty }
+
+let remove_socket t name =
+  let name_sockets = String.Map.remove name t.name_sockets in
+  { t with name_sockets }
 
 let rec wrap f arg =
   try Some (f arg) with
@@ -91,33 +93,33 @@ let gather pid vmctx nics =
         ifd
       | Some data ->
         Logs.debug (fun m -> m "adding ifdata for %s" nname) ;
-        String.Map.add data.name data ifd)
-    String.Map.empty nics
+        data::ifd)
+    [] nics
 
 let tick t =
   Logs.debug (fun m -> m "tick with %d vms" (IM.cardinal t.pid_nic)) ;
-  let pid_rusage, pid_vmmapi, nic_ifdata =
-    IM.fold (fun pid (vmctx, nics) (rus, vmms, ifds) ->
-        let ru, vmm, ifd = gather pid vmctx nics in
-        (match ru with
-         | None ->
-           Logs.warn (fun m -> m "failed to get rusage for %d" pid) ;
-           rus
-         | Some ru ->
-           Logs.debug (fun m -> m "adding resource usage for %d" pid) ;
-           IM.add pid ru rus),
-        (match vmm with
-         | None ->
-           Logs.warn (fun m -> m "failed to get vmmapi_stats for %d" pid) ;
-           vmms
-         | Some vmm ->
-           Logs.debug (fun m -> m "adding vmmapi_stats for %d" pid) ;
-           IM.add pid (List.combine !descr vmm) vmms),
-        String.Map.union (fun _k a _b -> Some a) ifd ifds)
-      t.pid_nic (IM.empty, IM.empty, String.Map.empty)
-  in
   let pid_nic = try_open_vmmapi t.pid_nic in
-  { t with pid_rusage ; pid_vmmapi ; nic_ifdata ; pid_nic }
+  let t' = { t with pid_nic } in
+  let outs =
+    String.Map.fold (fun name socket out ->
+        match String.Map.find_opt name t.vmid_pid with
+        | None -> Logs.warn (fun m -> m "couldn't find pid of %s" name) ; out
+        | Some pid -> match IM.find_opt pid t.pid_nic with
+          | None -> Logs.warn (fun m -> m "couldn't find nics of %d" pid) ; out
+          | Some (vmctx, nics) ->
+            let ru, vmm, ifd = gather pid vmctx nics in
+            match ru with
+            | None -> Logs.err (fun m -> m "failed to get rusage for %d" pid) ; out
+            | Some ru' ->
+              let stats =
+                let vmm' = match vmm with None -> [] | Some xs -> List.combine !descr xs in
+                ru', vmm', ifd
+              in
+              let stats_encoded = Vmm_wire.Stats.(data 0L my_version name (encode_stats stats)) in
+              (socket, name, stats_encoded) :: out)
+      t'.name_sockets []
+  in
+  (t', outs)
 
 let add_pid t vmid pid nics =
   match wrap sysctl_ifcount () with
@@ -143,35 +145,6 @@ let add_pid t vmid pid nics =
     in
     Ok { t with pid_nic ; vmid_pid }
 
-
-let stats t vmid =
-  Logs.debug (fun m -> m "querying statistics for vmid %s" vmid) ;
-  match String.Map.find vmid t.vmid_pid with
-  | None -> Error (`Msg ("unknown vm " ^ vmid))
-  | Some pid ->
-    Logs.debug (fun m -> m "querying statistics for %d" pid) ;
-    try
-      let _, nics = IM.find pid t.pid_nic
-      and ru = IM.find pid t.pid_rusage
-      and vmm =
-        try IM.find pid t.pid_vmmapi with
-        | Not_found ->
-          Logs.err (fun m -> m "failed to find vmm stats for %d" pid);
-          []
-      in
-      match
-        List.fold_left (fun acc nic ->
-            match String.Map.find nic t.nic_ifdata, acc with
-            | None, _ -> None
-            | _, None -> None
-            | Some ifd, Some acc -> Some (ifd :: acc))
-          (Some []) (snd (List.split nics))
-      with
-      | None -> Error (`Msg "failed to find interface statistics")
-      | Some ifd -> Ok (ru, vmm, ifd)
-    with
-    | _ -> Error (`Msg "failed to find resource usage")
-
 let remove_vmid t vmid =
   Logs.info (fun m -> m "removing vmid %s" vmid) ;
   match String.Map.find vmid t.vmid_pid with
@@ -192,14 +165,15 @@ let remove_vmid t vmid =
 let remove_vmids t vmids =
   List.fold_left remove_vmid t vmids
 
-let handle t hdr cs =
+let handle t socket hdr cs =
   let open Vmm_wire in
   let open Vmm_wire.Stats in
   let r =
     if not (version_eq my_version hdr.version) then
       Error (`Msg "cannot handle version")
     else
-      decode_string cs >>= fun (name, off) ->
+      decode_strings cs >>= fun (id, off) ->
+      let name = Vmm_core.string_of_id id in
       match int_to_op hdr.tag with
       | Some Add ->
         decode_pid_taps (Cstruct.shift cs off) >>= fun (pid, taps) ->
@@ -209,8 +183,8 @@ let handle t hdr cs =
         let t = remove_vmid t name in
         Ok (t, `Remove name, success ~msg:"removed" my_version hdr.id (op_to_int Remove))
       | Some Stats ->
-        stats t name >>= fun s ->
-        Ok (t, `None, stat_reply hdr.id my_version (encode_stats s))
+        let name_sockets = String.Map.add name socket t.name_sockets in
+        Ok ({ t with name_sockets }, `None, success ~msg:"subscribed" my_version hdr.id (op_to_int Stats))
       | _ -> Error (`Msg "unknown command")
   in
   match r with

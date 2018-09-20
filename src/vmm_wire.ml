@@ -261,16 +261,19 @@ module Stats = struct
     | Add
     | Remove
     | Stats
+    | Data
 
   let op_to_int = function
     | Add -> 0x0200l
     | Remove -> 0x0201l
     | Stats -> 0x0202l
+    | Data -> 0x0203l
 
   let int_to_op = function
     | 0x0200l -> Some Add
     | 0x0201l -> Some Remove
     | 0x0202l -> Some Stats
+    | 0x0203l -> Some Data
     | _ -> None
 
   let rusage_len = 144l
@@ -381,8 +384,9 @@ module Stats = struct
 
   let stat id version name = encode ~name version id (op_to_int Stats)
 
-  let stat_reply id version body =
-    reply ~body version id (op_to_int Stats)
+  let data id version vm body =
+    let name = Vmm_core.id_of_string vm in
+    encode ~name ~body version id (op_to_int Data)
 
   let encode_int64 i =
     let cs = Cstruct.create 8 in

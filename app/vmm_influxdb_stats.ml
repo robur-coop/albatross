@@ -140,11 +140,9 @@ module P = struct
       vm ifd.name (String.concat ~sep:"," fields)
 end
 
-let my_version = `WV1
+let my_version = `WV2
 
 let command = ref 1L
-
-let (req : string IM64.t ref) = ref IM64.empty
 
 let str_of_e = function
   | `Eof -> "end of file"
@@ -160,65 +158,67 @@ let safe_close s =
        Logs.err (fun m -> m "exception %s while closing" (Printexc.to_string e)) ;
        Lwt.return_unit)
 
-let rec read_sock_write_tcp closing db c ?fd addr addrtype =
+let rec read_sock_write_tcp c ?fd addr addrtype =
   match fd with
   | None ->
-    if !closing then
-      Lwt.return_unit
-    else begin
-      Logs.debug (fun m -> m "new connection to TCP") ;
-      let fd = Lwt_unix.socket addrtype Lwt_unix.SOCK_STREAM 0 in
-      Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
-      Lwt.catch
-        (fun () ->
-           Lwt_unix.connect fd addr >|= fun () ->
-           Logs.debug (fun m -> m "connected to TCP") ;
-           Some fd)
-        (fun e ->
-           let addr', port = match addr with
-             | Lwt_unix.ADDR_INET (ip, port) -> Unix.string_of_inet_addr ip, port
-             | Lwt_unix.ADDR_UNIX addr -> addr, 0
-           in
-           Logs.warn (fun m -> m "error %s connecting to influxd %s:%d, retrying in 5s"
-                         (Printexc.to_string e) addr' port) ;
-           safe_close fd >>= fun () ->
-           Lwt_unix.sleep 5.0 >|= fun () ->
-           None) >>= fun fd ->
-      read_sock_write_tcp closing db c ?fd addr addrtype
-    end
+    Logs.debug (fun m -> m "new connection to TCP") ;
+    let fd = Lwt_unix.socket addrtype Lwt_unix.SOCK_STREAM 0 in
+    Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
+    Lwt.catch
+      (fun () ->
+         Lwt_unix.connect fd addr >|= fun () ->
+         Logs.debug (fun m -> m "connected to TCP") ;
+         Some fd)
+      (fun e ->
+         let addr', port = match addr with
+           | Lwt_unix.ADDR_INET (ip, port) -> Unix.string_of_inet_addr ip, port
+           | Lwt_unix.ADDR_UNIX addr -> addr, 0
+         in
+         Logs.warn (fun m -> m "error %s connecting to influxd %s:%d, retrying in 5s"
+                       (Printexc.to_string e) addr' port) ;
+         safe_close fd >>= fun () ->
+         Lwt_unix.sleep 5.0 >|= fun () ->
+         None) >>= fun fd ->
+    read_sock_write_tcp c ?fd addr addrtype
   | Some fd ->
-    if !closing then
-      safe_close fd
-    else begin
-      let open Vmm_wire in
-      Logs.debug (fun m -> m "reading from unix socket") ;
-      Vmm_lwt.read_wire c >>= function
-      | Error e ->
-        Logs.err (fun m -> m "error %s while reading vmm socket (return)"
-                     (str_of_e e)) ;
-        closing := true ;
-        safe_close fd
-      | Ok (hdr, data) ->
-        let name =
-          try IM64.find hdr.id !req
-          with Not_found -> "not found"
-        in
-        req := IM64.remove hdr.id !req ;
-        (if not (version_eq hdr.version my_version) then begin
-            Logs.err (fun m -> m "unknown wire protocol version") ;
-            closing := true ;
-            safe_close fd >|= fun () ->
-            None
-          end else if Vmm_wire.is_fail hdr then begin
-           Logs.err (fun m -> m "failed to retrieve statistics for %s" name) ;
-           Lwt.return (Some fd)
-         end else if Vmm_wire.is_reply hdr then
-           begin match Vmm_wire.Stats.decode_stats data with
+    let open Vmm_wire in
+    Logs.debug (fun m -> m "reading from unix socket") ;
+    Vmm_lwt.read_wire c >>= function
+    | Error e ->
+      Logs.err (fun m -> m "error %s while reading vmm socket (return)"
+                   (str_of_e e)) ;
+      safe_close fd >>= fun () ->
+      safe_close c >|= fun () ->
+      true
+    | Ok (hdr, data) ->
+      if not (version_eq hdr.version my_version) then begin
+        Logs.err (fun m -> m "unknown wire protocol version") ;
+        safe_close fd >>= fun () ->
+        safe_close c >|= fun () ->
+        false
+      end else if Vmm_wire.is_fail hdr then begin
+        Logs.err (fun m -> m "failed to retrieve statistics") ;
+        safe_close fd >>= fun () ->
+        safe_close c >|= fun () ->
+        false
+      end else if Vmm_wire.is_reply hdr then begin
+        Logs.info (fun m -> m "received reply, continuing") ;
+        read_sock_write_tcp c ~fd addr addrtype
+      end else
+        (match Vmm_wire.Stats.int_to_op hdr.Vmm_wire.tag with
+         | Some Vmm_wire.Stats.Data ->
+           begin
+             let r =
+               let open Rresult.R.Infix in
+               Vmm_wire.decode_strings data >>= fun (id, off) ->
+               Vmm_wire.Stats.decode_stats (Cstruct.shift data off) >>| fun stats ->
+               (Vmm_core.string_of_id id, stats)
+             in
+             match r with
              | Error (`Msg msg) ->
-               Logs.warn (fun m -> m "error %s while decoding stats %s, ignoring"
-                             msg name) ;
+               Logs.warn (fun m -> m "error %s while decoding stats, ignoring" msg) ;
                Lwt.return (Some fd)
-             | Ok (ru, vmm, ifs) ->
+             | Ok (name, (ru, vmm, ifs)) ->
                let ru = P.encode_ru name ru in
                let vmm = P.encode_vmm name vmm in
                let taps = List.map (P.encode_if name) ifs in
@@ -234,37 +234,23 @@ let rec read_sock_write_tcp closing db c ?fd addr addrtype =
                  safe_close fd >|= fun () ->
                  None
            end
-         else begin
-           Logs.err (fun m -> m "unhandled tag %lu for %s" hdr.tag name) ;
-           Lwt.return (Some fd)
-         end) >>= fun fd ->
-        read_sock_write_tcp closing db c ?fd addr addrtype
-    end
+         | _ ->
+           Logs.err (fun m -> m "unhandled tag %lu" hdr.tag) ;
+           Lwt.return (Some fd)) >>= fun fd ->
+      read_sock_write_tcp c ?fd addr addrtype
 
-let rec query_sock closing prefix db c interval =
+let query_sock vms c =
   (* query c for everyone in db *)
-  if !closing then
-    Lwt.return_unit
-  else
-    Lwt_list.fold_left_s (fun r (id, name) ->
-        match r with
-        | Error e -> Lwt.return (Error e)
-        | Ok () ->
-          let id = identifier id in
-          let id = match prefix with None -> [ id ] | Some p -> [ p ; id ] in
-          let request = Vmm_wire.Stats.stat !command my_version id in
-          req := IM64.add !command name !req ;
-          command := Int64.succ !command  ;
-          Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id id) ;
-          Vmm_lwt.write_wire c request)
-      (Ok ()) db >>= function
-    | Error e ->
-      Logs.err (fun m -> m "error %s while writing to vmm socket" (str_of_e e)) ;
-      closing := true ;
-      Lwt.return_unit
-    | Ok () ->
-      Lwt_unix.sleep (float_of_int interval) >>= fun () ->
-      query_sock closing prefix db c interval
+  Lwt_list.fold_left_s (fun r name ->
+      match r with
+      | Error e -> Lwt.return (Error e)
+      | Ok () ->
+        let id = Astring.String.cuts ~sep:"." name in
+        let request = Vmm_wire.Stats.stat !command my_version id in
+        command := Int64.succ !command  ;
+        Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id id) ;
+        Vmm_lwt.write_wire c request)
+    (Ok ()) vms
 
 let rec maybe_connect stat_socket =
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
@@ -281,10 +267,7 @@ let rec maybe_connect stat_socket =
        Lwt_unix.sleep (float_of_int 5) >>= fun () ->
        maybe_connect stat_socket)
 
-let client stat_socket influxhost influxport db prefix interval =
-  (* start a socket connection to vmm_stats *)
-  maybe_connect stat_socket >>= fun c ->
-
+let client stat_socket influxhost influxport vms =
   (* figure out address of influx *)
   Lwt_unix.gethostbyname influxhost >>= fun host_entry ->
   let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
@@ -293,7 +276,7 @@ let client stat_socket influxhost influxport db prefix interval =
   in
 
   (* loop *)
-  (* the query task queries the stat_socket at each interval
+  (* the query task queries the stat_socket at each
      - if this fails, closing is set to true (and unit is returned)
 
      the read_sock reads the stat_socket, and forwards to a TCP socket
@@ -305,28 +288,23 @@ let client stat_socket influxhost influxport db prefix interval =
      - query_sock/read_sock_write_tcp write an read from it
      - on failure in read or write, the TCP connection is closed, and loop
        takes control: safe_close, maybe_connect, rinse, repeat *)
-  let rec loop c =
-    let closing = ref false in
-    Lwt.join [
-      query_sock closing prefix db c interval ;
-      read_sock_write_tcp closing db c addr addrtype
-    ] >>= fun () ->
-    safe_close c >>= fun () ->
-    maybe_connect stat_socket >>= fun c ->
-    loop c
-  in
-  loop c
 
-let run_client _ socket (influxhost, influxport) db prefix interval =
-  Sys.(set_signal sigpipe Signal_ignore) ;
-  let db =
-    let open Rresult.R.Infix in
-    match Bos.OS.File.read_lines (Fpath.v db) >>= parse_db with
-    | Ok [] -> invalid_arg "empty database"
-    | Ok db -> db
-    | Error (`Msg m) -> invalid_arg ("couldn't parse database " ^ m)
+  let rec loop () =
+    (* start a socket connection to vmm_stats *)
+    maybe_connect stat_socket >>= fun c ->
+    query_sock vms c >>= function
+    | Error e ->
+      Logs.err (fun m -> m "error %s while writing to stat socket" (str_of_e e)) ;
+      Lwt.return_unit
+    | Ok () ->
+      read_sock_write_tcp c addr addrtype >>= fun restart ->
+      if restart then loop () else Lwt.return_unit
   in
-  Lwt_main.run (client socket influxhost influxport db prefix interval)
+  loop ()
+
+let run_client _ socket (influxhost, influxport) vms =
+  Sys.(set_signal sigpipe Signal_ignore) ;
+  Lwt_main.run (client socket influxhost influxport vms)
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -361,17 +339,9 @@ let influx =
   Arg.(required & pos 0 (some host_port) None & info [] ~docv:"influx"
          ~doc:"the influx hostname:port to connect to")
 
-let db =
-  let doc = "VMID database" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
-
-let prefix =
-  let doc = "prefix" in
-  Arg.(value & opt (some string) None & info [ "prefix" ] ~doc)
-
-let interval =
-  let doc = "Poll interval in seconds" in
-  Arg.(value & opt int 10 & info [ "interval" ] ~doc)
+let vms =
+  let doc = "virtual machine names" in
+  Arg.(value & opt_all string [] & info [ "n" ; "name" ] ~doc)
 
 let cmd =
   let doc = "VMM InfluxDB connector" in
@@ -379,7 +349,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a vmm stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(pure run_client $ setup_log $ socket $ influx $ db $ prefix $ interval),
+  Term.(pure run_client $ setup_log $ socket $ influx $ vms),
   Term.info "vmm_influxdb_stats" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
