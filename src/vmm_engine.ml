@@ -123,7 +123,7 @@ let handle_command t hdr buf =
     else Vmm_wire.decode_strings buf >>= fun (id, _off) ->
       match Vmm_wire.Vm.int_to_op hdr.Vmm_wire.tag with
       | None -> Error (`Msg "unknown command")
-      | Some Info ->
+      | Some Vmm_wire.Vm.Info ->
         Logs.debug (fun m -> m "info %a" pp_id id) ;
         begin match Vmm_resources.find t.resources id with
           | None ->
@@ -136,10 +136,10 @@ let handle_command t hdr buf =
             let out = Vmm_wire.Vm.info_reply hdr.Vmm_wire.id t.client_version data in
             Ok (t, [ `Data out ], `End)
         end
-      | Some Create ->
+      | Some Vmm_wire.Vm.Create ->
         Vmm_wire.Vm.decode_vm_config buf >>= fun vm_config ->
         handle_create t hdr vm_config
-      | Some Destroy ->
+      | Some Vmm_wire.Vm.Destroy ->
         match Vmm_resources.find_vm t.resources id with
         | Some vm ->
           Vmm_unix.destroy vm ;
