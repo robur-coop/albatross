@@ -34,7 +34,7 @@ let handle state out c_fd fd addr =
      (c) create initiates the vm startup procedure:
          write image file, create fifo, create tap(s), send fifo to console
          -- Lwt effects happen (console) --
-         executes ukvm-bin + waiter, send stats pid and taps, inserts await into state, logs "created vm"
+         executes solo5-hvt + waiter, send stats pid and taps, inserts await into state, logs "created vm"
          -- Lwt effects happen (stats, logs, wait_and_clear) --
     (2) goto (1)
   *)

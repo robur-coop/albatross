@@ -105,13 +105,13 @@ let string_of_cstruct, string_to_cstruct = projections_of Asn.S.utf8_string
 
 let image =
   let f = function
-    | `C1 x -> `Ukvm_amd64, x
-    | `C2 x -> `Ukvm_arm64, x
-    | `C3 x -> `Ukvm_amd64_compressed, x
+    | `C1 x -> `Hvt_amd64, x
+    | `C2 x -> `Hvt_arm64, x
+    | `C3 x -> `Hvt_amd64_compressed, x
   and g = function
-    | `Ukvm_amd64, x -> `C1 x
-    | `Ukvm_arm64, x -> `C2 x
-    | `Ukvm_amd64_compressed, x -> `C3 x
+    | `Hvt_amd64, x -> `C1 x
+    | `Hvt_arm64, x -> `C2 x
+    | `Hvt_amd64_compressed, x -> `C3 x
   in
   Asn.S.map f g @@
   Asn.S.(choice3

@@ -116,13 +116,13 @@ let create_bridge bname =
 
 let prepare vm =
   (match vm.vmimage with
-   | `Ukvm_amd64, blob -> Ok blob
-   | `Ukvm_amd64_compressed, blob ->
+   | `Hvt_amd64, blob -> Ok blob
+   | `Hvt_amd64_compressed, blob ->
      begin match Vmm_compress.uncompress (Cstruct.to_string blob) with
        | Ok blob -> Ok (Cstruct.of_string blob)
        | Error () -> Error (`Msg "failed to uncompress")
      end
-   | `Ukvm_arm64, _ -> Error (`Msg "no amd64 ukvm image found")) >>= fun image ->
+   | `Hvt_arm64, _ -> Error (`Msg "no amd64 hvt image found")) >>= fun image ->
   let fifo = fifo_file vm in
   (match fifo_exists fifo with
    | Ok true -> Ok ()
@@ -161,8 +161,8 @@ let exec vm taps =
   let net = List.map (fun t -> "--net=" ^ t) taps in
   let argv = match vm.argv with None -> [] | Some xs -> xs in
   (match taps with
-   | [] -> Ok Fpath.(dbdir / "ukvm-bin.none")
-   | [_] -> Ok Fpath.(dbdir / "ukvm-bin.net")
+   | [] -> Ok Fpath.(dbdir / "solo5-hvt.none")
+   | [_] -> Ok Fpath.(dbdir / "solo5-hvt.net")
    | _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   cpuset vm.cpuid >>= fun cpuset ->
   let mem = "--mem=" ^ string_of_int vm.requested_memory in

@@ -60,23 +60,23 @@ let command_of_string = function
   | x when x = "destroy-block" -> Some `Destroy_block
   | _ -> None
 
-type vmtype = [ `Ukvm_amd64 | `Ukvm_arm64 | `Ukvm_amd64_compressed ]
+type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
 
 let vmtype_to_int = function
-  | `Ukvm_amd64 -> 0
-  | `Ukvm_arm64 -> 1
-  | `Ukvm_amd64_compressed -> 2
+  | `Hvt_amd64 -> 0
+  | `Hvt_arm64 -> 1
+  | `Hvt_amd64_compressed -> 2
 
 let int_to_vmtype = function
-  | 0 -> Some `Ukvm_amd64
-  | 1 -> Some `Ukvm_arm64
-  | 2 -> Some `Ukvm_amd64_compressed
+  | 0 -> Some `Hvt_amd64
+  | 1 -> Some `Hvt_arm64
+  | 2 -> Some `Hvt_amd64_compressed
   | _ -> None
 
 let pp_vmtype ppf = function
-  | `Ukvm_amd64 -> Fmt.pf ppf "ukvm-amd64"
-  | `Ukvm_amd64_compressed -> Fmt.pf ppf "ukvm-amd64-compressed"
-  | `Ukvm_arm64 -> Fmt.pf ppf "ukvm-arm64"
+  | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
+  | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
+  | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
 
 type id = string list
 

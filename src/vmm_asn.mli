@@ -52,8 +52,9 @@ module Oid : sig
       must exist. *)
   val block_device : Asn.OID.t
 
-  (** [vmimage] is a [CHOICE] between [ [0] OCTET_STRING] for an UKVM amd64
-      image and [ [1] OCTET_STRING] for an UKVM arm64 image. *)
+  (** [vmimage] is a [CHOICE] between [ [0] OCTET_STRING] for an hvt amd64
+     image, [ [1] OCTET_STRING] for an hvt arm64 image, and [ [2] OCTET_STRING]
+     for a compressed am64 hvt image. *)
   val vmimage : Asn.OID.t
 
   (** [argv] is a [SEQUENCE OF UTF8STRING] denoting the boot parameters passed

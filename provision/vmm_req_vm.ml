@@ -19,10 +19,10 @@ let vm_csr key name image cpu mem args block net force compression =
   and cmd = if force then `Force_create_vm else `Create_vm
   in
   let image = match compression with
-    | 0 -> image_to_cstruct (`Ukvm_amd64, image)
+    | 0 -> image_to_cstruct (`Hvt_amd64, image)
     | level ->
       let img = Vmm_compress.compress ~level (Cstruct.to_string image) in
-      image_to_cstruct (`Ukvm_amd64_compressed, Cstruct.of_string img)
+      image_to_cstruct (`Hvt_amd64_compressed, Cstruct.of_string img)
   in
   let exts =
     [ (false, `Unsupported (Oid.version, version_to_cstruct asn_version)) ;

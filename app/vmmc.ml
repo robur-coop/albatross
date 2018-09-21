@@ -90,7 +90,7 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
     | [] -> None
     | xs -> Some xs
   (* TODO we could do the compression btw *)
-  and vmimage = `Ukvm_amd64, Cstruct.of_string image'
+  and vmimage = `Hvt_amd64, Cstruct.of_string image'
   in
   let vm_config = {
     prefix ; vname ; cpuid ; requested_memory ; block_device ; network ;

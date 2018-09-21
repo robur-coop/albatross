@@ -56,7 +56,7 @@ let fill_descr ctx =
   | ds -> Logs.info (fun m -> m "%d descr are already present" (List.length ds))
 
 let open_vmmapi ?(retries = 4) pid =
-  let name = "ukvm" ^ string_of_int pid in
+  let name = "solo5-" ^ string_of_int pid in
   if retries = 0 then begin
     Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %d" pid) ;
     Error 0
