@@ -42,7 +42,7 @@ let handle s addr () =
       | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return acc
   in
   loop [] >>= fun vmids ->
-  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
+  Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnect, dropping %d vms!" (List.length vmids)) ;
   let t' = Vmm_stats.remove_vmids !t vmids in
   t := t'

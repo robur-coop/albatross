@@ -65,7 +65,7 @@ DEV> cd mirage-skeleton/tutorial/hello
 DEV> mirage configure -t hvt
 DEV> mirage build
 DEV> mv solo5-hvt /tmp/solo5-hvt.none
-DEV> cd ../device-usage/network
+DEV> cd ../../device-usage/network
 DEV> mirage configure -t hvt
 DEV> mirage build
 DEV> mv solo5-hvt /tmp/solo5-hvt.net

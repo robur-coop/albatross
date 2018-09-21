@@ -33,7 +33,7 @@ let read_console name ring channel () =
          | Some fd ->
            Vmm_lwt.write_wire fd (Vmm_wire.Console.data my_version id t line) >>= function
            | Error _ ->
-             Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit) >|= fun () ->
+             Vmm_lwt.safe_close fd >|= fun () ->
              active := String.Map.remove name !active
            | Ok () -> Lwt.return_unit) >>=
         loop
@@ -83,7 +83,9 @@ let attach s id =
   let name = Vmm_core.string_of_id id in
   Logs.debug (fun m -> m "attempting to attach %a" Vmm_core.pp_id id) ;
   match String.Map.find name !t with
-  | None -> Lwt.return (Error (`Msg "not found"))
+  | None ->
+    active := String.Map.add name s !active ;
+    Lwt.return (Ok "waiing for VM")
   | Some r ->
     let entries = Vmm_ring.read r in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
@@ -131,7 +133,7 @@ let handle s addr () =
         Lwt.return_unit
   in
   loop () >>= fun () ->
-  Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
+  Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnected")
 
 let jump _ file =
