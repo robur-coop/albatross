@@ -267,13 +267,17 @@ let destroy_cmd =
   Term.(ret (const destroy $ setup_log $ socket $ vm_name)),
   Term.info "destroy" ~doc ~man
 
+let opt_vmname =
+  let doc = "Name virtual machine." in
+  Arg.(value & opt vm_c [] & info [ "n" ; "name"] ~doc)
+
 let info_cmd =
   let doc = "information about VMs" in
   let man =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(ret (const info_ $ setup_log $ socket $ vm_name)),
+  Term.(ret (const info_ $ setup_log $ socket $ opt_vmname)),
   Term.info "info" ~doc ~man
 
 let cpu =
