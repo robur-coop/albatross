@@ -207,7 +207,7 @@ let stats _ opt_socket vms =
           in
           match r with
           | Ok (name, (ru, vmm, ifs)) ->
-            Logs.app (fun m -> m "stats %s: %a %a %a"
+            Logs.app (fun m -> m "stats %s@.%a@.%a@.%a@."
                          name Vmm_core.pp_rusage ru
                          Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) vmm
                          Fmt.(list ~sep:(unit "@.") Vmm_core.pp_ifdata) ifs) ;
