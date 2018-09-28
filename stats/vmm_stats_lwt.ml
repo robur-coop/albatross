@@ -28,15 +28,14 @@ let handle s addr () =
     | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop acc
     | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return acc
     | Ok (hdr, data) ->
-      Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp data) ;
-      let t', action, out = Vmm_stats.handle !t s hdr data in
+      let t', action, close, out = Vmm_stats.handle !t s hdr data in
       let acc = match action with
         | `Add pid -> pid :: acc
         | `Remove pid -> List.filter (fun m -> m <> pid) acc
         | `None -> acc
       in
       t := t' ;
-      Logs.debug (fun m -> m "sent %a" Cstruct.hexdump_pp out) ;
+      (match close with None -> Lwt.return_unit | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
       Vmm_lwt.write_wire s out >>= function
       | Ok () -> loop acc
       | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return acc
@@ -54,7 +53,7 @@ let rec timer interval () =
       Vmm_lwt.write_wire s stat >>= function
       | Ok () -> Lwt.return_unit
       | Error `Exception ->
-        t := Vmm_stats.remove_socket !t name ;
+        t := Vmm_stats.remove_entry !t name ;
         Vmm_lwt.safe_close s)
     outs >>= fun () ->
   Lwt_unix.sleep interval >>= fun () ->

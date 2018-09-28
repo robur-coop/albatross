@@ -36,7 +36,7 @@ let init () = {
 let log state (hdr, event) =
   let data = Vmm_wire.Log.log state.log_counter state.log_version hdr event in
   let log_counter = Int64.succ state.log_counter in
-  Logs.debug (fun m -> m "LOG %a" (Log.pp []) (hdr, event)) ;
+  Logs.debug (fun m -> m "LOG %a" Log.pp (hdr, event)) ;
   ({ state with log_counter }, `Log data)
 
 let handle_create t hdr vm_config (* policies *) =

@@ -16,66 +16,12 @@ open Astring
 
 let my_version = `WV2
 
-type t = N of Lwt_unix.file_descr list * t String.Map.t
-
-let empty = N ([], String.Map.empty)
-
-let insert id fd t =
-  let rec go (N (fds, m)) = function
-    | [] -> N ((fd :: fds), m)
-    | x::xs ->
-      let n = match String.Map.find_opt x m with
-        | None -> empty
-        | Some n -> n
-      in
-      let entry = go n xs in
-      N (fds, String.Map.add x entry m)
-  in
-  go t id
-
-let remove id fd t =
-  let rec go (N (fds, m)) = function
-    | [] ->
-      begin match List.filter (fun fd' -> fd <> fd') fds with
-        | [] -> None
-        | fds' -> Some (N (fds', m))
-      end
-    | x::xs ->
-      let n' = match String.Map.find_opt x m with
-        | None -> None
-        | Some n -> go n xs
-      in
-      let m' = match n' with
-        | None -> String.Map.remove x m
-        | Some entry -> String.Map.add x entry m
-      in
-      if String.Map.is_empty m' && fds = [] then None else Some (N (fds, m'))
-  in
-  match go t id with
-  | None -> empty
-  | Some n -> n
-
-let collect id t =
-  let rec go acc prefix (N (fds, m)) =
-    let acc' =
-      let here = List.map (fun fd -> (prefix, fd)) fds in
-      here @ acc
-    in
-    function
-    | [] -> acc'
-    | x::xs ->
-      match String.Map.find_opt x m with
-      | None -> acc'
-      | Some n -> go acc' (prefix @ [ x ]) n xs
-  in
-  go [] [] t id
-
 let broadcast prefix data t =
   Lwt_list.fold_left_s (fun t (id, s) ->
       Vmm_lwt.write_wire s data >|= function
       | Ok () -> t
-      | Error `Exception -> remove id s t)
-    t (collect prefix t)
+      | Error `Exception -> Vmm_trie.remove id t)
+    t (Vmm_trie.collect prefix t)
 
 let write_complete s cs =
   let l = Cstruct.len cs in
@@ -116,9 +62,32 @@ let write_to_file file =
    - should there be acks for history/datain?
  *)
 
-let tree = ref empty
+let tree = ref Vmm_trie.empty
 
 let bcast = ref 0L
+
+let send_history s ring id cmd_id =
+  let elements = Vmm_ring.read ring in
+  let res =
+    List.fold_left (fun acc (_, x) ->
+        let cs = Cstruct.of_string x in
+        match Vmm_wire.Log.decode_log_hdr cs with
+        | Ok (hdr, _) ->
+          begin match Vmm_core.drop_super ~super:id ~sub:hdr.Vmm_core.Log.context with
+            | Some [] -> cs :: acc
+            | _ -> acc
+          end
+        | _ -> acc)
+      [] elements
+  in
+  (* just need a wrapper in tag = Log.Data, id = reqid *)
+  Lwt_list.fold_left_s (fun r body ->
+      match r with
+      | Ok () ->
+        let data = Vmm_wire.encode ~body my_version cmd_id (Vmm_wire.Log.op_to_int Vmm_wire.Log.Broadcast) in
+        Vmm_lwt.write_wire s data
+      | Error e -> Lwt.return (Error e))
+    (Ok ()) res
 
 let handle mvar ring s addr () =
   Logs.info (fun m -> m "handling connection from %a" Vmm_lwt.pp_sockaddr addr) ;
@@ -153,48 +122,28 @@ let handle mvar ring s addr () =
             tree := tree' ;
             loop ()
         end
-      | Some Vmm_wire.Log.History ->
-        begin match Vmm_wire.decode_id_ts data with
-          | Error (`Msg err) ->
-            Logs.warn (fun m -> m "ignoring error %s while decoding history" err) ;
-            loop ()
-          | Ok ((sub, ts), _) ->
-            let elements = Vmm_ring.read_history ring ts in
-            let res =
-              List.fold_left (fun acc (_, x) ->
-                  let cs = Cstruct.of_string x in
-                  match Vmm_wire.Log.decode_log_hdr cs with
-                  | Ok (hdr, _) when Vmm_core.is_sub_id ~super:hdr.Vmm_core.Log.context ~sub ->
-                    cs :: acc
-                  | _ -> acc)
-                [] elements
-            in
-            (* just need a wrapper in tag = Log.Data, id = reqid *)
-            Lwt_list.fold_left_s (fun r body ->
-                match r with
-                | Ok () ->
-                  let data = Vmm_wire.encode ~body my_version hdr.Vmm_wire.id (Vmm_wire.Log.op_to_int Vmm_wire.Log.Log) in
-                  Vmm_lwt.write_wire s data
-                | Error e -> Lwt.return (Error e))
-              (Ok ()) res >>= function
-            | Ok () -> loop ()
-            | Error _ ->
-              Logs.err (fun m -> m "error while sending data in history") ;
-              Lwt.return_unit
-        end
       | Some Vmm_wire.Log.Subscribe ->
         begin match Vmm_wire.decode_strings data with
           | Error (`Msg err) ->
             Logs.warn (fun m -> m "ignoring error %s while decoding subscribe" err) ;
             loop ()
           | Ok (id, _) ->
-            tree := insert id s !tree ;
+            let tree', ret = Vmm_trie.insert id s !tree in
+            tree := tree' ;
+            (match ret with
+             | None -> Lwt.return_unit
+             | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
             let out = Vmm_wire.success my_version hdr.Vmm_wire.id hdr.Vmm_wire.tag in
             Vmm_lwt.write_wire s out >>= function
-            | Ok () -> loop ()
             | Error _ ->
               Logs.err (fun m -> m "error while sending reply for subscribe") ;
               Lwt.return_unit
+            | Ok () ->
+              send_history s ring id hdr.Vmm_wire.id >>= function
+              | Error _ ->
+                Logs.err (fun m -> m "error while sending history") ;
+                Lwt.return_unit
+              | Ok () -> loop () (* TODO no need to loop ;) *)
         end
       | _ ->
         Logs.err (fun m -> m "unknown command") ;

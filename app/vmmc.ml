@@ -164,16 +164,13 @@ let console _ opt_socket name =
     Vmm_lwt.safe_close fd) ;
   `Ok ()
 
-let stats _ opt_socket vms =
+let stats _ opt_socket vm =
   Lwt_main.run (
     connect (socket `Stats opt_socket) >>= fun fd ->
-    let count = ref 0L in
-    Lwt_list.iter_s (fun name ->
-        let cmd = Vmm_wire.Stats.stat !count my_version name in
-        count := Int64.succ !count ;
-        Vmm_lwt.write_wire fd cmd >>= function
-        | Error `Exception -> Lwt.fail_with "write error"
-        | Ok () -> Lwt.return_unit) vms >>= fun () ->
+    let cmd = Vmm_wire.Stats.subscribe my_command my_version vm in
+    (Vmm_lwt.write_wire fd cmd >>= function
+      | Error `Exception -> Lwt.fail_with "write error"
+      | Ok () -> Lwt.return_unit) >>= fun () ->
     (* now we busy read and process stat output *)
     let rec loop () =
       Vmm_lwt.read_wire fd >>= function
@@ -215,6 +212,57 @@ let stats _ opt_socket vms =
           | Error (`Msg msg) ->
             Logs.err (fun m -> m "%s" msg) ;
             Lwt.return_unit
+    in
+    loop () >>= fun () ->
+    Vmm_lwt.safe_close fd) ;
+  `Ok ()
+
+let event_log _ opt_socket vm =
+  Lwt_main.run (
+    connect (socket `Log opt_socket) >>= fun fd ->
+    let cmd = Vmm_wire.Log.subscribe my_command my_version vm in
+    (Vmm_lwt.write_wire fd cmd >>= function
+      | Error `Exception -> Lwt.fail_with "write error"
+      | Ok () -> Lwt.return_unit) >>= fun () ->
+    (* now we busy read and process stat output *)
+    let rec loop () =
+      Vmm_lwt.read_wire fd >>= function
+      | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
+      | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
+      | Ok (hdr, data) ->
+        if Vmm_wire.is_fail hdr then
+          let msg = match Vmm_wire.decode_string data with
+            | Error _ -> None
+            | Ok (m, _) -> Some m
+          in
+          Logs.err (fun m -> m "operation failed: %a" Fmt.(option ~none:(unit "") string) msg) ;
+          Lwt.return_unit
+        else if Vmm_wire.is_reply hdr then
+          let msg = match Vmm_wire.decode_string data with
+            | Error _ -> None
+            | Ok (m, _) -> Some m
+          in
+          Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
+          loop ()
+        else
+          begin
+            (match Vmm_wire.Log.int_to_op hdr.Vmm_wire.tag with
+             | Some Vmm_wire.Log.Broadcast ->
+               begin match Vmm_wire.Log.decode_log_hdr data with
+                 | Error (`Msg err) ->
+                   Logs.warn (fun m -> m "ignoring error %s while decoding log" err) ;
+                 | Ok (loghdr, logdata) ->
+                   match Vmm_wire.Log.decode_event logdata with
+                   | Error (`Msg err) ->
+                     Logs.warn (fun m -> m "loghdr %a ignoring error %s while decoding logdata"
+                                   Vmm_core.Log.pp_hdr loghdr err)
+                   | Ok event ->
+                     Logs.app (fun m -> m "%a" Vmm_core.Log.pp (loghdr, event))
+               end
+             | _ ->
+               Logs.warn (fun m -> m "unknown operation %lx" hdr.Vmm_wire.tag)) ;
+            loop ()
+          end
     in
     loop () >>= fun () ->
     Vmm_lwt.safe_close fd) ;
@@ -318,18 +366,23 @@ let console_cmd =
   Term.(ret (const console $ setup_log $ socket $ vm_name)),
   Term.info "console" ~doc ~man
 
-let vm_names =
-  let doc = "Name virtual machine." in
-  Arg.(value & opt_all vm_c [] & info [ "n" ; "name" ] ~doc)
-
 let stats_cmd =
   let doc = "statistics of VMs" in
   let man =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(ret (const stats $ setup_log $ socket $ vm_names)),
+  Term.(ret (const stats $ setup_log $ socket $ opt_vmname)),
   Term.info "stats" ~doc ~man
+
+let log_cmd =
+  let doc = "Event log" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Shows event log of VM."]
+  in
+  Term.(ret (const event_log $ setup_log $ socket $ opt_vmname)),
+  Term.info "log" ~doc ~man
 
 let help_cmd =
   let topic =
@@ -353,7 +406,7 @@ let default_cmd =
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
   Term.info "vmmc" ~version:"%%VERSION_NUM%%" ~doc ~man
 
-let cmds = [ help_cmd ; info_cmd ; destroy_cmd ; create_cmd ; console_cmd ; stats_cmd ]
+let cmds = [ help_cmd ; info_cmd ; destroy_cmd ; create_cmd ; console_cmd ; stats_cmd ; log_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds

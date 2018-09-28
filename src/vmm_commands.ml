@@ -7,9 +7,6 @@ open Vmm_core
 open Rresult
 open R.Infix
 
-
-
-
 let handle_command t s prefix perms hdr buf =
   let res =
     if not (Vmm_wire.version_eq hdr.Vmm_wire.version t.client_version) then

@@ -323,9 +323,8 @@ module Log = struct
     name : string ;
   }
 
-  let pp_hdr db ppf (hdr : hdr) =
-    let name = translate_serial db hdr.name in
-    Fmt.pf ppf "%a: %s" (Ptime.pp_human ()) hdr.ts name
+  let pp_hdr ppf (hdr : hdr) =
+    Fmt.pf ppf "%a: %s" (Ptime.pp_human ()) hdr.ts hdr.name
 
   let hdr context name = { ts = Ptime_clock.now () ; context ; name }
 
@@ -355,6 +354,6 @@ module Log = struct
 
   type msg = hdr * event
 
-  let pp db ppf (hdr, event) =
-    Fmt.pf ppf "%a %a" (pp_hdr db) hdr pp_event event
+  let pp ppf (hdr, event) =
+    Fmt.pf ppf "%a %a" pp_hdr hdr pp_event event
 end

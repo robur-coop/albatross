@@ -260,19 +260,19 @@ module Stats = struct
   type op =
     | Add
     | Remove
-    | Stats
+    | Subscribe
     | Data
 
   let op_to_int = function
     | Add -> 0x0200l
     | Remove -> 0x0201l
-    | Stats -> 0x0202l
+    | Subscribe -> 0x0202l
     | Data -> 0x0203l
 
   let int_to_op = function
     | 0x0200l -> Some Add
     | 0x0201l -> Some Remove
-    | 0x0202l -> Some Stats
+    | 0x0202l -> Some Subscribe
     | 0x0203l -> Some Data
     | _ -> None
 
@@ -382,7 +382,7 @@ module Stats = struct
 
   let remove id version name = encode ~name version id (op_to_int Remove)
 
-  let stat id version name = encode ~name version id (op_to_int Stats)
+  let subscribe id version name = encode ~name version id (op_to_int Subscribe)
 
   let data id version vm body =
     let name = Vmm_core.id_of_string vm in
@@ -440,30 +440,27 @@ let split_id id = match List.rev id with
 module Log = struct
   type op =
     | Log
-    | History
     | Broadcast
     | Subscribe
 
   let op_to_int = function
     | Log -> 0x0300l
-    | History -> 0x0301l
+    | Subscribe -> 0x0301l
     | Broadcast -> 0x0302l
-    | Subscribe -> 0x0303l
 
   let int_to_op = function
     | 0x0300l -> Some Log
-    | 0x0301l -> Some History
+    | 0x0301l -> Some Subscribe
     | 0x0302l -> Some Broadcast
-    | 0x0303l -> Some Subscribe
     | _ -> None
 
-  let history id version name ts =
-    encode ~name ~body:(encode_ptime ts) version id (op_to_int History)
+  let subscribe id version name =
+    encode ~name version id (op_to_int Subscribe)
 
   let decode_log_hdr cs =
     decode_id_ts cs >>= fun ((id, ts), off) ->
     split_id id >>= fun (name, context) ->
-    Ok ({ Log.ts ; context ; name }, Cstruct.shift cs (16 + off))
+    Ok ({ Log.ts ; context ; name }, Cstruct.shift cs off)
 
   let encode_addr ip port =
     let cs = Cstruct.create 6 in
@@ -490,7 +487,7 @@ module Log = struct
     decode_string r >>= fun (block, l) ->
     let block = if block = "" then None else Some block in
     cs_shift r l >>= fun r' ->
-    decode_strings r' >>= fun taps ->
+    decode_strings r' >>= fun (taps, _) ->
     Ok (pid, taps, block)
 
   let encode_pid_exit pid c =

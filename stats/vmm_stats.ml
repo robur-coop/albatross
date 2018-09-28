@@ -22,17 +22,17 @@ let descr = ref []
 
 type 'a t = {
   pid_nic : ((vmctx, int) result * (int * string) list) IM.t ;
-  vmid_pid : int String.Map.t ;
-  name_sockets : 'a String.Map.t ;
+  vmid_pid : int Vmm_trie.t ;
+  name_sockets : 'a Vmm_trie.t ;
 }
 
 let pp_strings pp taps = Fmt.(list ~sep:(unit ",@ ") string) pp taps
 
 let empty () =
-  { pid_nic = IM.empty ; vmid_pid = String.Map.empty ; name_sockets = String.Map.empty }
+  { pid_nic = IM.empty ; vmid_pid = Vmm_trie.empty ; name_sockets = Vmm_trie.empty }
 
-let remove_socket t name =
-  let name_sockets = String.Map.remove name t.name_sockets in
+let remove_entry t name =
+  let name_sockets = Vmm_trie.remove name t.name_sockets in
   { t with name_sockets }
 
 let rec wrap f arg =
@@ -50,10 +50,10 @@ let fill_descr ctx =
         Logs.err (fun m -> m "vmmapi_statnames failed, shouldn't happen") ;
         ()
       | Some d ->
-        Logs.info (fun m -> m "descr are %a" pp_strings d) ;
+        Logs.debug (fun m -> m "descr are %a" pp_strings d) ;
         descr := d
     end
-  | ds -> Logs.info (fun m -> m "%d descr are already present" (List.length ds))
+  | ds -> Logs.debug (fun m -> m "%d descr are already present" (List.length ds))
 
 let open_vmmapi ?(retries = 4) pid =
   let name = "solo5-" ^ string_of_int pid in
@@ -91,20 +91,18 @@ let gather pid vmctx nics =
       | None ->
         Logs.warn (fun m -> m "failed to get ifdata for %s" nname) ;
         ifd
-      | Some data ->
-        Logs.debug (fun m -> m "adding ifdata for %s" nname) ;
-        data::ifd)
+      | Some data -> data::ifd)
     [] nics
 
 let tick t =
-  Logs.debug (fun m -> m "tick with %d vms" (IM.cardinal t.pid_nic)) ;
   let pid_nic = try_open_vmmapi t.pid_nic in
   let t' = { t with pid_nic } in
   let outs =
-    String.Map.fold (fun name socket out ->
-        match String.Map.find_opt name t.vmid_pid with
-        | None -> Logs.warn (fun m -> m "couldn't find pid of %s" name) ; out
-        | Some pid -> match IM.find_opt pid t.pid_nic with
+    List.fold_left (fun out (vmid, pid) ->
+        let listeners = Vmm_trie.collect vmid t'.name_sockets in
+        match listeners with
+        | [] -> Logs.warn (fun m -> m "nobody is listening") ; out
+        | xs -> match IM.find_opt pid t.pid_nic with
           | None -> Logs.warn (fun m -> m "couldn't find nics of %d" pid) ; out
           | Some (vmctx, nics) ->
             let ru, vmm, ifd = gather pid vmctx nics in
@@ -115,9 +113,15 @@ let tick t =
                 let vmm' = match vmm with None -> [] | Some xs -> List.combine !descr xs in
                 ru', vmm', ifd
               in
-              let stats_encoded = Vmm_wire.Stats.(data 0L my_version name (encode_stats stats)) in
-              (socket, name, stats_encoded) :: out)
-      t'.name_sockets []
+              List.fold_left (fun out (id, socket) ->
+                  match Vmm_core.drop_super ~super:id ~sub:vmid with
+                  | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.pp_id id Vmm_core.pp_id vmid) ; out
+                  | Some real_id ->
+                    let name = Vmm_core.string_of_id real_id in
+                    let stats_encoded = Vmm_wire.Stats.(data 0L my_version name (encode_stats stats)) in
+                    (socket, vmid, stats_encoded) :: out)
+                out xs)
+          [] (Vmm_trie.all t'.vmid_pid)
   in
   (t', outs)
 
@@ -141,14 +145,15 @@ let add_pid t vmid pid nics =
     Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_strings nics
                   (match vmctx with Error _ -> false | Ok _ -> true)) ;
     let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic
-    and vmid_pid = String.Map.add vmid pid t.vmid_pid
+    and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
     in
+    assert (ret = None) ;
     Ok { t with pid_nic ; vmid_pid }
 
 let remove_vmid t vmid =
-  Logs.info (fun m -> m "removing vmid %s" vmid) ;
-  match String.Map.find vmid t.vmid_pid with
-  | None -> Logs.warn (fun m -> m "no pid found for %s" vmid) ; t
+  Logs.info (fun m -> m "removing vmid %a" Vmm_core.pp_id vmid) ;
+  match Vmm_trie.find vmid t.vmid_pid with
+  | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.pp_id vmid) ; t
   | Some pid ->
     Logs.info (fun m -> m "removing pid %d" pid) ;
     (try
@@ -158,7 +163,7 @@ let remove_vmid t vmid =
      with
        _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
-    and vmid_pid = String.Map.remove vmid t.vmid_pid
+    and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
     in
     { t with pid_nic ; vmid_pid }
 
@@ -173,22 +178,21 @@ let handle t socket hdr cs =
       Error (`Msg "cannot handle version")
     else
       decode_strings cs >>= fun (id, off) ->
-      let name = Vmm_core.string_of_id id in
       match int_to_op hdr.tag with
       | Some Add ->
         decode_pid_taps (Cstruct.shift cs off) >>= fun (pid, taps) ->
-        add_pid t name pid taps >>= fun t ->
-        Ok (t, `Add name, success ~msg:"added" my_version hdr.id (op_to_int Add))
+        add_pid t id pid taps >>= fun t ->
+        Ok (t, `Add id, None, success ~msg:"added" my_version hdr.id (op_to_int Add))
       | Some Remove ->
-        let t = remove_vmid t name in
-        Ok (t, `Remove name, success ~msg:"removed" my_version hdr.id (op_to_int Remove))
-      | Some Stats ->
-        let name_sockets = String.Map.add name socket t.name_sockets in
-        Ok ({ t with name_sockets }, `None, success ~msg:"subscribed" my_version hdr.id (op_to_int Stats))
+        let t = remove_vmid t id in
+        Ok (t, `Remove id, None, success ~msg:"removed" my_version hdr.id (op_to_int Remove))
+      | Some Subscribe ->
+        let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
+        Ok ({ t with name_sockets }, `None, close, success ~msg:"subscribed" my_version hdr.id (op_to_int Subscribe))
       | _ -> Error (`Msg "unknown command")
   in
   match r with
-  | Ok (t, action, out) -> t, action, out
+  | Ok (t, action, close, out) -> t, action, close, out
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while processing %s" msg) ;
-    t, `None, fail ~msg my_version hdr.id
+    t, `None, None, fail ~msg my_version hdr.id

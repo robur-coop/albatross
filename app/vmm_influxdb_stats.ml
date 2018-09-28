@@ -239,18 +239,11 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
            Lwt.return (Some fd)) >>= fun fd ->
       read_sock_write_tcp c ?fd addr addrtype
 
-let query_sock vms c =
-  (* query c for everyone in db *)
-  Lwt_list.fold_left_s (fun r name ->
-      match r with
-      | Error e -> Lwt.return (Error e)
-      | Ok () ->
-        let id = Astring.String.cuts ~sep:"." name in
-        let request = Vmm_wire.Stats.stat !command my_version id in
-        command := Int64.succ !command  ;
-        Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id id) ;
-        Vmm_lwt.write_wire c request)
-    (Ok ()) vms
+let query_sock vm c =
+  let request = Vmm_wire.Stats.subscribe !command my_version vm in
+  command := Int64.succ !command  ;
+  Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id vm) ;
+  Vmm_lwt.write_wire c request
 
 let rec maybe_connect stat_socket =
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
@@ -267,7 +260,7 @@ let rec maybe_connect stat_socket =
        Lwt_unix.sleep (float_of_int 5) >>= fun () ->
        maybe_connect stat_socket)
 
-let client stat_socket influxhost influxport vms =
+let client stat_socket influxhost influxport vm =
   (* figure out address of influx *)
   Lwt_unix.gethostbyname influxhost >>= fun host_entry ->
   let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
@@ -292,7 +285,7 @@ let client stat_socket influxhost influxport vms =
   let rec loop () =
     (* start a socket connection to vmm_stats *)
     maybe_connect stat_socket >>= fun c ->
-    query_sock vms c >>= function
+    query_sock vm c >>= function
     | Error e ->
       Logs.err (fun m -> m "error %s while writing to stat socket" (str_of_e e)) ;
       Lwt.return_unit
@@ -302,9 +295,9 @@ let client stat_socket influxhost influxport vms =
   in
   loop ()
 
-let run_client _ socket (influxhost, influxport) vms =
+let run_client _ socket (influxhost, influxport) vm =
   Sys.(set_signal sigpipe Signal_ignore) ;
-  Lwt_main.run (client socket influxhost influxport vms)
+  Lwt_main.run (client socket influxhost influxport vm)
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -339,9 +332,14 @@ let influx =
   Arg.(required & pos 0 (some host_port) None & info [] ~docv:"influx"
          ~doc:"the influx hostname:port to connect to")
 
-let vms =
-  let doc = "virtual machine names" in
-  Arg.(value & opt_all string [] & info [ "n" ; "name" ] ~doc)
+let vm_c =
+  let parse s = `Ok (Vmm_core.id_of_string s)
+  in
+  (parse, Vmm_core.pp_id)
+
+let opt_vmname =
+  let doc = "Name virtual machine." in
+  Arg.(value & opt vm_c [] & info [ "n" ; "name"] ~doc)
 
 let cmd =
   let doc = "VMM InfluxDB connector" in
@@ -349,7 +347,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a vmm stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(pure run_client $ setup_log $ socket $ influx $ vms),
+  Term.(pure run_client $ setup_log $ socket $ influx $ opt_vmname),
   Term.info "vmm_influxdb_stats" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
