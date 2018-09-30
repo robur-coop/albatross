@@ -220,9 +220,9 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
                Lwt.return (Some fd)
              | Ok (name, (ru, vmm, ifs)) ->
                let ru = P.encode_ru name ru in
-               let vmm = P.encode_vmm name vmm in
+               let vmm = match vmm with [] -> [] | _ -> [ P.encode_vmm name vmm ] in
                let taps = List.map (P.encode_if name) ifs in
-               let out = (String.concat ~sep:"\n" (ru :: vmm :: taps)) ^ "\n" in
+               let out = (String.concat ~sep:"\n" (ru :: vmm @ taps)) ^ "\n" in
                Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
                Vmm_lwt.write_wire fd (Cstruct.of_string out) >>= function
                | Ok () ->
