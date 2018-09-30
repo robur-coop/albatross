@@ -26,7 +26,7 @@ depends: [
   "nocrypto"
   "asn1-combinators" {>= "0.2.0"}
   "duration"
-  "decompress" {>= "0.7"}
+  "decompress" {= "0.7"}
 ]
 
 build: [
