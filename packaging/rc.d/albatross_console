@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# $FreeBSD$
+#
+# PROVIDE: albatross_console
+# REQUIRE: LOGIN
+# KEYWORD: shutdown nojail
+#
+# Define these albatross_console_* variables in one of these files
+# 	 /etc/rc.conf
+#	 /etc/rc.conf.local
+#	 /etc/rc.conf.d/albatross_console
+#	 /usr/local/etc/rc.conf.d/albatross_console
+#
+# albatross_console_flags:
+#                       Default: ""
+#
+
+. /etc/rc.subr
+
+name=albatross_console
+rcvar=${name}_enable
+desc="Albatross console service"
+load_rc_config $name
+start_cmd="albatross_console_start"
+
+: ${albatross_console_enable:="NO"}
+: ${albatross_console_flags:=""}
+: ${albatross_console_user:="albatross"}
+
+pidfile="/var/run/albatross_console.pid"
+procname="/usr/local/libexec/albatross/vmm_console"
+
+albatross_console_start () {
+    /usr/sbin/daemon -p "${pidfile}" -u "${albatross_console_user}" -S \
+		     "${procname}" "${albatross_console_flags}"
+}
+
+run_rc_command "$1"
