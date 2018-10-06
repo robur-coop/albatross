@@ -1,0 +1,83 @@
+name:         albatross
+version:      1.0.%%GITVER%%_1
+origin:	      local/albatross
+comment:      Albatross: Managing virtual machines
+www:	      https://github.com/hannesm/vmm
+maintainer:   Hannes Mehnert <hannes@mehnert.org>
+prefix:	      /usr/local
+licenselogic: single
+licenses:     [NONE]
+flatsize:     %%FLATSIZE%%
+categories:   [local]
+deps {
+        gmp {
+        origin = "math/gmp";
+        version = "6.1.2";
+    }
+}
+scripts : {
+    pre-install = <<EOD
+if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
+  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
+else
+  PW=/usr/sbin/pw
+fi
+echo "===> Creating groups."
+if ! ${PW} groupshow albatross >/dev/null 2>&1; then
+  echo "Creating group 'albatross' with gid '496'."
+  ${PW} groupadd albatross -g 496
+else
+  echo "Using existing group 'albatross'."
+fi
+echo "===> Creating users"
+if ! ${PW} usershow albatross >/dev/null 2>&1; then
+  echo "Creating user 'albatross' with uid '496'."
+  ${PW} useradd albatross -u 496 -g 496  -c "albatross daemon" -d /nonexistent -s /usr/sbin/nologin
+else
+  echo "Using existing user 'albatross'."
+fi
+EOD;
+    post-install = <<EOD
+mkdir -p /var/run/albatross/util /var/run/albatross/fifo
+chown albatross:albatross /var/run/albatross/util /var/run/albatross/fifo
+chmod 2760 /var/run/albatross/fifo
+chgrp albatross /usr/local/libexec/albatross/vmmd
+chmod 2700 /usr/local/libexec/albatross/vmmd
+
+EOD;
+    post-deinstall = <<EOD
+if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
+  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
+else
+  PW=/usr/sbin/pw
+fi
+if ${PW} usershow albatross >/dev/null 2>&1; then
+  echo "==> You should manually remove the \"albatross\" user. "
+fi
+if ${PW} groupshow albatross >/dev/null 2>&1; then
+  echo "==> You should manually remove the \"albatross\" group "
+fi
+EOD;
+
+}
+desc = <<EOD
+A set of binaries to manage, provision, and deploy virtual machine images.
+
+EOD;
+messages [
+    {
+        message = <<EOD
+===================================================================
+
+	you need to:
+
+   * modify /etc/devfs.rules to include:
+
+	add path 'vmm/solo5*' mode 0660 group albatross
+
+   * install solo5-hvt.net  solo5-hvt.none in /var/db/albatross
+
+===================================================================
+EOD;
+    }
+]
