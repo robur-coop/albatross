@@ -8,10 +8,10 @@ let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
 
 let socket_path =
-  let path name = Fpath.(to_string (tmpdir / name + "sock")) in
+  let path name = Fpath.(to_string (tmpdir / "util" / name + "sock")) in
   function
   | `Console -> path "console"
-  | `Vmmd -> path "vmmd"
+  | `Vmmd -> Fpath.(to_string (tmpdir / "vmmd.sock"))
   | `Stats -> path "stat"
   | `Log -> path "log"
 
