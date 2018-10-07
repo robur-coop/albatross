@@ -51,7 +51,7 @@ let read_console name ring channel () =
        Lwt_io.close channel)
 
 let open_fifo name =
-  let fifo = Fpath.(Vmm_core.tmpdir / name + "fifo") in
+  let fifo = Fpath.(Vmm_core.tmpdir / "fifo" / name) in
   Lwt.catch (fun () ->
       Logs.debug (fun m -> m "opening %a for reading" Fpath.pp fifo) ;
       Lwt_io.open_file ~mode:Lwt_io.Input (Fpath.to_string fifo) >>= fun channel ->
