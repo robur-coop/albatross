@@ -625,7 +625,7 @@ module Vm = struct
     decode_int cs''' >>= fun pid ->
     cs_shift cs''' 8 >>= fun cs'''' ->
     decode_strings cs'''' >>= fun (taps, l'') ->
-    Ok ((id, memory, cmd, pid, taps), l + 8 + l' + l'')
+    Ok ((id, memory, cmd, pid, taps), l + 8 + l' + 8 + l'')
 
   let decode_vms buf = decode_list decode_vm buf
 
