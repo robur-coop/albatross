@@ -31,12 +31,12 @@ let sign dbname cacert key csr days =
                (X509.distinguished_name_to_string ri.X509.CA.subject)) ;
   let issuer = X509.subject cacert in
   (* TODO: handle version mismatch of the delegation cert specially here *)
-  let delegation = match Vmm_asn.delegation_of_cert asn_version cacert with
+  let policy = match Vmm_asn.policy_of_cert asn_version cacert with
     | Ok d -> Some d
     | Error _ -> None
   in
   Logs.app (fun m -> m "using delegation %s: %a" (X509.distinguished_name_to_string issuer)
-               Fmt.(option ~none:(unit "no") Vmm_core.pp_delegation) delegation) ;
+               Fmt.(option ~none:(unit "no") Vmm_core.pp_policy) policy) ;
   let req_exts =
     match
       List.find (function `Extensions _ -> true | _ -> false) ri.X509.CA.extensions
@@ -66,7 +66,7 @@ let sign dbname cacert key csr days =
         req Vmm_asn.Oid.vmimage req_exts Vmm_asn.image_of_cstruct >>= fun (typ, img) ->
         Logs.app (fun m -> m "image of type %a, size %d" Vmm_core.pp_vmtype typ (Cstruct.len img)) ;
         let s_exts = (Vmm_asn.Oid.vmimage, Vmm_asn.image_to_cstruct (typ, img)) :: s_exts in
-        let cpuids = match delegation with
+        let cpuids = match policy with
           | None -> None
           | Some x -> Some (Vmm_core.IS.elements x.Vmm_core.cpuids)
         in
@@ -91,7 +91,7 @@ let sign dbname cacert key csr days =
               else Error (`Msg "refusing to use a not-delegated CPU")) >>= fun cpuid ->
         Logs.app (fun m -> m "using CPU %d" cpuid) ;
         let s_exts = (Vmm_asn.Oid.cpuid, Vmm_asn.int_to_cstruct cpuid) :: s_exts in
-        let memory = match delegation with
+        let memory = match policy with
           | None -> None
           | Some x -> Some x.Vmm_core.memory
         in
@@ -119,7 +119,7 @@ let sign dbname cacert key csr days =
           | None -> Ok None
           | Some [] -> Ok None
           | Some x ->
-            match delegation with
+            match policy with
             | None -> Ok (Some x)
             | Some del ->
               let bridges = del.Vmm_core.bridges in
@@ -141,7 +141,7 @@ let sign dbname cacert key csr days =
         (opt Vmm_asn.Oid.block_device req_exts Vmm_asn.string_of_cstruct >>= function
           | None -> Ok None
           | Some x ->
-            match delegation with
+            match policy with
             | None -> Ok (Some x)
             | Some d -> match d.Vmm_core.block with
               | None -> Error (`Msg "trying to use a block device, when no block storage is delegated")
@@ -167,7 +167,7 @@ let sign dbname cacert key csr days =
         Ok (exts @ l_exts)
       | `Delegation ->
         (req Vmm_asn.Oid.cpuids req_exts Vmm_asn.ints_of_cstruct >>= fun x ->
-         match delegation with
+         match policy with
          | None -> Ok x
          | Some d when Vmm_core.IS.subset d.Vmm_core.cpuids (Vmm_core.IS.of_list x) -> Ok x
          | Some d -> Rresult.R.error_msgf
@@ -177,7 +177,7 @@ let sign dbname cacert key csr days =
         Logs.app (fun m -> m "delegating CPUs %a" Fmt.(list ~sep:(unit ",") int) cpuids) ;
         let s_exts = (Vmm_asn.Oid.cpuids, Vmm_asn.ints_to_cstruct cpuids) :: s_exts in
         (req Vmm_asn.Oid.memory req_exts Vmm_asn.int_of_cstruct >>= fun x ->
-         match delegation with
+         match policy with
          | None -> Ok x
          | Some d when d.Vmm_core.memory >= x -> Ok x
          | Some d -> Rresult.R.error_msgf
@@ -187,7 +187,7 @@ let sign dbname cacert key csr days =
         (opt Vmm_asn.Oid.block req_exts Vmm_asn.int_of_cstruct >>= function
           | None -> Ok None
           | Some x when x = 0 -> Ok None
-          | Some x -> match delegation with
+          | Some x -> match policy with
             | None -> Ok (Some x)
             | Some d -> match d.Vmm_core.block with
               | None -> Error (`Msg "cannot delegate block storage, don't have any delegated")
@@ -200,7 +200,7 @@ let sign dbname cacert key csr days =
           | Some x -> (Vmm_asn.Oid.block, Vmm_asn.int_to_cstruct x) :: s_exts
         in
         (req Vmm_asn.Oid.vms req_exts Vmm_asn.int_of_cstruct >>= fun x ->
-         match delegation with
+         match policy with
          | None -> Ok x
          | Some d when d.Vmm_core.vms >= x -> Ok x
          | Some d -> Rresult.R.error_msgf
@@ -210,7 +210,7 @@ let sign dbname cacert key csr days =
         (opt Vmm_asn.Oid.bridges req_exts Vmm_asn.bridges_of_cstruct >>= function
           | None -> Ok None
           | Some xs when xs = [] -> Ok None
-          | Some xs -> match delegation with
+          | Some xs -> match policy with
             | None -> Ok (Some xs)
             | Some x ->
               let sub =

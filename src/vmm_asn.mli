@@ -154,7 +154,7 @@ val vm_of_cert : Vmm_core.id -> X509.t -> (Vmm_core.vm_config, [> `Msg of string
 val crl_of_cert : X509.t -> (X509.CRL.c, [> `Msg of string ]) result
 
 (** [delegation_of_cert version cert] is either the decoded delegation, or an error. *)
-val delegation_of_cert : version -> X509.t -> (Vmm_core.delegation, [> `Msg of string ]) result
+val policy_of_cert : version -> X509.t -> (Vmm_core.policy, [> `Msg of string ]) result
 
 (** [command_of_cert version cert] is either the decoded command, or an error. *)
 val command_of_cert : version -> X509.t -> (Vmm_core.command, [> `Msg of string ]) result

@@ -111,7 +111,7 @@ let pp_bridge ppf = function
     Fmt.pf ppf "%s: %a - %a, GW: %a/%d"
       name Ipaddr.V4.pp_hum l Ipaddr.V4.pp_hum h Ipaddr.V4.pp_hum gw nm
 
-type delegation = {
+type policy = {
   vms : int ;
   cpuids : IS.t ;
   memory : int ;
@@ -119,8 +119,8 @@ type delegation = {
   bridges : bridge String.Map.t ;
 }
 
-let pp_delegation ppf res =
-  Fmt.pf ppf "delegated: %d vms %a cpus %d MB memory %a MB block bridges: %a"
+let pp_policy ppf res =
+  Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
     res.vms pp_is res.cpuids res.memory
     Fmt.(option ~none:(unit "no") int) res.block
     Fmt.(list ~sep:(unit ", ") pp_bridge)
@@ -184,7 +184,7 @@ let good_bridge idxs nets =
   (* TODO: uniqueness of n -- it should be an ordered set? *)
   List.for_all (fun n -> String.Map.mem n nets) idxs
 
-let vm_matches_res (res : delegation) (vm : vm_config)  =
+let vm_matches_res (res : policy) (vm : vm_config)  =
   res.vms >= 1 && IS.mem vm.cpuid res.cpuids &&
   vm.requested_memory <= res.memory &&
   good_bridge vm.network res.bridges

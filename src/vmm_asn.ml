@@ -170,7 +170,7 @@ let version_of_cert version cert =
     R.error_msgf "unsupported asn version %a (expected %a)"
       pp_version version' pp_version version
 
-let delegation_of_cert version cert =
+let policy_of_cert version cert =
   version_of_cert version cert >>= fun () ->
   req "cpuids" cert Oid.cpuids ints_of_cstruct >>= fun cpuids ->
   req "memory" cert Oid.memory int_of_cstruct >>= fun memory ->

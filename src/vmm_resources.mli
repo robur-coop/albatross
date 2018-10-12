@@ -29,7 +29,7 @@ val pp_entry : entry Fmt.t
 (** [check_dynamic t vm delegates] checks whether creating [vm] would violate
     the policies of the [delegates] with respect to the running vms. *)
 val check_dynamic : t ->
-  Vmm_core.vm_config -> (string * Vmm_core.delegation) list ->
+  Vmm_core.vm_config -> (string * Vmm_core.policy) list ->
   (unit, [> `Msg of string ]) result
 
 (** [exists t id] is [true] if the [id] already exists, [false] otherwise. *)

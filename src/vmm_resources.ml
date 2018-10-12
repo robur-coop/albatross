@@ -15,7 +15,7 @@ let pp_res_entry ppf res =
 
 let empty_res = { running_vms = 0 ; used_memory = 0 }
 
-let check_resource (policy : delegation) (vm : vm_config) (res : res_entry) =
+let check_resource (policy : policy) (vm : vm_config) (res : res_entry) =
   succ res.running_vms <= policy.vms && res.used_memory + vm.requested_memory <= policy.memory
 
 let add (vm : vm) (res : res_entry) =
