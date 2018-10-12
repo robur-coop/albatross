@@ -77,3 +77,21 @@ let all t =
       acc' (String.Map.bindings m)
   in
   go [] [] t
+
+let fold id t f acc =
+  let rec explore (N (es, m)) prefix acc =
+    let acc' =
+      String.Map.fold (fun name node acc -> explore node (prefix@[name]) acc)
+        m acc
+    in
+    match es with
+    | None -> acc'
+    | Some e -> f prefix e acc'
+  and down prefix (N (es, m)) =
+    match prefix with
+    | [] -> explore (N (es, m)) [] acc
+    | x :: xs -> match String.Map.find_opt x m with
+      | None -> acc
+      | Some n -> down xs n
+  in
+  down id t

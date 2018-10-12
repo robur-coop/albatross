@@ -139,6 +139,13 @@ val strings_to_cstruct : string list -> Cstruct.t
     encoded [buffer] or an error. *)
 val strings_of_cstruct : Cstruct.t -> (string list, [> `Msg of string ]) result
 
+(** [policy_to_cstruct xs] is the DER encoded policy. *)
+val policy_to_cstruct : Vmm_core.policy -> Cstruct.t
+
+(** [policy_of_cstruct buffer] is either a decoded policy of the DER
+    encoded [buffer] or an error. *)
+val policy_of_cstruct : Cstruct.t -> (Vmm_core.policy * Cstruct.t, [> `Msg of string ]) result
+
 (** {1 Decoding functions} *)
 
 (** [contains_vm cert] is [true] if the certificate contains a virtual machine image. *)
@@ -153,7 +160,7 @@ val vm_of_cert : Vmm_core.id -> X509.t -> (Vmm_core.vm_config, [> `Msg of string
 (** [crl_of_cert id cert] is either the decoded revocation list, or an error. *)
 val crl_of_cert : X509.t -> (X509.CRL.c, [> `Msg of string ]) result
 
-(** [delegation_of_cert version cert] is either the decoded delegation, or an error. *)
+(** [policy_of_cert version cert] is either the decoded policy, or an error. *)
 val policy_of_cert : version -> X509.t -> (Vmm_core.policy, [> `Msg of string ]) result
 
 (** [command_of_cert version cert] is either the decoded command, or an error. *)

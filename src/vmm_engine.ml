@@ -39,13 +39,15 @@ let log state (hdr, event) =
   Logs.debug (fun m -> m "LOG %a" Log.pp (hdr, event)) ;
   ({ state with log_counter }, `Log data)
 
-let handle_create t hdr vm_config (* policies *) =
-  (if Vmm_resources.exists t.resources vm_config.vname then
-     Error (`Msg "VM with same name is already running")
+let handle_create t hdr vm_config =
+  (match Vmm_resources.find_vm t.resources vm_config.vname with
+   | Some _ -> Error (`Msg "VM with same name is already running")
+   | None -> Ok ()) >>= fun () ->
+  Logs.debug (fun m -> m "now checking resource policies") ;
+  (if Vmm_resources.check_vm_policy t.resources vm_config then
+     Ok ()
    else
-     Ok ()) >>= fun () ->
-  (* Logs.debug (fun m -> m "now checking dynamic policies") ;
-     Vmm_resources.check_dynamic t.resources vm_config policies >>= fun () -> *)
+     Error (`Msg "resource policies don't allow this")) >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_unix.prepare vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
@@ -56,7 +58,7 @@ let handle_create t hdr vm_config (* policies *) =
           (* actually execute the vm *)
           Vmm_unix.exec vm_config taps >>= fun vm ->
           Logs.debug (fun m -> m "exec()ed vm") ;
-          Vmm_resources.insert t.resources vm_config.vname vm >>= fun resources ->
+          Vmm_resources.insert_vm t.resources vm >>= fun resources ->
           let tasks = String.Map.add (string_of_id vm_config.vname) task t.tasks in
           let used_bridges =
             List.fold_left2 (fun b br ta ->
@@ -81,13 +83,7 @@ let handle_shutdown t vm r =
   (match Vmm_unix.shutdown vm with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
-  let resources =
-    match Vmm_resources.remove t.resources vm.config.vname vm with
-    | Ok resources -> resources
-    | Error (`Msg e) ->
-      Logs.warn (fun m -> m "%s while removing vm %a" e pp_vm vm) ;
-      t.resources
-  in
+  let resources = Vmm_resources.remove t.resources vm.config.vname in
   let used_bridges =
     List.fold_left2 (fun b br ta ->
         let old = match String.Map.find br b with
@@ -118,25 +114,79 @@ let handle_command t hdr buf =
       Ok (t, [], `End)
     end else if not (Vmm_wire.version_eq hdr.Vmm_wire.version t.client_version) then
       Error (`Msg "unknown client version")
-    else Vmm_wire.decode_strings buf >>= fun (id, _off) ->
+    else Vmm_wire.decode_strings buf >>= fun (id, off) ->
       match Vmm_wire.Vm.int_to_op hdr.Vmm_wire.tag with
       | None -> Error (`Msg "unknown command")
+      | Some Vmm_wire.Vm.Remove_policy ->
+        Logs.debug (fun m -> m "remove policy %a" pp_id id) ;
+        let resources = Vmm_resources.remove t.resources id in
+        let success = Vmm_wire.success t.client_version hdr.Vmm_wire.id hdr.Vmm_wire.tag in
+        Ok ({ t with resources }, [ `Data success ], `End)
+      | Some Vmm_wire.Vm.Insert_policy ->
+        begin
+          Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
+          Vmm_asn.policy_of_cstruct (Cstruct.shift buf off) >>= fun (policy, _) ->
+          Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
+          let success = Vmm_wire.success t.client_version hdr.Vmm_wire.id hdr.Vmm_wire.tag in
+          Ok ({ t with resources }, [ `Data success ], `End)
+        end
+      | Some Vmm_wire.Vm.Policy ->
+        begin
+          Logs.debug (fun m -> m "policy %a" pp_id id) ;
+          let policies =
+            Vmm_resources.fold t.resources id
+              (fun _ policies -> policies)
+              (fun prefix policy policies-> (prefix, policy) :: policies)
+              []
+          in
+          match policies with
+          | [] ->
+            Logs.debug (fun m -> m "policies: couldn't find %a" pp_id id) ;
+            Error (`Msg "policy: not found")
+          | _ ->
+            let out = Vmm_wire.Vm.policy_reply hdr.Vmm_wire.id t.client_version policies in
+            Ok (t, [ `Data out ], `End)
+        end
       | Some Vmm_wire.Vm.Info ->
-        Logs.debug (fun m -> m "info %a" pp_id id) ;
-        begin match Vmm_resources.find t.resources id with
-          | None ->
+        begin
+          Logs.debug (fun m -> m "info %a" pp_id id) ;
+          let vms =
+            Vmm_resources.fold t.resources id
+              (fun vm vms -> vm :: vms)
+              (fun _ _ vms-> vms)
+              []
+          in
+          match vms with
+          | [] ->
             Logs.debug (fun m -> m "info: couldn't find %a" pp_id id) ;
             Error (`Msg "info: not found")
-          | Some x ->
-            let data =
-              Vmm_resources.fold (fun acc vm -> vm :: acc) [] x
-            in
-            let out = Vmm_wire.Vm.info_reply hdr.Vmm_wire.id t.client_version data in
+          | _ ->
+            let out = Vmm_wire.Vm.info_reply hdr.Vmm_wire.id t.client_version vms in
             Ok (t, [ `Data out ], `End)
         end
       | Some Vmm_wire.Vm.Create ->
         Vmm_wire.Vm.decode_vm_config buf >>= fun vm_config ->
         handle_create t hdr vm_config
+      | Some Vmm_wire.Vm.Force_create ->
+        Vmm_wire.Vm.decode_vm_config buf >>= fun vm_config ->
+        let resources = Vmm_resources.remove t.resources vm_config.vname in
+        if Vmm_resources.check_vm_policy resources vm_config then
+          begin match Vmm_resources.find_vm t.resources id with
+            | None -> handle_create t hdr vm_config
+            | Some vm ->
+              Vmm_unix.destroy vm ;
+              let id_str = string_of_id id in
+              match String.Map.find_opt id_str t.tasks with
+              | None -> handle_create t hdr vm_config
+              | Some task ->
+                let tasks = String.Map.remove id_str t.tasks in
+                let t = { t with tasks } in
+                Ok (t, [], `Wait_and_create
+                      (t, task, fun t ->
+                          msg_to_err @@ handle_create t hdr vm_config))
+          end
+        else
+          Error (`Msg "wouldn't match policy")
       | Some Vmm_wire.Vm.Destroy ->
         match Vmm_resources.find_vm t.resources id with
         | Some vm ->

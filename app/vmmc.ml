@@ -2,6 +2,8 @@
 
 open Lwt.Infix
 
+open Astring
+
 open Vmm_core
 
 let my_version = `WV2
@@ -62,19 +64,74 @@ let info_ _ opt_socket name =
   ) ;
   `Ok ()
 
-let really_destroy opt_socket name =
-  connect (socket `Vmmd opt_socket) >>= fun fd ->
-  let cmd = Vmm_wire.Vm.destroy my_command my_version name in
-  (Vmm_lwt.write_wire fd cmd >>= function
-    | Ok () ->
-      (process fd >|= function
-        | Error () -> ()
-        | Ok _ -> Logs.app (fun m -> m "destroyed VM"))
-    | Error `Exception -> Lwt.return_unit) >>= fun () ->
-  Vmm_lwt.safe_close fd
+let policy _ opt_socket name =
+  Lwt_main.run (
+    connect (socket `Vmmd opt_socket) >>= fun fd ->
+    let policy = Vmm_wire.Vm.policy my_command my_version name in
+    (Vmm_lwt.write_wire fd policy >>= function
+      | Ok () ->
+        (process fd >|= function
+          | Error () -> ()
+          | Ok data ->
+            match Vmm_wire.Vm.decode_policies data with
+            | Ok (policies, _) ->
+              List.iter (fun (id, policy) ->
+                  Logs.app (fun m -> m "policy %a: %a" pp_id id pp_policy policy))
+                policies
+            | Error (`Msg msg) ->
+              Logs.err (fun m -> m "error %s while decoding policies" msg))
+      | Error `Exception -> Lwt.return_unit) >>= fun () ->
+    Vmm_lwt.safe_close fd
+  ) ;
+  `Ok ()
+
+let remove_policy _ opt_socket name =
+  Lwt_main.run (
+    connect (socket `Vmmd opt_socket) >>= fun fd ->
+    let cmd = Vmm_wire.Vm.remove_policy my_command my_version name in
+    (Vmm_lwt.write_wire fd cmd >>= function
+      | Ok () ->
+        (process fd >|= function
+          | Error () -> ()
+          | Ok _ -> Logs.app (fun m -> m "removed policy"))
+      | Error `Exception -> Lwt.return_unit) >>= fun () ->
+    Vmm_lwt.safe_close fd) ;
+  `Ok ()
+
+let add_policy _ opt_socket name vms memory cpus block bridges =
+  Lwt_main.run (
+    connect (socket `Vmmd opt_socket) >>= fun fd ->
+    let bridges = match bridges with
+      | xs ->
+        let add m v =
+          let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
+          String.Map.add n v m
+        in
+        List.fold_left add String.Map.empty xs
+    and cpuids = IS.of_list cpus
+    in
+    let policy = { vms ; cpuids ; memory ; block ; bridges } in
+    let cmd = Vmm_wire.Vm.insert_policy my_command my_version name policy in
+    (Vmm_lwt.write_wire fd cmd >>= function
+      | Ok () ->
+        (process fd >|= function
+          | Error () -> ()
+          | Ok _ -> Logs.app (fun m -> m "added policy"))
+      | Error `Exception -> Lwt.return_unit) >>= fun () ->
+    Vmm_lwt.safe_close fd) ;
+  `Ok ()
 
 let destroy _ opt_socket name =
-  Lwt_main.run (really_destroy opt_socket name) ;
+  Lwt_main.run (
+    connect (socket `Vmmd opt_socket) >>= fun fd ->
+    let cmd = Vmm_wire.Vm.destroy my_command my_version name in
+    (Vmm_lwt.write_wire fd cmd >>= function
+      | Ok () ->
+        (process fd >|= function
+          | Error () -> ()
+          | Ok _ -> Logs.app (fun m -> m "destroyed VM"))
+      | Error `Exception -> Lwt.return_unit) >>= fun () ->
+    Vmm_lwt.safe_close fd) ;
   `Ok ()
 
 let create _ opt_socket force name image cpuid requested_memory boot_params block_device network =
@@ -93,19 +150,19 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
     vmimage ; argv
   } in
   Lwt_main.run (
-    (if force then
-       really_destroy opt_socket name
-     else
-       Lwt.return_unit) >>= fun () ->
     connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let vm = Vmm_wire.Vm.create my_command my_version vm_config in
+    let vm =
+      if force then
+        Vmm_wire.Vm.force_create my_command my_version vm_config
+      else
+        Vmm_wire.Vm.create my_command my_version vm_config
+    in
     (Vmm_lwt.write_wire fd vm >>= function
       | Error `Exception -> Lwt.return_unit
       | Ok () -> process fd >|= function
         | Ok _ -> Logs.app (fun m -> m "successfully started VM")
         | Error () -> ()) >>= fun () ->
-    Vmm_lwt.safe_close fd
-  ) ;
+    Vmm_lwt.safe_close fd ) ;
   `Ok ()
 
 let console _ opt_socket name =
@@ -315,6 +372,15 @@ let opt_vmname =
   let doc = "Name virtual machine." in
   Arg.(value & opt vm_c [] & info [ "n" ; "name"] ~doc)
 
+let remove_policy_cmd =
+  let doc = "removes a policy" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Removes a policy."]
+  in
+  Term.(ret (const remove_policy $ setup_log $ socket $ opt_vmname)),
+  Term.info "remove" ~doc ~man
+
 let info_cmd =
   let doc = "information about VMs" in
   let man =
@@ -324,13 +390,71 @@ let info_cmd =
   Term.(ret (const info_ $ setup_log $ socket $ opt_vmname)),
   Term.info "info" ~doc ~man
 
+let policy_cmd =
+  let doc = "active policies" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Shows information about policies."]
+  in
+  Term.(ret (const policy $ setup_log $ socket $ opt_vmname)),
+  Term.info "policy" ~doc ~man
+
+let cpus =
+  let doc = "CPUids to allow" in
+  Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
+
+let vms =
+  let doc = "Number of VMs to allow" in
+  Arg.(required & pos 0 (some int) None & info [] ~doc)
+
+let block =
+  let doc = "Block storage to allow" in
+  Arg.(value & opt (some int) None & info [ "block" ] ~doc)
+
+let mem =
+  let doc = "Memory to allow" in
+  Arg.(value & opt int 512 & info [ "mem" ] ~doc)
+
+let b =
+  let parse s =
+    match String.cuts ~sep:"/" s with
+    | [ name ; fst ; lst ; gw ; nm ] ->
+      begin match Ipaddr.V4.(of_string fst, of_string lst, of_string gw) with
+        | Some fst, Some lst, Some gw ->
+          (try
+             let nm = int_of_string nm in
+             if nm > 0 && nm <= 32 then
+               let net = Ipaddr.V4.Prefix.make nm gw in
+               if Ipaddr.V4.Prefix.mem fst net && Ipaddr.V4.Prefix.mem lst net then
+                 `Ok (`External (name, fst, lst, gw, nm))
+               else
+                 `Error "first or last IP are not in subnet"
+             else
+               `Error "netmask must be > 0 and <= 32"
+           with Failure _ -> `Error "couldn't parse netmask")
+        | _ -> `Error "couldn't parse IP address"
+      end
+    | [ name ] -> `Ok (`Internal name)
+    | _ -> `Error "couldn't parse bridge (either 'name' or 'name/fstIP/lstIP/gwIP/netmask')"
+  in
+  (parse, Vmm_core.pp_bridge)
+
+let bridge =
+  let doc = "Bridge to provision" in
+  Arg.(value & opt_all b [] & info [ "bridge" ] ~doc)
+
+let add_policy_cmd =
+  let doc = "Add a policy" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Adds a policy."]
+  in
+  Term.(ret (const add_policy $ setup_log $ socket $ opt_vmname $ vms $ mem $ cpus $ block $ bridge)),
+  Term.info "add_policy" ~doc ~man
+
 let cpu =
   let doc = "CPUid" in
   Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
-
-let mem =
-  let doc = "Memory to provision" in
-  Arg.(value & opt int 512 & info [ "mem" ] ~doc)
 
 let args =
   let doc = "Boot arguments" in
@@ -402,7 +526,7 @@ let default_cmd =
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
   Term.info "vmmc" ~version:"%%VERSION_NUM%%" ~doc ~man
 
-let cmds = [ help_cmd ; info_cmd ; destroy_cmd ; create_cmd ; console_cmd ; stats_cmd ; log_cmd ]
+let cmds = [ help_cmd ; info_cmd ; policy_cmd ; remove_policy_cmd ; add_policy_cmd ; destroy_cmd ; create_cmd ; console_cmd ; stats_cmd ; log_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds

@@ -103,6 +103,38 @@ let strings_of_cstruct, strings_to_cstruct =
 
 let string_of_cstruct, string_to_cstruct = projections_of Asn.S.utf8_string
 
+let policy_obj =
+  let f (cpuids, vms, memory, block, bridges) =
+    let bridges = match bridges with
+      | xs ->
+        let add m v =
+          let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
+          String.Map.add n v m
+        in
+        List.fold_left add String.Map.empty xs
+    and cpuids = IS.of_list cpuids
+    in
+    { vms ; cpuids ; memory ; block ; bridges }
+  and g policy =
+    (IS.elements policy.cpuids, policy.vms, policy.memory, policy.block,
+     snd @@ List.split @@ String.Map.bindings policy.bridges)
+  in
+  Asn.S.map f g @@
+  Asn.S.(sequence5
+           (required ~label:"cpuids" Asn.S.(sequence_of int))
+           (required ~label:"vms" int)
+           (required ~label:"memory" int)
+           (optional ~label:"block" int)
+           (required ~label:"bridges" Asn.S.(sequence_of bridge)))
+
+let policy_of_cstruct, policy_to_cstruct =
+  let c = Asn.codec Asn.der policy_obj in
+  ((fun cs -> match Asn.decode c cs with
+      | Ok x -> Ok x
+      | Error (`Parse msg) -> Error (`Msg msg)),
+   Asn.encode c)
+
+
 let image =
   let f = function
     | `C1 x -> `Hvt_amd64, x

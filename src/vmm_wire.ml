@@ -546,18 +546,39 @@ module Vm = struct
     | Create
     | Destroy
     | Info
-    (* | Add_policy *)
+    | Policy
+    | Insert_policy
+    | Remove_policy
+    | Force_create
 
   let op_to_int = function
     | Create -> 0x0400l
     | Destroy -> 0x0401l
     | Info -> 0x0402l
+    | Policy -> 0x0403l
+    | Insert_policy -> 0x0404l
+    | Remove_policy -> 0x0405l
+    | Force_create -> 0x0406l
 
   let int_to_op = function
     | 0x0400l -> Some Create
     | 0x0401l -> Some Destroy
     | 0x0402l -> Some Info
+    | 0x0403l -> Some Policy
+    | 0x0404l -> Some Insert_policy
+    | 0x0405l -> Some Remove_policy
+    | 0x0406l -> Some Force_create
     | _ -> None
+
+  let policy id version name =
+    encode ~name version id (op_to_int Policy)
+
+  let insert_policy id version name policy =
+    let body = Vmm_asn.policy_to_cstruct policy in
+    encode ~name ~body version id (op_to_int Insert_policy)
+
+  let remove_policy id version name =
+    encode ~name version id (op_to_int Remove_policy)
 
   let info id version name =
     encode ~name version id (op_to_int Info)
@@ -574,6 +595,25 @@ module Vm = struct
   let info_reply id version vms =
     let body = encode_list encode_vm vms in
     reply ~body version id (op_to_int Info)
+
+  let policy_reply id version policies =
+    let body = encode_list
+        (fun (prefix, policy) ->
+           let name_cs = encode_strings prefix
+           and pol_cs = Vmm_asn.policy_to_cstruct policy in
+           Cstruct.append name_cs pol_cs)
+        policies
+    in
+    reply ~body version id (op_to_int Policy)
+
+  let decode_policies buf =
+    decode_list (fun cs ->
+        decode_strings cs >>= fun (id, l) ->
+        cs_shift cs l >>= fun cs' ->
+        Vmm_asn.policy_of_cstruct cs' >>= fun (policy, cs'') ->
+        let off = Cstruct.len cs - Cstruct.len cs'' in
+        Ok ((id, policy), off))
+      buf
 
   let decode_vm cs =
     decode_strings cs >>= fun (id, l) ->
@@ -632,124 +672,10 @@ module Vm = struct
     let body = encode_vm_config vm in
     encode ~name:vm.vname ~body version id (op_to_int Create)
 
+  let force_create id version vm =
+    let body = encode_vm_config vm in
+    encode ~name:vm.vname ~body version id (op_to_int Force_create)
+
   let destroy id version name =
     encode ~name version id (op_to_int Destroy)
 end
-
-(*
-module Client = struct
-  let cmd_to_int = function
-    | Info -> 0x0500l
-    | Destroy_vm -> 0x0501l
-    | Create_block -> 0x0502l
-    | Destroy_block -> 0x0503l
-    | Statistics -> 0x0504l
-    | Attach -> 0x0505l
-    | Detach -> 0x0506l
-    | Log -> 0x0507l
-  and cmd_of_int = function
-    | 0x0500l -> Some Info
-    | 0x0501l -> Some Destroy_vm
-    | 0x0502l -> Some Create_block
-    | 0x0503l -> Some Destroy_block
-    | 0x0504l -> Some Statistics
-    | 0x0505l -> Some Attach
-    | 0x0506l -> Some Detach
-    | 0x0507l -> Some Log
-    | _ -> None
-
-  let cmd ?arg it id version =
-    let pay, length = may_enc_str arg
-    and tag = cmd_to_int it
-    in
-    let length = Int32.of_int length in
-    let hdr = create_header { length ; id ; version ; tag } in
-    Cstruct.(to_string (append hdr pay))
-
-  let log hdr event version =
-    let payload =
-      Cstruct.append
-        (Log.encode_log_hdr ~drop_context:true hdr)
-        (Log.encode_event event)
-    in
-    let length = cs_len payload in
-    let r =
-      Cstruct.append
-        (create_header { length ; id = 0L ; version ; tag = Log.(op_to_int Data) })
-        payload
-    in
-    Cstruct.to_string r
-
-  let stat data id version =
-    let length = Int32.of_int (String.length data) in
-    let hdr = create_header { length ; id ; version ; tag = Stats.(op_to_int Stat_reply) } in
-    Cstruct.to_string hdr ^ data
-
-  let console off name payload version =
-    let name = match List.rev (id_of_string name) with
-      | leaf::_ -> leaf
-      | [] -> "none"
-    in
-    let nam, l = encode_string name in
-    let payload, length =
-      let p' = Astring.String.drop ~max:off payload in
-      p', l + String.length p'
-    in
-    let length = Int32.of_int length in
-    let hdr =
-      create_header { length ; id = 0L ; version ; tag = Console.(op_to_int Data) }
-    in
-    Cstruct.(to_string (append hdr nam)) ^ payload
-
-  let encode_vm name vm =
-    let name = encode_string name
-    and cs = encode_string (Bos.Cmd.to_string vm.cmd)
-    and pid = encode_int vm.pid
-    and taps = encode_strings vm.taps
-    in
-    let tapc = encode_int (Cstruct.len taps) in
-    let r = Cstruct.concat [ name ; cs ; pid ; tapc ; taps ] in
-    Cstruct.to_string r
-
-  let info data id version =
-    let length = String.length data in
-    let length = Int32.of_int length in
-    let hdr = create_header { length ; id ; version ; tag = success_tag } in
-    Cstruct.to_string hdr ^ data
-
-  let decode_vm cs =
-    decode_string cs >>= fun (name, l) ->
-    decode_string (Cstruct.shift cs l) >>= fun (cmd, l') ->
-    decode_int (Cstruct.shift cs (l + l')) >>= fun pid ->
-    decode_int ~off:(l + l' + 4) cs >>= fun tapc ->
-    let taps = Cstruct.sub cs (l + l' + 12) tapc in
-    decode_strings taps >>= fun taps ->
-    Ok ((name, cmd, pid, taps), Cstruct.shift cs (l + l' + 12 + tapc))
-
-  let decode_info data =
-    let rec go acc buf =
-      if Cstruct.len buf = 0 then
-        Ok (List.rev acc)
-      else
-        decode_vm buf >>= fun (vm, rest) ->
-        go (vm :: acc) rest
-    in
-    go [] (Cstruct.of_string data)
-
-  let decode_stat data =
-    Stats.decode_stats (Cstruct.of_string data)
-
-  let decode_log data =
-    let cs = Cstruct.of_string data in
-    Log.decode_log_hdr cs >>= fun (hdr, rest) ->
-    Log.decode_event rest >>= fun event ->
-    Ok (hdr, event)
-
-  let decode_console data =
-    let cs = Cstruct.of_string data in
-    decode_string cs >>= fun (name, l) ->
-    decode_ptime (Cstruct.shift cs l) >>= fun ts ->
-    decode_string (Cstruct.shift cs (l + 16)) >>= fun (line, _) ->
-    Ok (name, ts, line)
-end
-                *)

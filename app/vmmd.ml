@@ -22,7 +22,53 @@ type out = [
   | `Log of Cstruct.t
 ]
 
-let handle state out c_fd fd addr =
+let state = ref (Vmm_engine.init ())
+
+let create c_fd process cont =
+  Vmm_lwt.read_wire c_fd >>= function
+  | Ok (hdr, data) ->
+    if Vmm_wire.is_fail hdr then begin
+      Logs.err (fun m -> m "console failed with %s" (Cstruct.to_string data)) ;
+      Lwt.return_unit
+    end else if Vmm_wire.is_reply hdr then begin
+      (* assert hdr.id = id! *)
+      let await, wakeme = Lwt.wait () in
+      begin match cont !state await with
+        | Error (`Msg msg) ->
+          Logs.err (fun m -> m "create continuation failed %s" msg) ;
+          Lwt.return_unit
+        | Ok (state'', out, vm) ->
+          state := state'' ;
+          s := { !s with vm_created = succ !s.vm_created } ;
+          Lwt.async (fun () ->
+              Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
+              let state', out' = Vmm_engine.handle_shutdown !state vm r in
+              s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
+              state := state' ;
+              process out' >|= fun () ->
+              Lwt.wakeup wakeme ()) ;
+          process out >>= fun () ->
+          begin match Vmm_engine.setup_stats !state vm with
+            | Ok (state', out) ->
+              state := state' ;
+              process out (* TODO: need to read from stats socket! *)
+            | Error (`Msg e) ->
+                    Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
+                    Lwt.return_unit
+          end
+      end
+    end else begin
+      Logs.err (fun m -> m "reading from console %lx, %a" hdr.Vmm_wire.tag Cstruct.hexdump_pp data) ;
+      Lwt.return_unit
+    end
+  | Error (`Msg msg) ->
+    Logs.err (fun m -> m "error %s while reading from console" msg) ;
+    Lwt.return_unit
+  | Error _ ->
+    Logs.err (fun m -> m "error while reading from console") ;
+    Lwt.return_unit
+
+let handle out c_fd fd addr =
   (* out is for `Log | `Stat | `Cons (including reconnect semantics) *)
   (* need to handle data out (+ die on write failure) *)
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
@@ -58,50 +104,19 @@ let handle state out c_fd fd addr =
       match next with
       | `End -> Lwt.return_unit
       | `Wait (task, out) -> task >>= fun () -> process out
+      | `Wait_and_create (state', task, next) ->
+        state := state' ;
+        task >>= fun () ->
+        let state', data, n = next !state in
+        state := state' ;
+        process data >>= fun () ->
+        (match n with
+         | `End -> Lwt.return_unit
+         | `Create cont -> create c_fd process cont)
       | `Create cont ->
+        create c_fd process cont
         (* data contained a write to console, we need to wait for its reply first *)
-        Vmm_lwt.read_wire c_fd >>= function
-        | Ok (hdr, data) ->
-          if Vmm_wire.is_fail hdr then begin
-            Logs.err (fun m -> m "console failed with %s" (Cstruct.to_string data)) ;
-            Lwt.return_unit
-          end else if Vmm_wire.is_reply hdr then begin
-            (* assert hdr.id = id! *)
-            let await, wakeme = Lwt.wait () in
-            begin match cont !state await with
-              | Error (`Msg msg) ->
-                Logs.err (fun m -> m "create continuation failed %s" msg) ;
-                Lwt.return_unit
-              | Ok (state'', out, vm) ->
-                state := state'' ;
-                s := { !s with vm_created = succ !s.vm_created } ;
-                Lwt.async (fun () ->
-                    Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
-                    let state', out' = Vmm_engine.handle_shutdown !state vm r in
-                    s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
-                    state := state' ;
-                    process out' >|= fun () ->
-                    Lwt.wakeup wakeme ()) ;
-                process out >>= fun () ->
-                begin match Vmm_engine.setup_stats !state vm with
-                  | Ok (state', out) ->
-                    state := state' ;
-                    process out (* TODO: need to read from stats socket! *)
-                  | Error (`Msg e) ->
-                    Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
-                    Lwt.return_unit
-                end
-            end
-          end else begin
-            Logs.err (fun m -> m "reading from console %lx, %a" hdr.Vmm_wire.tag Cstruct.hexdump_pp data) ;
-            Lwt.return_unit
-          end
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "error %s while reading from console" msg) ;
-          Lwt.return_unit
-        | Error _ ->
-          Logs.err (fun m -> m "error while reading from console") ;
-          Lwt.return_unit ) >>= fun () ->
+  ) >>= fun () ->
   Vmm_lwt.safe_close fd
 
 let init_sock sock =
@@ -162,7 +177,6 @@ let jump _ =
      (create_mbox `Log >|= function
        | None -> invalid_arg "cannot connect to log socket"
        | Some l -> l) >>= fun (l, _l_fd) ->
-     let state = ref (Vmm_engine.init ()) in
      let out = function
        | `Stat data -> (match s with None -> Lwt.return_unit | Some (s, _s_fd) -> Lwt_mvar.put s data)
        | `Log data -> Lwt_mvar.put l data
@@ -172,7 +186,7 @@ let jump _ =
      let rec loop () =
        Lwt_unix.accept ss >>= fun (fd, addr) ->
        Lwt_unix.set_close_on_exec fd ;
-       Lwt.async (fun () -> handle state out c_fd fd addr) ;
+       Lwt.async (fun () -> handle out c_fd fd addr) ;
        loop ()
      in
      loop ())

@@ -7,13 +7,15 @@ open Rresult.R.Infix
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
 
-let socket_path =
-  let path name = Fpath.(to_string (tmpdir / "util" / name + "sock")) in
-  function
-  | `Console -> path "console"
-  | `Vmmd -> Fpath.(to_string (tmpdir / "vmmd.sock"))
-  | `Stats -> path "stat"
-  | `Log -> path "log"
+let socket_path t =
+  let path name = Fpath.(tmpdir / "util" / name + "sock") in
+  let path = match t with
+    | `Console -> path "console"
+    | `Vmmd -> Fpath.(tmpdir / "vmmd" + "sock")
+    | `Stats -> path "stat"
+    | `Log -> path "log"
+  in
+  Fpath.to_string path
 
 let pp_socket ppf t =
   let name = socket_path t in
@@ -94,6 +96,10 @@ let drop_super ~super ~sub =
 
 let is_sub_id ~super ~sub =
   match drop_super ~super ~sub with None -> false | Some _ -> true
+
+let domain id = match List.rev id with
+  | _::prefix -> List.rev prefix
+  | [] -> []
 
 let pp_id ppf ids =
   Fmt.(pf ppf "%a" (list ~sep:(unit ".") string) ids)
@@ -185,6 +191,7 @@ let good_bridge idxs nets =
   List.for_all (fun n -> String.Map.mem n nets) idxs
 
 let vm_matches_res (res : policy) (vm : vm_config)  =
+  (* TODO block device *)
   res.vms >= 1 && IS.mem vm.cpuid res.cpuids &&
   vm.requested_memory <= res.memory &&
   good_bridge vm.network res.bridges

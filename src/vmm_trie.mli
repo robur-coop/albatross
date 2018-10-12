@@ -13,3 +13,5 @@ val find : id -> 'a t -> 'a option
 val collect : id -> 'a t -> (id * 'a) list
 
 val all : 'a t -> (id * 'a) list
+
+val fold : id -> 'a t -> (id -> 'a -> 'b -> 'b) -> 'b -> 'b
