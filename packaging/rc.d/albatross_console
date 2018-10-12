@@ -32,7 +32,7 @@ pidfile="/var/run/albatross_console.pid"
 procname="/usr/local/libexec/albatross/vmm_console"
 
 albatross_console_start () {
-    /usr/sbin/daemon -p "${pidfile}" -u "${albatross_console_user}" -S \
+    /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_console_user}" \
 		     "${procname}" "${albatross_console_flags}"
 }
 
