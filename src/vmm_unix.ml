@@ -58,8 +58,8 @@ let rec mkfifo name =
   | Unix.Unix_error (Unix.EINTR, _, _) -> mkfifo name
 
 let image_file, fifo_file =
-  ((fun vm -> Fpath.(tmpdir / (vm_id vm) + "img")),
-   (fun vm -> Fpath.(tmpdir / "fifo" / (vm_id vm))))
+  ((fun vm -> Fpath.(tmpdir / (string_of_id vm.vname) + "img")),
+   (fun vm -> Fpath.(tmpdir / "fifo" / (string_of_id vm.vname))))
 
 let rec fifo_exists file =
   try Ok (Unix.((stat @@ Fpath.to_string file).st_kind = S_FIFO)) with

@@ -154,8 +154,7 @@ let is_sub ~super ~sub =
   sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
 
 type vm_config = {
-  prefix : id ;
-  vname : string ;
+  vname : id ;
   cpuid : int ;
   requested_memory : int ;
   block_device : string option ;
@@ -164,13 +163,9 @@ type vm_config = {
   argv : string list option ;
 }
 
-let fullname vm = vm.prefix @ [ vm.vname ]
-
-let vm_id vm = string_of_id (fullname vm)
-
 (* used for block devices *)
-let location vm = match vm.prefix with
-  | tld::rest -> tld, String.concat ~sep:"." (rest@[vm.vname])
+let location vm = match vm.vname with
+  | tld::rest -> tld, String.concat ~sep:"." rest
   | [] -> invalid_arg "dunno how this happened"
 
 let pp_image ppf (typ, blob) =
@@ -178,8 +173,8 @@ let pp_image ppf (typ, blob) =
   Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
 
 let pp_vm_config ppf (vm : vm_config) =
-  Fmt.pf ppf "%s cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
-    vm.vname vm.cpuid vm.requested_memory
+  Fmt.pf ppf "%a cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
+    pp_id vm.vname vm.cpuid vm.requested_memory
     Fmt.(option ~none:(unit "no") string) vm.block_device
     Fmt.(list ~sep:(unit ", ") string) vm.network
     pp_image vm.vmimage
@@ -319,14 +314,13 @@ let pp_ifdata ppf i =
 module Log = struct
   type hdr = {
     ts : Ptime.t ;
-    context : id ;
-    name : string ;
+    name : id ;
   }
 
   let pp_hdr ppf (hdr : hdr) =
-    Fmt.pf ppf "%a: %s" (Ptime.pp_human ()) hdr.ts hdr.name
+    Fmt.pf ppf "%a: %a" (Ptime.pp_rfc3339 ()) hdr.ts pp_id hdr.name
 
-  let hdr context name = { ts = Ptime_clock.now () ; context ; name }
+  let hdr name = { ts = Ptime_clock.now () ; name }
 
   type event =
     [ `Startup

@@ -458,9 +458,8 @@ module Log = struct
     encode ~name version id (op_to_int Subscribe)
 
   let decode_log_hdr cs =
-    decode_id_ts cs >>= fun ((id, ts), off) ->
-    split_id id >>= fun (name, context) ->
-    Ok ({ Log.ts ; context ; name }, Cstruct.shift cs off)
+    decode_id_ts cs >>= fun ((name, ts), off) ->
+    Ok ({ Log.ts ; name }, Cstruct.shift cs off)
 
   let encode_addr ip port =
     let cs = Cstruct.create 6 in
@@ -538,10 +537,8 @@ module Log = struct
      | x -> R.error_msgf "couldn't parse event type %d" x
 
   let log id version hdr event =
-    let body = Cstruct.append (encode_ptime hdr.Log.ts) (encode_event event)
-    and name = hdr.Log.context @ [ hdr.Log.name ]
-    in
-    encode ~name ~body version id (op_to_int Log)
+    let body = Cstruct.append (encode_ptime hdr.Log.ts) (encode_event event) in
+    encode ~name:hdr.name ~body version id (op_to_int Log)
 end
 
 module Vm = struct
@@ -566,7 +563,7 @@ module Vm = struct
     encode ~name version id (op_to_int Info)
 
   let encode_vm vm =
-    let name = encode_strings (vm.config.prefix @ [ vm.config.vname ])
+    let name = encode_strings vm.config.vname
     and memory = encode_int vm.config.requested_memory
     and cs = encode_string (Bos.Cmd.to_string vm.cmd)
     and pid = encode_int vm.pid
@@ -605,9 +602,8 @@ module Vm = struct
     Cstruct.concat [ cpu ; mem ; block ; network ; vmimage ; args ]
 
   let decode_vm_config buf =
-    decode_strings buf >>= fun (id, off) ->
-    Logs.debug (fun m -> m "vm_config id %a" pp_id id) ;
-    split_id id >>= fun (vname, prefix) ->
+    decode_strings buf >>= fun (vname, off) ->
+    Logs.debug (fun m -> m "vm_config name %a" pp_id vname) ;
     cs_shift buf off >>= fun buf' ->
     decode_int buf' >>= fun cpuid ->
     Logs.debug (fun m -> m "cpuid %d" cpuid) ;
@@ -630,12 +626,11 @@ module Vm = struct
     cs_shift buf'''' (16 + size) >>= fun buf''''' ->
     decode_strings buf''''' >>= fun (argv, _) ->
     let argv = match argv with [] -> None | xs -> Some xs in
-    Ok { vname ; prefix ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
+    Ok { vname ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
 
   let create id version vm =
     let body = encode_vm_config vm in
-    let name = vm.prefix @ [ vm.vname ] in
-    encode ~name ~body version id (op_to_int Create)
+    encode ~name:vm.vname ~body version id (op_to_int Create)
 
   let destroy id version name =
     encode ~name version id (op_to_int Destroy)

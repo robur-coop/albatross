@@ -40,8 +40,7 @@ let log state (hdr, event) =
   ({ state with log_counter }, `Log data)
 
 let handle_create t hdr vm_config (* policies *) =
-  let full = fullname vm_config in
-  (if Vmm_resources.exists t.resources full then
+  (if Vmm_resources.exists t.resources vm_config.vname then
      Error (`Msg "VM with same name is already running")
    else
      Ok ()) >>= fun () ->
@@ -51,14 +50,14 @@ let handle_create t hdr vm_config (* policies *) =
   Vmm_unix.prepare vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   (* TODO should we pre-reserve sth in t? *)
-  let cons = Vmm_wire.Console.add t.console_counter t.console_version full in
+  let cons = Vmm_wire.Console.add t.console_counter t.console_version vm_config.vname in
   Ok ({ t with console_counter = Int64.succ t.console_counter }, [ `Cons cons ],
       `Create (fun t task ->
           (* actually execute the vm *)
           Vmm_unix.exec vm_config taps >>= fun vm ->
           Logs.debug (fun m -> m "exec()ed vm") ;
-          Vmm_resources.insert t.resources full vm >>= fun resources ->
-          let tasks = String.Map.add (string_of_id full) task t.tasks in
+          Vmm_resources.insert t.resources vm_config.vname vm >>= fun resources ->
+          let tasks = String.Map.add (string_of_id vm_config.vname) task t.tasks in
           let used_bridges =
             List.fold_left2 (fun b br ta ->
                 let old = match String.Map.find br b with
@@ -69,12 +68,12 @@ let handle_create t hdr vm_config (* policies *) =
               t.used_bridges vm_config.network taps
           in
           let t = { t with resources ; tasks ; used_bridges } in
-          let t, out = log t (Log.hdr vm_config.prefix vm_config.vname, `VM_start (vm.pid, vm.taps, None)) in
+          let t, out = log t (Log.hdr vm_config.vname, `VM_start (vm.pid, vm.taps, None)) in
           let data = Vmm_wire.success t.client_version hdr.Vmm_wire.id Vmm_wire.Vm.(op_to_int Create) in
           Ok (t, [ `Data data ; out ], vm)))
 
 let setup_stats t vm =
-  let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version (fullname vm.config) vm.pid vm.taps in
+  let stat_out = Vmm_wire.Stats.add t.stats_counter t.stats_version vm.config.vname vm.pid vm.taps in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   Ok (t, [ `Stat stat_out ])
 
@@ -83,7 +82,7 @@ let handle_shutdown t vm r =
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
   let resources =
-    match Vmm_resources.remove t.resources (fullname vm.config) vm with
+    match Vmm_resources.remove t.resources vm.config.vname vm with
     | Ok resources -> resources
     | Error (`Msg e) ->
       Logs.warn (fun m -> m "%s while removing vm %a" e pp_vm vm) ;
@@ -98,11 +97,10 @@ let handle_shutdown t vm r =
         String.Map.add br (String.Set.remove ta old) b)
       t.used_bridges vm.config.network vm.taps
   in
-  let stat_out = Vmm_wire.Stats.remove t.stats_counter t.stats_version (fullname vm.config) in
-  let tasks = String.Map.remove (vm_id vm.config) t.tasks in
+  let stat_out = Vmm_wire.Stats.remove t.stats_counter t.stats_version vm.config.vname in
+  let tasks = String.Map.remove (string_of_id vm.config.vname) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; used_bridges ; tasks } in
-  let t, logout = log t (Log.hdr vm.config.prefix vm.config.vname,
-                         `VM_stop (vm.pid, r))
+  let t, logout = log t (Log.hdr vm.config.vname, `VM_stop (vm.pid, r))
   in
   (t, [ `Stat stat_out ; logout ])
 

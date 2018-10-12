@@ -82,18 +82,14 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
     | Ok data -> data
     | Error (`Msg s) -> invalid_arg s
   in
-  let prefix, vname = match List.rev name with
-    | [ name ] -> [], name
-    | name::tl -> List.rev tl, name
-    | [] -> assert false
-  and argv = match boot_params with
+  let argv = match boot_params with
     | [] -> None
     | xs -> Some xs
   (* TODO we could do the compression btw *)
   and vmimage = `Hvt_amd64, Cstruct.of_string image'
   in
   let vm_config = {
-    prefix ; vname ; cpuid ; requested_memory ; block_device ; network ;
+    vname = name ; cpuid ; requested_memory ; block_device ; network ;
     vmimage ; argv
   } in
   Lwt_main.run (

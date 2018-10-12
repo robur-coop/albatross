@@ -73,7 +73,7 @@ let send_history s ring id cmd_id =
         let cs = Cstruct.of_string x in
         match Vmm_wire.Log.decode_log_hdr cs with
         | Ok (hdr, _) ->
-          begin match Vmm_core.drop_super ~super:id ~sub:hdr.Vmm_core.Log.context with
+          begin match Vmm_core.drop_super ~super:id ~sub:hdr.Vmm_core.Log.name with
             | Some [] -> cs :: acc
             | _ -> acc
           end
@@ -118,7 +118,7 @@ let handle mvar ring s addr () =
             Lwt_mvar.put mvar data >>= fun () ->
             let data' = Vmm_wire.encode ~body:data my_version !bcast (Vmm_wire.Log.op_to_int Vmm_wire.Log.Broadcast) in
             bcast := Int64.succ !bcast ;
-            broadcast hdr.Vmm_core.Log.context data' !tree >>= fun tree' ->
+            broadcast hdr.Vmm_core.Log.name data' !tree >>= fun tree' ->
             tree := tree' ;
             loop ()
         end
