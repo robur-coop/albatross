@@ -229,9 +229,11 @@ let identifier serial =
   match Hex.of_cstruct @@ Nocrypto.Hash.SHA256.digest @@
     Nocrypto.Numeric.Z.to_cstruct_be @@ serial
   with
-  | `Hex str -> fst (String.span ~max:6 str)
+  | `Hex str -> str
 
 let id cert = identifier (X509.serial cert)
+
+let name cert = X509.common_name_to_string cert
 
 let parse_db lines =
   List.fold_left (fun acc s ->

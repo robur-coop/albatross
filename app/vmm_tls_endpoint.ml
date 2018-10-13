@@ -2,24 +2,42 @@
 
 open Lwt.Infix
 
-let write_tls state t data =
-  Vmm_tls.write_tls (fst t) data >>= function
-  | Ok () -> Lwt.return_unit
-  | Error `Exception ->
-    let state', out = Vmm_engine.handle_disconnect !state t in
-    state := state' ;
-    Lwt_list.iter_s (fun (s, data) -> write_raw s data) out >>= fun () ->
-    Tls_lwt.Unix.close (fst t)
-
-let to_ipaddr (_, sa) = match sa with
-  | Lwt_unix.ADDR_UNIX _ -> invalid_arg "cannot convert unix address"
-  | Lwt_unix.ADDR_INET (addr, port) -> Ipaddr_unix.V4.of_inet_addr_exn addr, port
-
-let pp_sockaddr ppf (_, sa) = match sa with
+let pp_sockaddr ppf = function
   | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
   | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
                                          (Unix.string_of_inet_addr addr) port
 
+let connect socket_path =
+  let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  Lwt_unix.set_close_on_exec c ;
+  Lwt_unix.connect c (Lwt_unix.ADDR_UNIX socket_path) >|= fun () ->
+  c
+
+let client_auth ca tls addr =
+  Logs.debug (fun m -> m "connection from %a" pp_sockaddr addr) ;
+  let authenticator =
+    let time = Ptime_clock.now () in
+    X509.Authenticator.chain_of_trust ~time (* ~crls:!state.Vmm_engine.crls *) [ca]
+  in
+  Lwt.catch
+    (fun () -> Tls_lwt.Unix.reneg ~authenticator tls)
+    (fun e ->
+       (match e with
+        | Tls_lwt.Tls_alert a -> Logs.err (fun m -> m "TLS ALERT %s" (Tls.Packet.alert_type_to_string a))
+        | Tls_lwt.Tls_failure f -> Logs.err (fun m -> m "TLS FAILURE %s" (Tls.Engine.string_of_failure f))
+        | exn -> Logs.err (fun m -> m "%s" (Printexc.to_string exn))) ;
+       Tls_lwt.Unix.close tls >>= fun () ->
+       Lwt.fail e) >>= fun () ->
+  (match Tls_lwt.Unix.epoch tls with
+   | `Ok epoch -> Lwt.return epoch.Tls.Core.peer_certificate_chain
+   | `Error ->
+     Tls_lwt.Unix.close tls >>= fun () ->
+     Lwt.fail_with "error while getting epoch")
+
+let handle ca (tls, addr) =
+  client_auth ca tls addr >>= fun chain ->
+  let _ = Vmm_x509.handle_initial tls addr chain ca in
+  Lwt.return_unit
 
 let server_socket port =
   let open Lwt_unix in
@@ -30,69 +48,10 @@ let server_socket port =
   listen s 10 ;
   Lwt.return s
 
-let rec read_log state s =
-  Vmm_lwt.read_exactly s >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "reading log error %s" msg) ;
-    read_log state s
-  | Error _ ->
-    Logs.err (fun m -> m "exception while reading log") ;
-    invalid_arg "log socket communication issue"
-  | Ok (hdr, data) ->
-    let state', outs = Vmm_engine.handle_log !state hdr data in
-    state := state' ;
-    process state outs >>= fun () ->
-    read_log state s
-
-let rec read_cons state s =
-  Vmm_lwt.read_exactly s >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "reading console error %s" msg) ;
-    read_cons state s
-  | Error _ ->
-    Logs.err (fun m -> m "exception while reading console socket") ;
-    invalid_arg "console socket communication issue"
-  | Ok (hdr, data) ->
-    let state', outs = Vmm_engine.handle_cons !state hdr data in
-    state := state' ;
-    process state outs >>= fun () ->
-    read_cons state s
-
-let rec read_stats state s =
-  Vmm_lwt.read_exactly s >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "reading stats error %s" msg) ;
-    read_stats state s
-  | Error _ ->
-    Logs.err (fun m -> m "exception while reading stats") ;
-    Lwt.catch (fun () -> Lwt_unix.close s) (fun _ -> Lwt.return_unit) >|= fun () ->
-    invalid_arg "stat socket communication issue"
-  | Ok (hdr, data) ->
-    let state', outs = Vmm_engine.handle_stat !state hdr data in
-    state := state' ;
-    process state outs >>= fun () ->
-    read_stats state s
-
-let cmp_s (_, a) (_, b) =
-  let open Lwt_unix in
-  match a, b with
-  | ADDR_UNIX str, ADDR_UNIX str' -> String.compare str str' = 0
-  | ADDR_INET (addr, port), ADDR_INET (addr', port') ->
-    port = port' &&
-    String.compare (Unix.string_of_inet_addr addr) (Unix.string_of_inet_addr addr') = 0
-  | _ -> false
-
 let jump _ cacert cert priv_key port =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
     (Nocrypto_entropy_lwt.initialize () >>= fun () ->
-     (init_sock Vmm_core.tmpdir "cons" >|= function
-       | None -> invalid_arg "cannot connect to console socket"
-       | Some c -> c) >>= fun c ->
-     init_sock Vmm_core.tmpdir "stat" >>= fun s ->
-     (init_sock Vmm_core.tmpdir "log" >|= function
-       | None -> invalid_arg "cannot connect to log socket"
-       | Some l -> l) >>= fun l ->
      server_socket port >>= fun socket ->
      X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
      X509_lwt.certs_of_pem cacert >>= (function
@@ -102,16 +61,6 @@ let jump _ cacert cert priv_key port =
        Tls.(Config.server ~version:(Core.TLS_1_2, Core.TLS_1_2)
               ~reneg:true ~certificates:(`Single cert) ())
      in
-     (match Vmm_engine.init cmp_s c s l with
-      | Ok s -> Lwt.return s
-      | Error (`Msg m) -> Lwt.fail_with m) >>= fun t ->
-     let state = ref t in
-     Lwt.async (fun () -> read_cons state c) ;
-     (match s with
-      | None -> ()
-      | Some s -> Lwt.async (fun () -> read_stats state s)) ;
-     Lwt.async (fun () -> read_log state l) ;
-     Lwt.async stats_loop ;
      let rec loop () =
        Lwt.catch (fun () ->
            Lwt_unix.accept socket >>= fun (fd, addr) ->
@@ -123,7 +72,7 @@ let jump _ cacert cert priv_key port =
                 Lwt.fail exn) >>= fun t ->
            Lwt.async (fun () ->
                Lwt.catch
-                 (fun () -> handle ca state t)
+                 (fun () -> handle ca t)
                  (fun e ->
                     Logs.err (fun m -> m "error while handle() %s"
                                  (Printexc.to_string e)) ;

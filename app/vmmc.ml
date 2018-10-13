@@ -6,31 +6,11 @@ open Astring
 
 open Vmm_core
 
-let my_version = `WV2
-let my_command = 1L
-
 let process fd =
   Vmm_lwt.read_wire fd >|= function
-  | Error _ -> Error ()
-  | Ok (hdr, data) ->
-    if not (Vmm_wire.version_eq hdr.Vmm_wire.version my_version) then begin
-      Logs.err (fun m -> m "unknown wire protocol version") ;
-      Error ()
-    end else begin
-      if Vmm_wire.is_fail hdr then begin
-        let msg = match Vmm_wire.decode_string data with
-          | Ok (msg, _) -> Some msg
-          | Error _ -> None
-        in
-        Logs.err (fun m -> m "command failed %a" Fmt.(option ~none:(unit "") string) msg) ;
-        Error ()
-      end else if Vmm_wire.is_reply hdr && hdr.Vmm_wire.id = my_command then
-        Ok data
-      else begin
-        Logs.err (fun m -> m "received unexpected data") ;
-        Error ()
-      end
-    end
+  | Error (`Msg m) -> Error (`Msg m)
+  | Error _ -> Error (`Msg "read error")
+  | Ok data -> Vmm_commands.handle_reply data
 
 let socket t = function
   | Some x -> x
@@ -42,97 +22,94 @@ let connect socket_path =
   Lwt_unix.connect c (Lwt_unix.ADDR_UNIX socket_path) >|= fun () ->
   c
 
+let read fd f =
+  (* now we busy read and process output *)
+  let rec loop () =
+    Vmm_lwt.read_wire fd >>= function
+    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
+    | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
+    | Ok (hdr, data) ->
+      Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp data) ;
+      if Vmm_wire.is_fail hdr then
+        let msg = match Vmm_wire.decode_string data with
+          | Error _ -> ""
+          | Ok (m, _) -> m
+        in
+        Lwt.return (Error (`Msg ("operation failed " ^ msg)))
+      else if Vmm_wire.is_reply hdr then
+        let msg = match Vmm_wire.decode_string data with
+          | Error _ -> None
+          | Ok (m, _) -> Some m
+        in
+        Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
+        loop ()
+      else
+        match f (hdr, data) with
+        | Ok () -> loop ()
+        | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
+  in
+  loop ()
+
+let handle opt_socket (cmd : Vmm_commands.t) f =
+  let sock, next, cmd = Vmm_commands.handle cmd in
+  connect (socket sock opt_socket) >>= fun fd ->
+  Vmm_lwt.write_wire fd cmd >>= function
+  | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
+  | Ok () ->
+    (match next with
+     | `Read -> read fd f
+     | `End ->
+       process fd >|= function
+       | Error e -> Error e
+       | Ok data -> f data) >>= fun res ->
+    Vmm_lwt.safe_close fd >|= fun () ->
+    res
+
+let jump opt_socket cmd f =
+  match
+    Lwt_main.run (handle opt_socket cmd f)
+  with
+  | Ok () -> `Ok ()
+  | Error (`Msg m) -> `Error (false, m)
+
 let info_ _ opt_socket name =
-  Lwt_main.run (
-    connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let info = Vmm_wire.Vm.info my_command my_version name in
-    (Vmm_lwt.write_wire fd info >>= function
-      | Ok () ->
-        (process fd >|= function
-          | Error () -> ()
-          | Ok data ->
-            match Vmm_wire.Vm.decode_vms data with
-            | Ok (vms, _) ->
-              List.iter (fun (id, memory, cmd, pid, taps) ->
-                  Logs.app (fun m -> m "VM %a %dMB command %s pid %d taps %a"
-                               pp_id id memory cmd pid Fmt.(list ~sep:(unit ", ") string) taps))
-                vms
-            | Error (`Msg msg) ->
-              Logs.err (fun m -> m "error %s while decoding vms" msg))
-      | Error `Exception -> Lwt.return_unit) >>= fun () ->
-    Vmm_lwt.safe_close fd
-  ) ;
-  `Ok ()
+  jump opt_socket (`Info name) (fun (_, data) ->
+      let open Rresult.R.Infix in
+      Vmm_wire.Vm.decode_vms data >>| fun (vms, _) ->
+      List.iter (fun (id, memory, cmd, pid, taps) ->
+          Logs.app (fun m -> m "VM %a %dMB command %s pid %d taps %a"
+                       pp_id id memory cmd pid Fmt.(list ~sep:(unit ", ") string) taps))
+        vms)
 
 let policy _ opt_socket name =
-  Lwt_main.run (
-    connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let policy = Vmm_wire.Vm.policy my_command my_version name in
-    (Vmm_lwt.write_wire fd policy >>= function
-      | Ok () ->
-        (process fd >|= function
-          | Error () -> ()
-          | Ok data ->
-            match Vmm_wire.Vm.decode_policies data with
-            | Ok (policies, _) ->
-              List.iter (fun (id, policy) ->
-                  Logs.app (fun m -> m "policy %a: %a" pp_id id pp_policy policy))
-                policies
-            | Error (`Msg msg) ->
-              Logs.err (fun m -> m "error %s while decoding policies" msg))
-      | Error `Exception -> Lwt.return_unit) >>= fun () ->
-    Vmm_lwt.safe_close fd
-  ) ;
-  `Ok ()
+  jump opt_socket (`Policy name) (fun (_, data) ->
+      let open Rresult.R.Infix in
+      Vmm_wire.Vm.decode_policies data >>| fun (policies, _) ->
+      List.iter (fun (id, policy) ->
+          Logs.app (fun m -> m "policy %a: %a" pp_id id pp_policy policy))
+        policies)
 
 let remove_policy _ opt_socket name =
-  Lwt_main.run (
-    connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let cmd = Vmm_wire.Vm.remove_policy my_command my_version name in
-    (Vmm_lwt.write_wire fd cmd >>= function
-      | Ok () ->
-        (process fd >|= function
-          | Error () -> ()
-          | Ok _ -> Logs.app (fun m -> m "removed policy"))
-      | Error `Exception -> Lwt.return_unit) >>= fun () ->
-    Vmm_lwt.safe_close fd) ;
-  `Ok ()
+  jump opt_socket (`Remove_policy name) (fun _ ->
+      Ok (Logs.app (fun m -> m "removed policy")))
 
 let add_policy _ opt_socket name vms memory cpus block bridges =
-  Lwt_main.run (
-    connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let bridges = match bridges with
-      | xs ->
-        let add m v =
-          let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
-          String.Map.add n v m
-        in
-        List.fold_left add String.Map.empty xs
-    and cpuids = IS.of_list cpus
-    in
-    let policy = { vms ; cpuids ; memory ; block ; bridges } in
-    let cmd = Vmm_wire.Vm.insert_policy my_command my_version name policy in
-    (Vmm_lwt.write_wire fd cmd >>= function
-      | Ok () ->
-        (process fd >|= function
-          | Error () -> ()
-          | Ok _ -> Logs.app (fun m -> m "added policy"))
-      | Error `Exception -> Lwt.return_unit) >>= fun () ->
-    Vmm_lwt.safe_close fd) ;
-  `Ok ()
+  let bridges = match bridges with
+    | xs ->
+      let add m v =
+        let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
+        String.Map.add n v m
+      in
+      List.fold_left add String.Map.empty xs
+  and cpuids = IS.of_list cpus
+  in
+  let policy = { vms ; cpuids ; memory ; block ; bridges } in
+  jump opt_socket (`Add_policy (name, policy)) (fun _ ->
+      Ok (Logs.app (fun m -> m "added policy")))
 
 let destroy _ opt_socket name =
-  Lwt_main.run (
-    connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let cmd = Vmm_wire.Vm.destroy my_command my_version name in
-    (Vmm_lwt.write_wire fd cmd >>= function
-      | Ok () ->
-        (process fd >|= function
-          | Error () -> ()
-          | Ok _ -> Logs.app (fun m -> m "destroyed VM"))
-      | Error `Exception -> Lwt.return_unit) >>= fun () ->
-    Vmm_lwt.safe_close fd) ;
-  `Ok ()
+  jump opt_socket (`Destroy_vm name) (fun _ ->
+      Ok (Logs.app (fun m -> m "destroyed VM")))
 
 let create _ opt_socket force name image cpuid requested_memory boot_params block_device network =
   let image' = match Bos.OS.File.read (Fpath.v image) with
@@ -149,177 +126,51 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
     vname = name ; cpuid ; requested_memory ; block_device ; network ;
     vmimage ; argv
   } in
-  Lwt_main.run (
-    connect (socket `Vmmd opt_socket) >>= fun fd ->
-    let vm =
-      if force then
-        Vmm_wire.Vm.force_create my_command my_version vm_config
-      else
-        Vmm_wire.Vm.create my_command my_version vm_config
-    in
-    (Vmm_lwt.write_wire fd vm >>= function
-      | Error `Exception -> Lwt.return_unit
-      | Ok () -> process fd >|= function
-        | Ok _ -> Logs.app (fun m -> m "successfully started VM")
-        | Error () -> ()) >>= fun () ->
-    Vmm_lwt.safe_close fd ) ;
-  `Ok ()
+  let cmd =
+    if force then
+      `Force_create_vm vm_config
+    else
+      `Create_vm vm_config
+  in
+  let succ _ = Ok (Logs.app (fun m -> m "successfully started VM")) in
+  jump opt_socket cmd succ
 
 let console _ opt_socket name =
-  Lwt_main.run (
-    connect (socket `Console opt_socket) >>= fun fd ->
-    let cmd = Vmm_wire.Console.attach my_command my_version name in
-    (Vmm_lwt.write_wire fd cmd >>= function
-      | Error `Exception ->
-        Logs.err (fun m -> m "couldn't write to socket") ;
-        Lwt.return_unit
-      | Ok () ->
-        (* now we busy read and process console output *)
-        let rec loop () =
-          Vmm_lwt.read_wire fd >>= function
-          | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
-          | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
-          | Ok (hdr, data) ->
-            Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp data) ;
-            if Vmm_wire.is_fail hdr then
-              let msg = match Vmm_wire.decode_string data with
-                | Error _ -> None
-                | Ok (m, _) -> Some m
-              in
-              Logs.err (fun m -> m "operation failed: %a" Fmt.(option ~none:(unit "") string) msg) ;
-              Lwt.return_unit
-            else if Vmm_wire.is_reply hdr then
-              let msg = match Vmm_wire.decode_string data with
-                | Error _ -> None
-                | Ok (m, _) -> Some m
-              in
-              Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
-              loop ()
-            else
-              let r =
-                let open Rresult.R.Infix in
-                match Vmm_wire.Console.int_to_op hdr.Vmm_wire.tag with
-                | Some Vmm_wire.Console.Data ->
-                  Vmm_wire.decode_id_ts data >>= fun ((name, ts), off) ->
-                  Vmm_wire.decode_string (Cstruct.shift data off) >>= fun (msg, _) ->
-                  Logs.app (fun m -> m "%a %a: %s" Ptime.pp ts Vmm_core.pp_id name msg) ;
-                  Ok ()
-                | _ ->
-                  Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag))
-              in
-              match r with
-              | Ok () -> loop ()
-              | Error (`Msg msg) ->
-                Logs.err (fun m -> m "%s" msg) ;
-                Lwt.return_unit
-        in
-        loop ()) >>= fun () ->
-    Vmm_lwt.safe_close fd) ;
-  `Ok ()
+  jump opt_socket (`Console name) (fun (hdr, data) ->
+      let open Rresult.R.Infix in
+      match Vmm_wire.Console.int_to_op hdr.Vmm_wire.tag with
+      | Some Vmm_wire.Console.Data ->
+        Vmm_wire.decode_id_ts data >>= fun ((name, ts), off) ->
+        Vmm_wire.decode_string (Cstruct.shift data off) >>= fun (msg, _) ->
+        Logs.app (fun m -> m "%a %a: %s" Ptime.pp ts Vmm_core.pp_id name msg) ;
+        Ok ()
+      | _ ->
+        Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag)))
 
-let stats _ opt_socket vm =
-  Lwt_main.run (
-    connect (socket `Stats opt_socket) >>= fun fd ->
-    let cmd = Vmm_wire.Stats.subscribe my_command my_version vm in
-    (Vmm_lwt.write_wire fd cmd >>= function
-      | Error `Exception -> Lwt.fail_with "write error"
-      | Ok () -> Lwt.return_unit) >>= fun () ->
-    (* now we busy read and process stat output *)
-    let rec loop () =
-      Vmm_lwt.read_wire fd >>= function
-      | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
-      | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
-      | Ok (hdr, data) ->
-        if Vmm_wire.is_fail hdr then
-          let msg = match Vmm_wire.decode_string data with
-            | Error _ -> None
-            | Ok (m, _) -> Some m
-          in
-          Logs.err (fun m -> m "operation failed: %a" Fmt.(option ~none:(unit "") string) msg) ;
-          Lwt.return_unit
-        else if Vmm_wire.is_reply hdr then
-          let msg = match Vmm_wire.decode_string data with
-            | Error _ -> None
-            | Ok (m, _) -> Some m
-          in
-          Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
-          loop ()
-        else
-          let r =
-            let open Rresult.R.Infix in
-            match Vmm_wire.Stats.int_to_op hdr.Vmm_wire.tag with
-            | Some Vmm_wire.Stats.Data ->
-              Vmm_wire.decode_strings data >>= fun (id, off) ->
-              Vmm_wire.Stats.decode_stats (Cstruct.shift data off) >>| fun stats ->
-              (Astring.String.concat ~sep:"." id, stats)
-            | _ ->
-              Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag))
-          in
-          match r with
-          | Ok (name, (ru, vmm, ifs)) ->
-            Logs.app (fun m -> m "stats %s@.%a@.%a@.%a@."
-                         name Vmm_core.pp_rusage ru
-                         Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) vmm
-                         Fmt.(list ~sep:(unit "@.") Vmm_core.pp_ifdata) ifs) ;
-            loop ()
-          | Error (`Msg msg) ->
-            Logs.err (fun m -> m "%s" msg) ;
-            Lwt.return_unit
-    in
-    loop () >>= fun () ->
-    Vmm_lwt.safe_close fd) ;
-  `Ok ()
+let stats _ opt_socket name =
+  jump opt_socket (`Statistics name) (fun (hdr, data) ->
+      let open Rresult.R.Infix in
+      match Vmm_wire.Stats.int_to_op hdr.Vmm_wire.tag with
+      | Some Vmm_wire.Stats.Data ->
+        Vmm_wire.decode_strings data >>= fun (name', off) ->
+        Vmm_wire.Stats.decode_stats (Cstruct.shift data off) >>| fun (ru, vmm, ifs) ->
+        Logs.app (fun m -> m "stats %a@.%a@.%a@.%a@."
+                     pp_id name' Vmm_core.pp_rusage ru
+                     Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) vmm
+                     Fmt.(list ~sep:(unit "@.") Vmm_core.pp_ifdata) ifs) ;
+      | _ ->
+        Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag)))
 
-let event_log _ opt_socket vm =
-  Lwt_main.run (
-    connect (socket `Log opt_socket) >>= fun fd ->
-    let cmd = Vmm_wire.Log.subscribe my_command my_version vm in
-    (Vmm_lwt.write_wire fd cmd >>= function
-      | Error `Exception -> Lwt.fail_with "write error"
-      | Ok () -> Lwt.return_unit) >>= fun () ->
-    (* now we busy read and process stat output *)
-    let rec loop () =
-      Vmm_lwt.read_wire fd >>= function
-      | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
-      | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
-      | Ok (hdr, data) ->
-        if Vmm_wire.is_fail hdr then
-          let msg = match Vmm_wire.decode_string data with
-            | Error _ -> None
-            | Ok (m, _) -> Some m
-          in
-          Logs.err (fun m -> m "operation failed: %a" Fmt.(option ~none:(unit "") string) msg) ;
-          Lwt.return_unit
-        else if Vmm_wire.is_reply hdr then
-          let msg = match Vmm_wire.decode_string data with
-            | Error _ -> None
-            | Ok (m, _) -> Some m
-          in
-          Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
-          loop ()
-        else
-          begin
-            (match Vmm_wire.Log.int_to_op hdr.Vmm_wire.tag with
-             | Some Vmm_wire.Log.Broadcast ->
-               begin match Vmm_wire.Log.decode_log_hdr data with
-                 | Error (`Msg err) ->
-                   Logs.warn (fun m -> m "ignoring error %s while decoding log" err) ;
-                 | Ok (loghdr, logdata) ->
-                   match Vmm_wire.Log.decode_event logdata with
-                   | Error (`Msg err) ->
-                     Logs.warn (fun m -> m "loghdr %a ignoring error %s while decoding logdata"
-                                   Vmm_core.Log.pp_hdr loghdr err)
-                   | Ok event ->
-                     Logs.app (fun m -> m "%a" Vmm_core.Log.pp (loghdr, event))
-               end
-             | _ ->
-               Logs.warn (fun m -> m "unknown operation %lx" hdr.Vmm_wire.tag)) ;
-            loop ()
-          end
-    in
-    loop () >>= fun () ->
-    Vmm_lwt.safe_close fd) ;
-  `Ok ()
+let event_log _ opt_socket name =
+  jump opt_socket (`Log name) (fun (hdr, data) ->
+      let open Rresult.R.Infix in
+      match Vmm_wire.Log.int_to_op hdr.Vmm_wire.tag with
+      | Some Vmm_wire.Log.Broadcast ->
+        Vmm_wire.Log.decode_log_hdr data >>= fun (loghdr, logdata) ->
+        Vmm_wire.Log.decode_event logdata >>| fun event ->
+        Logs.app (fun m -> m "%a" Vmm_core.Log.pp (loghdr, event))
+      | _ ->
+        Ok (Logs.warn (fun m -> m "unknown operation %lx" hdr.Vmm_wire.tag)))
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)

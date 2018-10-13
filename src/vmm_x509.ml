@@ -1,6 +1,11 @@
+open Astring
+open Rresult.R.Infix
+
+open Vmm_core
 
 let asn_version = `AV1
 
+(*
 let handle_single_revocation t prefix serial =
   let id = identifier serial in
   (match Vmm_resources.find t.resources (prefix @ [ id ]) with
@@ -39,7 +44,9 @@ let handle_single_revocation t prefix serial =
   (state,
    List.map (fun x -> `Raw x) out,
    List.map fst kill)
+*)
 
+(*
 let handle_revocation t s leaf chain ca prefix =
   Vmm_asn.crl_of_cert leaf >>= fun crl ->
   (* verify data (must be signed by the last cert of the chain (or cacert if chain is empty))! *)
@@ -85,20 +92,51 @@ let handle_revocation t s leaf chain ca prefix =
   in
   let tls_out = Vmm_wire.success ~msg:"updated revocation list" 0 t.client_version in
   Ok ({ t with crls }, `Tls (s, tls_out) :: out, `Close close)
+*)
 
-let handle_initial t s addr chain ca =
+let my_command = 1L
+let my_version = `WV2
+
+
+let handle_initial s addr chain ca =
   separate_chain chain >>= fun (leaf, chain) ->
+  let prefix = List.map name chain in
+  let name = prefix @ [ name leaf ] in
   Logs.debug (fun m -> m "leaf is %s, chain %a"
                  (X509.common_name_to_string leaf)
-                 Fmt.(list ~sep:(unit "->") string)
+                 Fmt.(list ~sep:(unit " -> ") string)
                  (List.map X509.common_name_to_string chain)) ;
   (* TODO here: inspect top-level-cert of chain.
      may need to create bridges and/or block device subdirectory (zfs create) *)
-  let prefix = List.map id chain in
-  let login_hdr, login_ev = Log.hdr prefix (id leaf), `Login addr in
-  let t, out = log t (login_hdr, login_ev) in
-  let initial_out = `Tls (s, Vmm_wire.Client.log login_hdr login_ev t.client_version) in
-  Vmm_asn.permissions_of_cert asn_version leaf >>= fun perms ->
+  (* let login_hdr, login_ev = Log.hdr name, `Login addr in *)
+  Ok ()
+(*  Vmm_asn.command_of_cert asn_version leaf >>= function
+  | `Info ->
+    let cmd = Vmm_wire.Vm.info my_command my_version name in
+    Ok (`Vmmd, cmd)
+  | `Create_vm ->
+    Vmm_asn.vm_of_cert prefix leaf >>= fun vm_config ->
+    let cmd = Vmm_wire.Vm.create my_command my_version vm_config in
+    (* TODO: update acl *)
+    Ok (`Vmmd, cmd)
+  | `Force_create_vm ->
+    Vmm_asn.vm_of_cert prefix leaf >>= fun vm_config ->
+    let cmd = Vmm_wire.Vm.force_create my_command my_version vm_config in
+    (* TODO: update acl *)
+    Ok (`Vmmd, cmd)
+  | `Destroy_vm ->
+    let cmd = Vmm_wire.Vm.destroy my_command my_version name in
+    Ok (`Vmmd, cmd)
+  | `Statistics ->
+    let cmd = Vmm_wire.Stats.subscribe my_command my_version name in
+    Ok (`Stats, cmd)
+  | `Console -> `Cons, Vmm_wire.Console.attach ; read there and write to tls
+  | `Log -> `Log, Vmm_wire.Log.subscribe ; read there and write to tls
+  | `Crl -> write_to_file_unless_serial_smaller ; potentially destroy vms
+  | `Create_block -> ??
+  | `Destroy_block -> ??
+
+
   (if (List.mem `Create perms || List.mem `Force_create perms) && Vmm_asn.contains_vm leaf then
      (* convert certificate to vm_config *)
      Vmm_asn.vm_of_cert prefix leaf >>= fun vm_config ->
@@ -144,20 +182,6 @@ let handle_initial t s addr chain ca =
            cont)
      in
      Ok (t, [], `Create (task, next))
-   else if List.mem `Crl perms && Vmm_asn.contains_crl leaf then
-     handle_revocation t s leaf chain ca prefix
-   else
-     let log_attached =
-       if cmd_allowed perms Log then
-         let pre = string_of_id prefix in
-         let v = match String.Map.find pre t.log_attached with
-           | None -> []
-           | Some xs -> xs
-         in
-         String.Map.add pre ((s, id leaf) :: v) t.log_attached
-       else
-         t.log_attached
-     in
-     Ok ({ t with log_attached }, [], `Loop (prefix, perms))
-  ) >>= fun (t, outs, res) ->
-  Ok (t, initial_out :: out @ outs, res)
+(*   else if List.mem `Crl perms && Vmm_asn.contains_crl leaf then
+     handle_revocation t s leaf chain ca prefix *)
+     *)

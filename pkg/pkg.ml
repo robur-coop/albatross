@@ -10,7 +10,7 @@ let () =
     Pkg.bin "app/vmm_console" ;
     Pkg.bin "app/vmm_log" ;
     (* Pkg.bin "app/vmm_client" ; *)
-    (* Pkg.bin "app/vmm_tls_endpoint" ; *)
+    Pkg.bin "app/vmm_tls_endpoint" ;
     Pkg.bin "app/vmmc" ;
     Pkg.bin "provision/vmm_req_command" ;
     Pkg.bin "provision/vmm_req_delegation" ;
