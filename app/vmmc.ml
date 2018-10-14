@@ -22,76 +22,56 @@ let connect socket_path =
   Lwt_unix.connect c (Lwt_unix.ADDR_UNIX socket_path) >|= fun () ->
   c
 
-let read fd f =
+let read fd =
   (* now we busy read and process output *)
   let rec loop () =
     Vmm_lwt.read_wire fd >>= function
     | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
     | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
-    | Ok (hdr, data) ->
-      Logs.debug (fun m -> m "received %a" Cstruct.hexdump_pp data) ;
-      if Vmm_wire.is_fail hdr then
-        let msg = match Vmm_wire.decode_string data with
-          | Error _ -> ""
-          | Ok (m, _) -> m
-        in
-        Lwt.return (Error (`Msg ("operation failed " ^ msg)))
-      else if Vmm_wire.is_reply hdr then
-        let msg = match Vmm_wire.decode_string data with
-          | Error _ -> None
-          | Ok (m, _) -> Some m
-        in
-        Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
-        loop ()
-      else
-        match f (hdr, data) with
-        | Ok () -> loop ()
-        | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
+    | Ok data -> match Vmm_commands.handle_reply data with
+      | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
+      | Ok (hdr, data) ->
+        if Vmm_wire.is_reply hdr then
+          let msg = match Vmm_wire.decode_string data with
+            | Error _ -> None
+            | Ok (m, _) -> Some m
+          in
+          Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
+          loop ()
+        else
+          match Vmm_commands.log_pp_reply (hdr, data) with
+          | Ok () -> loop ()
+          | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
   in
   loop ()
 
-let handle opt_socket (cmd : Vmm_commands.t) f =
+let handle opt_socket (cmd : Vmm_commands.t) =
   let sock, next, cmd = Vmm_commands.handle cmd in
   connect (socket sock opt_socket) >>= fun fd ->
   Vmm_lwt.write_wire fd cmd >>= function
   | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
   | Ok () ->
     (match next with
-     | `Read -> read fd f
+     | `Read -> read fd
      | `End ->
        process fd >|= function
        | Error e -> Error e
-       | Ok data -> f data) >>= fun res ->
+       | Ok data -> Vmm_commands.log_pp_reply data) >>= fun res ->
     Vmm_lwt.safe_close fd >|= fun () ->
     res
 
-let jump opt_socket cmd f =
+let jump opt_socket cmd =
   match
-    Lwt_main.run (handle opt_socket cmd f)
+    Lwt_main.run (handle opt_socket cmd)
   with
   | Ok () -> `Ok ()
   | Error (`Msg m) -> `Error (false, m)
 
-let info_ _ opt_socket name =
-  jump opt_socket (`Info name) (fun (_, data) ->
-      let open Rresult.R.Infix in
-      Vmm_wire.Vm.decode_vms data >>| fun (vms, _) ->
-      List.iter (fun (id, memory, cmd, pid, taps) ->
-          Logs.app (fun m -> m "VM %a %dMB command %s pid %d taps %a"
-                       pp_id id memory cmd pid Fmt.(list ~sep:(unit ", ") string) taps))
-        vms)
+let info_ _ opt_socket name = jump opt_socket (`Info name)
 
-let policy _ opt_socket name =
-  jump opt_socket (`Policy name) (fun (_, data) ->
-      let open Rresult.R.Infix in
-      Vmm_wire.Vm.decode_policies data >>| fun (policies, _) ->
-      List.iter (fun (id, policy) ->
-          Logs.app (fun m -> m "policy %a: %a" pp_id id pp_policy policy))
-        policies)
+let policy _ opt_socket name = jump opt_socket (`Policy name)
 
-let remove_policy _ opt_socket name =
-  jump opt_socket (`Remove_policy name) (fun _ ->
-      Ok (Logs.app (fun m -> m "removed policy")))
+let remove_policy _ opt_socket name = jump opt_socket (`Remove_policy name)
 
 let add_policy _ opt_socket name vms memory cpus block bridges =
   let bridges = match bridges with
@@ -104,12 +84,10 @@ let add_policy _ opt_socket name vms memory cpus block bridges =
   and cpuids = IS.of_list cpus
   in
   let policy = { vms ; cpuids ; memory ; block ; bridges } in
-  jump opt_socket (`Add_policy (name, policy)) (fun _ ->
-      Ok (Logs.app (fun m -> m "added policy")))
+  jump opt_socket (`Add_policy (name, policy))
 
 let destroy _ opt_socket name =
-  jump opt_socket (`Destroy_vm name) (fun _ ->
-      Ok (Logs.app (fun m -> m "destroyed VM")))
+  jump opt_socket (`Destroy_vm name)
 
 let create _ opt_socket force name image cpuid requested_memory boot_params block_device network =
   let image' = match Bos.OS.File.read (Fpath.v image) with
@@ -132,45 +110,13 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
     else
       `Create_vm vm_config
   in
-  let succ _ = Ok (Logs.app (fun m -> m "successfully started VM")) in
-  jump opt_socket cmd succ
+  jump opt_socket cmd
 
-let console _ opt_socket name =
-  jump opt_socket (`Console name) (fun (hdr, data) ->
-      let open Rresult.R.Infix in
-      match Vmm_wire.Console.int_to_op hdr.Vmm_wire.tag with
-      | Some Vmm_wire.Console.Data ->
-        Vmm_wire.decode_id_ts data >>= fun ((name, ts), off) ->
-        Vmm_wire.decode_string (Cstruct.shift data off) >>= fun (msg, _) ->
-        Logs.app (fun m -> m "%a %a: %s" Ptime.pp ts Vmm_core.pp_id name msg) ;
-        Ok ()
-      | _ ->
-        Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag)))
+let console _ opt_socket name = jump opt_socket (`Console name)
 
-let stats _ opt_socket name =
-  jump opt_socket (`Statistics name) (fun (hdr, data) ->
-      let open Rresult.R.Infix in
-      match Vmm_wire.Stats.int_to_op hdr.Vmm_wire.tag with
-      | Some Vmm_wire.Stats.Data ->
-        Vmm_wire.decode_strings data >>= fun (name', off) ->
-        Vmm_wire.Stats.decode_stats (Cstruct.shift data off) >>| fun (ru, vmm, ifs) ->
-        Logs.app (fun m -> m "stats %a@.%a@.%a@.%a@."
-                     pp_id name' Vmm_core.pp_rusage ru
-                     Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) vmm
-                     Fmt.(list ~sep:(unit "@.") Vmm_core.pp_ifdata) ifs) ;
-      | _ ->
-        Error (`Msg (Printf.sprintf "unknown operation %lx" hdr.Vmm_wire.tag)))
+let stats _ opt_socket name = jump opt_socket (`Statistics name)
 
-let event_log _ opt_socket name =
-  jump opt_socket (`Log name) (fun (hdr, data) ->
-      let open Rresult.R.Infix in
-      match Vmm_wire.Log.int_to_op hdr.Vmm_wire.tag with
-      | Some Vmm_wire.Log.Broadcast ->
-        Vmm_wire.Log.decode_log_hdr data >>= fun (loghdr, logdata) ->
-        Vmm_wire.Log.decode_event logdata >>| fun event ->
-        Logs.app (fun m -> m "%a" Vmm_core.Log.pp (loghdr, event))
-      | _ ->
-        Ok (Logs.warn (fun m -> m "unknown operation %lx" hdr.Vmm_wire.tag)))
+let event_log _ opt_socket name = jump opt_socket (`Log name)
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)

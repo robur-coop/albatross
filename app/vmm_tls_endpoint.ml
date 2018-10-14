@@ -34,10 +34,45 @@ let client_auth ca tls addr =
      Tls_lwt.Unix.close tls >>= fun () ->
      Lwt.fail_with "error while getting epoch")
 
+let read fd tls =
+  (* now we busy read and process output *)
+  let rec loop () =
+    Vmm_lwt.read_wire fd >>= function
+    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
+    | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
+    | Ok (hdr, data) ->
+      let full = Cstruct.append (Vmm_wire.encode_header hdr) data in
+      Vmm_tls.write_tls tls full >>= function
+      | Ok () -> loop ()
+      | Error `Exception -> Lwt.return (Error (`Msg "exception"))
+  in
+  loop ()
+
+let process fd tls =
+  Vmm_lwt.read_wire fd >>= function
+  | Error (`Msg m) -> Lwt.return (Error (`Msg m))
+  | Error _ -> Lwt.return (Error (`Msg "read error"))
+  | Ok (hdr, data) ->
+    let full = Cstruct.append (Vmm_wire.encode_header hdr) data in
+    Vmm_tls.write_tls tls full >|= function
+    | Ok () -> Ok ()
+    | Error `Exception -> Error (`Msg "exception on write")
+
 let handle ca (tls, addr) =
   client_auth ca tls addr >>= fun chain ->
-  let _ = Vmm_x509.handle_initial tls addr chain ca in
-  Lwt.return_unit
+  match Vmm_x509.handle addr chain with
+  | Error (`Msg m) -> Lwt.fail_with m
+  | Ok cmd ->
+    let sock, next, cmd = Vmm_commands.handle cmd in
+    connect (Vmm_core.socket_path sock) >>= fun fd ->
+    Vmm_lwt.write_wire fd cmd >>= function
+    | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
+    | Ok () ->
+      (match next with
+       | `Read -> read fd tls
+       | `End -> process fd tls) >>= fun res ->
+      Vmm_lwt.safe_close fd >|= fun () ->
+      res
 
 let server_socket port =
   let open Lwt_unix in
@@ -72,7 +107,9 @@ let jump _ cacert cert priv_key port =
                 Lwt.fail exn) >>= fun t ->
            Lwt.async (fun () ->
                Lwt.catch
-                 (fun () -> handle ca t)
+                 (fun () -> handle ca t >|= function
+                    | Error (`Msg msg) -> Logs.err (fun m -> m "error in handle %s" msg)
+                    | Ok () -> ())
                  (fun e ->
                     Logs.err (fun m -> m "error while handle() %s"
                                  (Printexc.to_string e)) ;

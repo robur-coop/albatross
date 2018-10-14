@@ -42,14 +42,14 @@ let read_tls t =
 (*          Logs.debug (fun m -> m "TLS read id %d %a tag %d data %a"
                          hdr.Vmm_wire.id Vmm_wire.pp_version hdr.Vmm_wire.version hdr.Vmm_wire.tag
                          Cstruct.hexdump_pp b) ; *)
-          Ok (hdr, Cstruct.to_string b)
+          Ok (hdr, b)
       else
-        Lwt.return (Ok (hdr, ""))
+        Lwt.return (Ok (hdr, Cstruct.empty))
 
 let write_tls s buf =
   (*  Logs.debug (fun m -> m "TLS write %a" Cstruct.hexdump_pp (Cstruct.of_string buf)) ; *)
   Lwt.catch
-    (fun () -> Tls_lwt.Unix.write s (Cstruct.of_string buf) >|= fun () -> Ok ())
+    (fun () -> Tls_lwt.Unix.write s buf >|= fun () -> Ok ())
     (function
       | Tls_lwt.Tls_failure a ->
         Logs.err (fun m -> m "tls failure: %s" (Tls.Engine.string_of_failure a)) ;
