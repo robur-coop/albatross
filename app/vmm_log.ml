@@ -12,8 +12,6 @@
 
 open Lwt.Infix
 
-open Astring
-
 let my_version = `WV2
 
 let broadcast prefix data t =

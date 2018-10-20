@@ -53,8 +53,8 @@ let handle = function
     let cmd = Vmm_wire.Log.subscribe c ver name in
     `Log, `Read, cmd
   | `Crl -> assert false
-  | `Create_block (name, size) -> assert false
-  | `Destroy_block name -> assert false
+  | `Create_block (_name, _size) -> assert false
+  | `Destroy_block _name -> assert false
 
 let handle_reply (hdr, data) =
   if not (Vmm_wire.version_eq hdr.Vmm_wire.version ver) then

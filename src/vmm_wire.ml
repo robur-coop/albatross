@@ -538,7 +538,7 @@ module Log = struct
 
   let log id version hdr event =
     let body = Cstruct.append (encode_ptime hdr.Log.ts) (encode_event event) in
-    encode ~name:hdr.name ~body version id (op_to_int Log)
+    encode ~name:hdr.Log.name ~body version id (op_to_int Log)
 end
 
 module Vm = struct

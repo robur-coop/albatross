@@ -1,4 +1,3 @@
-open Astring
 open Rresult.R.Infix
 
 open Vmm_core
@@ -18,7 +17,7 @@ let asn_version = `AV1
      check_policies vm_config (List.map snd policies) >>= fun () ->
 *)
 
-let handle addr chain =
+let handle _addr chain =
   separate_chain chain >>= fun (leaf, chain) ->
   let prefix = List.map name chain in
   let name = prefix @ [ name leaf ] in

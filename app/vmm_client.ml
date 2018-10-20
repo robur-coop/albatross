@@ -2,8 +2,6 @@
 
 open Lwt.Infix
 
-open Vmm_core
-
 let rec read_tls_write_cons t =
   Vmm_tls.read_tls t >>= function
   | Error (`Msg msg) ->
@@ -28,9 +26,6 @@ let client cas host port cert priv_key =
 
     Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun _ ->
     X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
-    (match fst cert with
-     | [] -> Lwt.fail_with "certificate is empty"
-     | hd::_ -> Lwt.return hd) >>= fun leaf ->
     let certificates = `Single cert in
     let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
     Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
@@ -40,7 +35,7 @@ let client cas host port cert priv_key =
                     (Printexc.to_string exn)) ;
        Lwt.return_unit)
 
-let run_client _ cas cert key (host, port) db =
+let run_client _ cas cert key (host, port) =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
@@ -92,17 +87,13 @@ let destination =
   Arg.(required & pos 3 (some host_port) None & info [] ~docv:"destination"
          ~doc:"the destination hostname:port to connect to")
 
-let db =
-  let doc = "Certificate database" in
-  Arg.(value & opt (some file) None & info [ "db" ] ~doc)
-
 let cmd =
   let doc = "VMM TLS client" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a server and initiates a TLS handshake" ]
   in
-  Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination $ db),
+  Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
   Term.info "vmm_client" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
