@@ -165,3 +165,8 @@ let port =
   let doc = "TCP listen port" in
   Arg.(value & opt int 1025 & info [ "port" ] ~doc)
 
+let cmd =
+  Term.(ret (const jump $ setup_log $ cacert $ cert $ key $ port)),
+  Term.info "vmm_tls_endpoint" ~version:"%%VERSION_NUM%%"
+
+let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -4,16 +4,10 @@ open Lwt.Infix
 
 let rec read_tls_write_cons t =
   Vmm_tls.read_tls t >>= function
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "error while reading %s" msg) ;
-    read_tls_write_cons t
   | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
-  | Ok data ->
-    match Vmm_commands.log_pp_reply data with
-    | Ok () -> read_tls_write_cons t
-    | Error (`Msg msg) ->
-      Logs.warn (fun m -> m "error %s while logging message" msg) ;
-      read_tls_write_cons t
+  | Ok wire ->
+    Logs.app (fun m -> m "%a" Vmm_asn.pp_wire wire) ;
+    read_tls_write_cons t
 
 let client cas host port cert priv_key =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
