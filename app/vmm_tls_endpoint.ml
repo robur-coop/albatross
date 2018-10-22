@@ -2,6 +2,10 @@
 
 open Lwt.Infix
 
+let my_version = `AV2
+
+let command = ref 0L
+
 let pp_sockaddr ppf = function
   | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
   | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
@@ -38,11 +42,10 @@ let read fd tls =
   (* now we busy read and process output *)
   let rec loop () =
     Vmm_lwt.read_wire fd >>= function
-    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
     | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
-    | Ok (hdr, data) ->
-      let full = Cstruct.append (Vmm_wire.encode_header hdr) data in
-      Vmm_tls.write_tls tls full >>= function
+    | Ok wire ->
+      Logs.debug (fun m -> m "read proxying %a" Vmm_asn.pp_wire wire) ;
+      Vmm_tls.write_tls tls wire >>= function
       | Ok () -> loop ()
       | Error `Exception -> Lwt.return (Error (`Msg "exception"))
   in
@@ -50,11 +53,10 @@ let read fd tls =
 
 let process fd tls =
   Vmm_lwt.read_wire fd >>= function
-  | Error (`Msg m) -> Lwt.return (Error (`Msg m))
   | Error _ -> Lwt.return (Error (`Msg "read error"))
-  | Ok (hdr, data) ->
-    let full = Cstruct.append (Vmm_wire.encode_header hdr) data in
-    Vmm_tls.write_tls tls full >|= function
+  | Ok wire ->
+    Logs.debug (fun m -> m "proxying %a" Vmm_asn.pp_wire wire) ;
+    Vmm_tls.write_tls tls wire >|= function
     | Ok () -> Ok ()
     | Error `Exception -> Error (`Msg "exception on write")
 
@@ -62,10 +64,15 @@ let handle ca (tls, addr) =
   client_auth ca tls addr >>= fun chain ->
   match Vmm_x509.handle addr chain with
   | Error (`Msg m) -> Lwt.fail_with m
-  | Ok cmd ->
-    let sock, next, cmd = Vmm_commands.handle cmd in
+  | Ok (name, cmd) ->
+    let sock, next = Vmm_commands.handle cmd in
     connect (Vmm_core.socket_path sock) >>= fun fd ->
-    Vmm_lwt.write_wire fd cmd >>= function
+    let wire =
+      let header = Vmm_asn.{version = my_version ; sequence = !command ; id = name } in
+      command := Int64.succ !command ;
+      (header, `Command cmd)
+    in
+    Vmm_lwt.write_wire fd wire >>= function
     | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
     | Ok () ->
       (match next with

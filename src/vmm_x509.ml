@@ -29,24 +29,25 @@ let handle _addr chain =
      may need to create bridges and/or block device subdirectory (zfs create) *)
   (* let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   Vmm_asn.command_of_cert asn_version leaf >>= function
-  | `Info -> Ok (`Info name)
+  | `Info -> Ok (name, `Vm_cmd `Vm_info)
   | `Create_vm ->
     (* TODO: update acl *)
     Vmm_asn.vm_of_cert prefix leaf >>| fun vm_config ->
-    `Create_vm vm_config
+    (name, `Vm_cmd (`Vm_create vm_config))
   | `Force_create_vm ->
     (* TODO: update acl *)
     Vmm_asn.vm_of_cert prefix leaf >>| fun vm_config ->
-    `Force_create_vm vm_config
-  | `Destroy_vm -> Ok (`Destroy_vm name)
-  | `Statistics -> Ok (`Statistics name)
-  | `Console -> Ok (`Console name)
-  | `Log -> Ok (`Log name)
-  | `Crl -> Ok `Crl
-  | `Create_block ->
-    Vmm_asn.block_device_of_cert asn_version leaf >>= fun block_name ->
+    (name, `Vm_cmd (`Vm_force_create vm_config))
+  | `Destroy_vm -> Ok (name, `Vm_cmd `Vm_destroy)
+  | `Statistics -> Ok (name, `Stats_cmd `Stats_subscribe)
+  | `Console -> Ok (name, `Console_cmd `Console_subscribe)
+  | `Log -> Ok (name, `Log_cmd `Log_subscribe)
+  | `Crl -> assert false
+  | `Create_block -> assert false
+(*    Vmm_asn.block_device_of_cert asn_version leaf >>= fun block_name ->
     Vmm_asn.block_size_of_cert asn_version leaf >>| fun block_size ->
-    `Create_block (block_name, block_size)
-  | `Destroy_block ->
-    Vmm_asn.block_device_of_cert asn_version leaf >>| fun block_name ->
+      `Create_block (block_name, block_size) *)
+  | `Destroy_block -> assert false
+(*    Vmm_asn.block_device_of_cert asn_version leaf >>| fun block_name ->
     `Destroy_block block_name
+*)
