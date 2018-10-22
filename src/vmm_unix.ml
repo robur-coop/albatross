@@ -58,8 +58,8 @@ let rec mkfifo name =
   | Unix.Unix_error (Unix.EINTR, _, _) -> mkfifo name
 
 let image_file, fifo_file =
-  ((fun vm -> Fpath.(tmpdir / (string_of_id vm.vname) + "img")),
-   (fun vm -> Fpath.(tmpdir / "fifo" / (string_of_id vm.vname))))
+  ((fun name -> Fpath.(tmpdir / (string_of_id name) + "img")),
+   (fun name -> Fpath.(tmpdir / "fifo" / (string_of_id name))))
 
 let rec fifo_exists file =
   try Ok (Unix.((stat @@ Fpath.to_string file).st_kind = S_FIFO)) with
@@ -103,18 +103,7 @@ let destroy_tap tapname =
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "del" % "dev" % tapname % "mode" % "tap")
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let create_bridge bname =
-  Lazy.force (uname ()) >>= fun (sys, _) ->
-  match sys with
-  | x when x = "FreeBSD" ->
-    let cmd = Bos.Cmd.(v "ifconfig" % "bridge" % "create") in
-    Bos.OS.Cmd.run_out cmd |> Bos.OS.Cmd.out_string >>= fun (name, _) ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % name % "name" % bname)
-  | x when x = "Linux" ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "brctl" % "addbr" % bname)
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
-
-let prepare vm =
+let prepare name vm =
   (match vm.vmimage with
    | `Hvt_amd64, blob -> Ok blob
    | `Hvt_amd64_compressed, blob ->
@@ -123,7 +112,7 @@ let prepare vm =
        | Error () -> Error (`Msg "failed to uncompress")
      end
    | `Hvt_arm64, _ -> Error (`Msg "no amd64 hvt image found")) >>= fun image ->
-  let fifo = fifo_file vm in
+  let fifo = fifo_file name in
   (match fifo_exists fifo with
    | Ok true -> Ok ()
    | Ok false -> Error (`Msg ("file " ^ Fpath.to_string fifo ^ " exists and is not a fifo"))
@@ -137,13 +126,13 @@ let prepare vm =
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
     (Ok []) vm.network >>= fun taps ->
-  Bos.OS.File.write (image_file vm) (Cstruct.to_string image) >>= fun () ->
+  Bos.OS.File.write (image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
-let shutdown vm =
+let shutdown name vm =
   (* same order as prepare! *)
-  Bos.OS.File.delete (image_file vm.config) >>= fun () ->
-  Bos.OS.File.delete (fifo_file vm.config) >>= fun () ->
+  Bos.OS.File.delete (image_file name) >>= fun () ->
+  Bos.OS.File.delete (fifo_file name) >>= fun () ->
   List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.taps
 
 let cpuset cpu =
@@ -156,7 +145,7 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec vm taps =
+let exec name vm taps =
   (* TODO: --net-mac=xx *)
   let net = List.map (fun t -> "--net=" ^ t) taps in
   let argv = match vm.argv with None -> [] | Some xs -> xs in
@@ -168,12 +157,12 @@ let exec vm taps =
   let mem = "--mem=" ^ string_of_int vm.requested_memory in
   let cmd =
     Bos.Cmd.(of_list cpuset % p bin % mem %% of_list net %
-             "--" % p (image_file vm) %% of_list argv)
+             "--" % p (image_file name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
   let line = Array.of_list line in
-  let fifo = fifo_file vm in
+  let fifo = fifo_file name in
   Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
   write_fd_for_file fifo >>= fun stdout ->
   Logs.debug (fun m -> m "opened file descriptor!");

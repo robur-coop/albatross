@@ -248,9 +248,8 @@ let vm_of_cert prefix cert =
   opt cert Oid.network strings_of_cstruct >>= fun network ->
   req "vmimage" cert Oid.vmimage image_of_cstruct >>= fun vmimage ->
   opt cert Oid.argv strings_of_cstruct >>= fun argv ->
-  let vname = prefix @ [ id cert ] in
   let network = match network with None -> [] | Some x -> x in
-  Ok { vname ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
+  Ok { cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
 
 let command_of_cert version cert =
   version_of_cert version cert >>= fun () ->
@@ -508,7 +507,7 @@ let pp_vm_cmd ppf = function
 let vm_config =
   let f (cpuid, requested_memory, block_device, network, vmimage, argv) =
     let network = match network with None -> [] | Some xs -> xs in
-    { vname = [] ; cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
+    { cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
   and g vm =
     let network = match vm.network with [] -> None | xs -> Some xs in
     (vm.cpuid, vm.requested_memory, vm.block_device, network, vm.vmimage, vm.argv)

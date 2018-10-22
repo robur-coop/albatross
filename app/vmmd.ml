@@ -47,18 +47,18 @@ let create c_fd process cont =
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "create continuation failed %s" msg) ;
           Lwt.return_unit
-        | Ok (state'', out, vm) ->
+        | Ok (state'', out, name, vm) ->
           state := state'' ;
           s := { !s with vm_created = succ !s.vm_created } ;
           Lwt.async (fun () ->
               Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
-              let state', out' = Vmm_engine.handle_shutdown !state vm r in
+              let state', out' = Vmm_engine.handle_shutdown !state name vm r in
               s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
               state := state' ;
               process out' >|= fun () ->
               Lwt.wakeup wakeme ()) ;
           process out >>= fun () ->
-          let state', out = Vmm_engine.setup_stats !state vm in
+          let state', out = Vmm_engine.setup_stats !state name vm in
           state := state' ;
           process out (* TODO: need to read from stats socket! *)
 

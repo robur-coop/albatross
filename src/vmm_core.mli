@@ -204,7 +204,6 @@ val sub_block : 'a option -> 'a option -> bool
 val sub_cpu : IS.t -> IS.t -> bool
 val is_sub : super:policy -> sub:policy -> bool
 type vm_config = {
-  vname : id;
   cpuid : int;
   requested_memory : int;
   block_device : string option;
@@ -212,7 +211,6 @@ type vm_config = {
   vmimage : vmtype * Cstruct.t;
   argv : string list option;
 }
-val location : vm_config -> string * string
 val pp_image :
   Format.formatter ->
   [< `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ] * Cstruct.t -> unit

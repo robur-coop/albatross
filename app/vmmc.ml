@@ -94,10 +94,7 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
   (* TODO we could do the compression btw *)
   and vmimage = `Hvt_amd64, Cstruct.of_string image'
   in
-  let vm_config = {
-    vname = name ; cpuid ; requested_memory ; block_device ; network ;
-    vmimage ; argv
-  } in
+  let vm_config = { cpuid ; requested_memory ; block_device ; network ; vmimage ; argv } in
   let cmd =
     if force then
       `Vm_force_create vm_config

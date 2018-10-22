@@ -160,7 +160,6 @@ let is_sub ~super ~sub =
   sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
 
 type vm_config = {
-  vname : id ;
   cpuid : int ;
   requested_memory : int ;
   block_device : string option ;
@@ -169,18 +168,13 @@ type vm_config = {
   argv : string list option ;
 }
 
-(* used for block devices *)
-let location vm = match vm.vname with
-  | tld::rest -> tld, String.concat ~sep:"." rest
-  | [] -> invalid_arg "dunno how this happened"
-
 let pp_image ppf (typ, blob) =
   let l = Cstruct.len blob in
   Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
 
 let pp_vm_config ppf (vm : vm_config) =
-  Fmt.pf ppf "%a cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
-    pp_id vm.vname vm.cpuid vm.requested_memory
+  Fmt.pf ppf "cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
+    vm.cpuid vm.requested_memory
     Fmt.(option ~none:(unit "no") string) vm.block_device
     Fmt.(list ~sep:(unit ", ") string) vm.network
     pp_image vm.vmimage

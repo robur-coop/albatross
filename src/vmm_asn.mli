@@ -233,4 +233,3 @@ type log_entry = header * Ptime.t * Log.event
 val log_entry_to_cstruct : log_entry -> Cstruct.t
 
 val log_entry_of_cstruct : Cstruct.t -> (log_entry, [> `Msg of string ]) result
-

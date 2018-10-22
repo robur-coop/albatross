@@ -47,28 +47,28 @@ let log t id event =
 
 let handle_create t hdr vm_config =
   (* TODO fix (remove field?) *)
-  let vm_config = { vm_config with vname = hdr.Vmm_asn.id } in
-  (match Vmm_resources.find_vm t.resources vm_config.vname with
+  let name = hdr.Vmm_asn.id in
+  (match Vmm_resources.find_vm t.resources name with
    | Some _ -> Error (`Msg "VM with same name is already running")
    | None -> Ok ()) >>= fun () ->
   Logs.debug (fun m -> m "now checking resource policies") ;
-  (if Vmm_resources.check_vm_policy t.resources vm_config then
+  (if Vmm_resources.check_vm_policy t.resources name vm_config then
      Ok ()
    else
      Error (`Msg "resource policies don't allow this")) >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_unix.prepare vm_config >>= fun taps ->
+  Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   (* TODO should we pre-reserve sth in t? *)
   let cons = `Console_add in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.console_counter ; id = vm_config.vname } in
+  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
   Ok ({ t with console_counter = Int64.succ t.console_counter }, [ `Cons (header, `Command (`Console_cmd cons)) ],
       `Create (fun t task ->
           (* actually execute the vm *)
-          Vmm_unix.exec vm_config taps >>= fun vm ->
+          Vmm_unix.exec name vm_config taps >>= fun vm ->
           Logs.debug (fun m -> m "exec()ed vm") ;
-          Vmm_resources.insert_vm t.resources vm >>= fun resources ->
-          let tasks = String.Map.add (string_of_id vm_config.vname) task t.tasks in
+          Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
+          let tasks = String.Map.add (string_of_id name) task t.tasks in
           let used_bridges =
             List.fold_left2 (fun b br ta ->
                 let old = match String.Map.find br b with
@@ -79,21 +79,21 @@ let handle_create t hdr vm_config =
               t.used_bridges vm_config.network taps
           in
           let t = { t with resources ; tasks ; used_bridges } in
-          let t, out = log t vm_config.vname (`VM_start (vm.pid, vm.taps, None)) in
+          let t, out = log t name (`VM_start (vm.pid, vm.taps, None)) in
           let data = `Success (`String "created VM") in
-          Ok (t, [ `Data (hdr, data) ; out ], vm)))
+          Ok (t, [ `Data (hdr, data) ; out ], name, vm)))
 
-let setup_stats t vm =
+let setup_stats t name vm =
   let stat_out = `Stats_add (vm.pid, vm.taps) in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = vm.config.vname } in
+  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, [ `Stat (header, `Command (`Stats_cmd stat_out)) ]
 
-let handle_shutdown t vm r =
-  (match Vmm_unix.shutdown vm with
+let handle_shutdown t name vm r =
+  (match Vmm_unix.shutdown name vm with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
-  let resources = Vmm_resources.remove t.resources vm.config.vname in
+  let resources = Vmm_resources.remove t.resources name in
   let used_bridges =
     List.fold_left2 (fun b br ta ->
         let old = match String.Map.find br b with
@@ -104,10 +104,10 @@ let handle_shutdown t vm r =
       t.used_bridges vm.config.network vm.taps
   in
   let stat_out = `Stats_remove in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = vm.config.vname } in
-  let tasks = String.Map.remove (string_of_id vm.config.vname) t.tasks in
+  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
+  let tasks = String.Map.remove (string_of_id name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; used_bridges ; tasks } in
-  let t, logout = log t vm.config.vname (`VM_stop (vm.pid, r))
+  let t, logout = log t name (`VM_stop (vm.pid, r))
   in
   (t, [ `Stat (header, `Command (`Stats_cmd stat_out)) ; logout ])
 
@@ -172,8 +172,8 @@ let handle_command t (header, payload) =
     | `Command (`Vm_cmd (`Vm_create vm_config)) ->
       handle_create t header vm_config
     | `Command (`Vm_cmd (`Vm_force_create vm_config)) ->
-      let resources = Vmm_resources.remove t.resources vm_config.vname in
-      if Vmm_resources.check_vm_policy resources vm_config then
+      let resources = Vmm_resources.remove t.resources id in
+      if Vmm_resources.check_vm_policy resources id vm_config then
         begin match Vmm_resources.find_vm t.resources id with
           | None -> handle_create t header vm_config
           | Some vm ->

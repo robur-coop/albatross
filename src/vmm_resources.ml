@@ -50,17 +50,17 @@ let find_vm t name = match Vmm_trie.find name t with
   | Some (Vm vm) -> Some vm
   | _ -> None
 
-let check_vm_policy t vm =
-  let dom = domain vm.vname in
+let check_vm_policy t name vm =
+  let dom = domain name in
   let res = resource_usage t dom in
   match Vmm_trie.find dom t with
   | None -> true
   | Some (Vm _) -> assert false
   | Some (Policy p) -> check_resource p vm res
 
-let insert_vm t vm =
-  if check_vm_policy t vm.config then
-    match Vmm_trie.insert vm.config.vname (Vm vm) t with
+let insert_vm t name vm =
+  if check_vm_policy t name vm.config then
+    match Vmm_trie.insert name (Vm vm) t with
     | t', None -> Ok t'
     | _, Some _ -> Error (`Msg "vm already exists")
   else
