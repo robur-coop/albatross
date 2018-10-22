@@ -103,7 +103,7 @@ let strings_of_cstruct, strings_to_cstruct =
 
 let string_of_cstruct, string_to_cstruct = projections_of Asn.S.utf8_string
 
-let policy_obj =
+let policy =
   let f (cpuids, vms, memory, block, bridges) =
     let bridges = match bridges with
       | xs ->
@@ -126,13 +126,6 @@ let policy_obj =
            (required ~label:"memory" int)
            (optional ~label:"block" int)
            (required ~label:"bridges" Asn.S.(sequence_of bridge)))
-
-let policy_of_cstruct, policy_to_cstruct =
-  let c = Asn.codec Asn.der policy_obj in
-  ((fun cs -> match Asn.decode c cs with
-      | Ok x -> Ok x
-      | Error (`Parse msg) -> Error (`Msg msg)),
-   Asn.encode c)
 
 let image =
   let f = function
@@ -564,7 +557,7 @@ let policy_cmd =
   Asn.S.map f g @@
   Asn.S.(choice3
            (explicit 0 null)
-           (explicit 1 policy_obj)
+           (explicit 1 policy)
            (explicit 2 null))
 
 let version =
@@ -688,7 +681,7 @@ let wire =
                                 (explicit 2 (sequence_of
                                                (sequence2
                                                   (required ~label:"name" (sequence_of utf8_string))
-                                                  (required ~label:"policy" policy_obj))))
+                                                  (required ~label:"policy" policy))))
                                 (explicit 3 (sequence_of
                                                (sequence2
                                                   (required ~label:"name" (sequence_of utf8_string))

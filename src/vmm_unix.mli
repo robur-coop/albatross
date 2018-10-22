@@ -13,5 +13,3 @@ val exec : id -> vm_config -> string list -> (vm, [> R.msg ]) result
 val destroy : vm -> unit
 
 val close_no_err : Unix.file_descr -> unit
-
-val create_tap : string -> (string, [> R.msg ]) result

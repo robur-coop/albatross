@@ -139,13 +139,6 @@ val strings_to_cstruct : string list -> Cstruct.t
     encoded [buffer] or an error. *)
 val strings_of_cstruct : Cstruct.t -> (string list, [> `Msg of string ]) result
 
-(** [policy_to_cstruct xs] is the DER encoded policy. *)
-val policy_to_cstruct : Vmm_core.policy -> Cstruct.t
-
-(** [policy_of_cstruct buffer] is either a decoded policy of the DER
-    encoded [buffer] or an error. *)
-val policy_of_cstruct : Cstruct.t -> (Vmm_core.policy * Cstruct.t, [> `Msg of string ]) result
-
 (** {1 Decoding functions} *)
 
 (** [contains_vm cert] is [true] if the certificate contains a virtual machine image. *)

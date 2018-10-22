@@ -46,7 +46,6 @@ let log t id event =
   ({ t with log_counter }, `Log (header, `Command (`Log_cmd data)))
 
 let handle_create t hdr vm_config =
-  (* TODO fix (remove field?) *)
   let name = hdr.Vmm_asn.id in
   (match Vmm_resources.find_vm t.resources name with
    | Some _ -> Error (`Msg "VM with same name is already running")
@@ -60,9 +59,11 @@ let handle_create t hdr vm_config =
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   (* TODO should we pre-reserve sth in t? *)
-  let cons = `Console_add in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
-  Ok ({ t with console_counter = Int64.succ t.console_counter }, [ `Cons (header, `Command (`Console_cmd cons)) ],
+  let cons_out =
+    let header = Vmm_asn.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
+    (header, `Command (`Console_cmd `Console_add))
+  in
+  Ok ({ t with console_counter = Int64.succ t.console_counter }, [ `Cons cons_out ],
       `Create (fun t task ->
           (* actually execute the vm *)
           Vmm_unix.exec name vm_config taps >>= fun vm ->
