@@ -229,35 +229,6 @@ let id cert = identifier (X509.serial cert)
 
 let name cert = X509.common_name_to_string cert
 
-let parse_db lines =
-  List.fold_left (fun acc s ->
-      acc >>= fun datas ->
-      match String.cut ~sep:" " s with
-      | None -> Rresult.R.error_msgf "unable to parse entry %s" s
-      | Some (a, b) ->
-        (try Ok (Z.of_string a) with Invalid_argument x -> Error (`Msg x)) >>= fun s ->
-        Ok ((s, b) :: datas))
-    (Ok []) lines
-
-let find_in_db label db tst =
-  try Ok (List.find tst db)
-  with Not_found -> Rresult.R.error_msgf "couldn't find %s in database" label
-
-let find_name db name =
-  find_in_db name db (fun (_, n) -> String.equal n name) >>= fun (serial, _) ->
-  Ok serial
-
-let translate_serial db serial =
-  let tst (s, _) = String.equal serial (identifier s) in
-  match find_in_db "" db tst with
-  | Ok (_, n) -> n
-  | Error _ -> serial
-
-let translate_name db name =
-  match find_name db name with
-  | Ok serial -> identifier serial
-  | Error _ -> name
-
 (* this separates the leaf and top-level certificate from the chain,
    and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
    in which subCA' signed leaf *)

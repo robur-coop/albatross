@@ -57,19 +57,6 @@ let sign ?dbname ?certname extensions issuer key csr delta =
      match nam with
      | `CN name -> Ok name
      | _ -> Error (`Msg "cannot happen")) >>= fun certname ->
-  (match dbname with
-   | None -> Ok None
-   | Some dbname ->
-     Bos.OS.File.exists dbname >>= function
-     | false -> Ok None
-     | true ->
-       Bos.OS.File.read_lines dbname >>= fun content ->
-       Vmm_core.parse_db content >>= fun db ->
-       match Vmm_core.find_name db certname with
-       | Ok serial ->
-         Logs.info (fun m -> m "reusing serial %s" (Z.to_string serial)) ;
-         Ok (Some serial)
-       | Error _ -> Ok None) >>= fun serial ->
   timestamps delta >>= fun (valid_from, valid_until) ->
   let extensions =
     match dbname with
@@ -80,11 +67,10 @@ let sign ?dbname ?certname extensions issuer key csr delta =
         let capub = `RSA (Nocrypto.Rsa.pub_of_priv priv) in
         extensions @ key_ids (X509.CA.info csr).X509.CA.public_key capub
   in
-  let cert = X509.CA.sign csr ?serial ~valid_from ~valid_until ~extensions key issuer in
-  (match serial, dbname with
-   | Some _, _ -> Ok () (* already in DB! *)
-   | _, None -> Ok () (* no DB! *)
-   | None, Some dbname ->
+  let cert = X509.CA.sign csr ~valid_from ~valid_until ~extensions key issuer in
+  (match dbname with
+   | None -> Ok () (* no DB! *)
+   | Some dbname ->
      append dbname (Printf.sprintf "%s %s\n" (Z.to_string (X509.serial cert)) certname)) >>= fun () ->
   let enc = X509.Encoding.Pem.Certificate.to_pem_cstruct1 cert in
   Bos.OS.File.write Fpath.(v certname + "pem") (Cstruct.to_string enc)

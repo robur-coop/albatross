@@ -6,6 +6,26 @@ open Astring
 
 open Rresult.R.Infix
 
+
+let parse_db lines =
+  List.fold_left (fun acc s ->
+      acc >>= fun datas ->
+      match String.cut ~sep:" " s with
+      | None -> Rresult.R.error_msgf "unable to parse entry %s" s
+      | Some (a, b) ->
+        (try Ok (Z.of_string a) with Invalid_argument x -> Error (`Msg x)) >>= fun s ->
+        Ok ((s, b) :: datas))
+    (Ok []) lines
+
+let find_in_db label db tst =
+  try Ok (List.find tst db)
+  with Not_found -> Rresult.R.error_msgf "couldn't find %s in database" label
+
+let find_name db name =
+  find_in_db name db (fun (_, n) -> String.equal n name) >>= fun (serial, _) ->
+  Ok serial
+
+
 let jump _ db cacert cakey crl cn serial =
   Nocrypto_entropy_unix.initialize () ;
   match
@@ -14,8 +34,8 @@ let jump _ db cacert cakey crl cn serial =
        (try Ok (Z.of_string y) with Invalid_argument x -> Error (`Msg x))
      | x, y when y = "" ->
        Bos.OS.File.read_lines (Fpath.v db) >>= fun entries ->
-       Vmm_core.parse_db entries >>= fun db ->
-       Vmm_core.find_name db x
+       parse_db entries >>= fun db ->
+       find_name db x
      | _ -> Error (`Msg "please provide either common name or serial!")) >>= fun serial ->
     Bos.OS.File.read (Fpath.v cakey) >>= fun pk ->
     let cakey = X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string pk) in
