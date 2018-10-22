@@ -140,7 +140,7 @@ module P = struct
       vm ifd.name (String.concat ~sep:"," fields)
 end
 
-let my_version = `WV2
+let my_version = `AV2
 
 let command = ref 1L
 
@@ -181,7 +181,6 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
          None) >>= fun fd ->
     read_sock_write_tcp c ?fd addr addrtype
   | Some fd ->
-    let open Vmm_wire in
     Logs.debug (fun m -> m "reading from unix socket") ;
     Vmm_lwt.read_wire c >>= function
     | Error e ->
@@ -190,60 +189,40 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
       safe_close fd >>= fun () ->
       safe_close c >|= fun () ->
       true
-    | Ok (hdr, data) ->
-      if not (version_eq hdr.version my_version) then begin
-        Logs.err (fun m -> m "unknown wire protocol version") ;
-        safe_close fd >>= fun () ->
-        safe_close c >|= fun () ->
-        false
-      end else if Vmm_wire.is_fail hdr then begin
-        Logs.err (fun m -> m "failed to retrieve statistics") ;
-        safe_close fd >>= fun () ->
-        safe_close c >|= fun () ->
-        false
-      end else if Vmm_wire.is_reply hdr then begin
-        Logs.info (fun m -> m "received reply, continuing") ;
-        read_sock_write_tcp c ~fd addr addrtype
-      end else
-        (match Vmm_wire.Stats.int_to_op hdr.Vmm_wire.tag with
-         | Some Vmm_wire.Stats.Data ->
-           begin
-             let r =
-               let open Rresult.R.Infix in
-               Vmm_wire.decode_strings data >>= fun (id, off) ->
-               Vmm_wire.Stats.decode_stats (Cstruct.shift data off) >>| fun stats ->
-               (Vmm_core.string_of_id id, stats)
-             in
-             match r with
-             | Error (`Msg msg) ->
-               Logs.warn (fun m -> m "error %s while decoding stats, ignoring" msg) ;
-               Lwt.return (Some fd)
-             | Ok (name, (ru, vmm, ifs)) ->
-               let ru = P.encode_ru name ru in
-               let vmm = match vmm with [] -> [] | _ -> [ P.encode_vmm name vmm ] in
-               let taps = List.map (P.encode_if name) ifs in
-               let out = (String.concat ~sep:"\n" (ru :: vmm @ taps)) ^ "\n" in
-               Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
-               Vmm_lwt.write_wire fd (Cstruct.of_string out) >>= function
-               | Ok () ->
-                 Logs.debug (fun m -> m "wrote successfully") ;
-                 Lwt.return (Some fd)
-               | Error e ->
-                 Logs.err (fun m -> m "error %s while writing to tcp (%s)"
-                              (str_of_e e) name) ;
-                 safe_close fd >|= fun () ->
-                 None
-           end
-         | _ ->
-           Logs.err (fun m -> m "unhandled tag %lu" hdr.tag) ;
-           Lwt.return (Some fd)) >>= fun fd ->
+    | Ok (hdr, `Command (`Stats_cmd (`Stats_data (ru, vmm, ifs)))) ->
+      begin
+        if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
+          Logs.err (fun m -> m "unknown wire protocol version") ;
+          safe_close fd >>= fun () ->
+          safe_close c >|= fun () ->
+          false
+        end else
+          let name = string_of_id hdr.Vmm_asn.id in
+          let ru = P.encode_ru name ru in
+          let vmm = match vmm with [] -> [] | _ -> [ P.encode_vmm name vmm ] in
+          let taps = List.map (P.encode_if name) ifs in
+          let out = (String.concat ~sep:"\n" (ru :: vmm @ taps)) ^ "\n" in
+          Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
+          Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
+          | Ok () ->
+            Logs.debug (fun m -> m "wrote successfully") ;
+            read_sock_write_tcp c ~fd addr addrtype
+          | Error e ->
+            Logs.err (fun m -> m "error %s while writing to tcp (%s)"
+                         (str_of_e e) name) ;
+            safe_close fd >|= fun () ->
+            false
+      end
+    | Ok wire ->
+      Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire wire) ;
+      Lwt.return (Some fd) >>= fun fd ->
       read_sock_write_tcp c ?fd addr addrtype
 
 let query_sock vm c =
-  let request = Vmm_wire.Stats.subscribe !command my_version vm in
+  let header = Vmm_asn.{ version = my_version ; sequence = !command ; id = vm } in
   command := Int64.succ !command  ;
   Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id vm) ;
-  Vmm_lwt.write_wire c request
+  Vmm_lwt.write_wire c (header, `Command (`Stats_cmd `Stats_subscribe))
 
 let rec maybe_connect stat_socket =
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in

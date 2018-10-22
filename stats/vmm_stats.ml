@@ -16,7 +16,9 @@ external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
 external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
 external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
 
-let my_version = `WV2
+let my_version = `AV2
+
+let bcast = ref 0L
 
 let descr = ref []
 
@@ -117,10 +119,10 @@ let tick t =
                   match Vmm_core.drop_super ~super:id ~sub:vmid with
                   | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.pp_id id Vmm_core.pp_id vmid) ; out
                   | Some real_id ->
-                    let name = Vmm_core.string_of_id real_id in
-                    
-                    let stats_encoded = Vmm_wire.Stats.(data 0L my_version name (encode_stats stats)) in
-                    (socket, vmid, stats_encoded) :: out)
+                    let header = Vmm_asn.{ version = my_version ; sequence = !bcast ; id = real_id } in
+                    bcast := Int64.succ !bcast ;
+                    let data = `Stats_data stats in
+                    ((socket, vmid, (header, `Command (`Stats_cmd data))) :: out))
                 out xs)
           [] (Vmm_trie.all t'.vmid_pid)
   in
@@ -171,29 +173,38 @@ let remove_vmid t vmid =
 let remove_vmids t vmids =
   List.fold_left remove_vmid t vmids
 
-let handle t socket hdr cs =
-  let open Vmm_wire in
-  let open Vmm_wire.Stats in
+let handle t socket (header, wire) =
   let r =
-    if not (version_eq my_version hdr.version) then
+    if not (Vmm_asn.version_eq my_version header.Vmm_asn.version) then
       Error (`Msg "cannot handle version")
     else
-      decode_strings cs >>= fun (id, off) ->
-      match int_to_op hdr.tag with
-      | Some Add ->
-        decode_pid_taps (Cstruct.shift cs off) >>= fun (pid, taps) ->
-        add_pid t id pid taps >>= fun t ->
-        Ok (t, `Add id, None, success ~msg:"added" my_version hdr.id (op_to_int Add))
-      | Some Remove ->
-        let t = remove_vmid t id in
-        Ok (t, `Remove id, None, success ~msg:"removed" my_version hdr.id (op_to_int Remove))
-      | Some Subscribe ->
-        let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
-        Ok ({ t with name_sockets }, `None, close, success ~msg:"subscribed" my_version hdr.id (op_to_int Subscribe))
-      | _ -> Error (`Msg "unknown command")
+      match wire with
+      | `Command (`Stats_cmd cmd) ->
+        begin
+          let id = header.Vmm_asn.id in
+          match cmd with
+          | `Stats_add (pid, taps) ->
+            add_pid t id pid taps >>= fun t ->
+            Ok (t, `Add id, None, Some "added")
+          | `Stats_remove ->
+            let t = remove_vmid t id in
+            Ok (t, `Remove id, None, Some "removed")
+          | `Stats_subscribe ->
+            let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
+            Ok ({ t with name_sockets }, `None, close, Some "subscribed")
+          | _ -> Error (`Msg "unknown command")
+        end
+      | _ ->
+        Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire (header, wire)) ;
+        Ok (t, `None, None, None)
   in
   match r with
-  | Ok (t, action, close, out) -> t, action, close, out
+  | Ok (t, action, close, out) ->
+    let out = match out with
+      | None -> None
+      | Some str -> Some (header, `Success (`String str))
+    in
+    t, action, close, out
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while processing %s" msg) ;
-    t, `None, None, fail ~msg my_version hdr.id
+    t, `None, None, Some (header, `Failure msg)

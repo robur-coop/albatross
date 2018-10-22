@@ -98,12 +98,6 @@ let handle mvar ring s addr () =
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
-    | Ok (_, `Failure _) ->
-      Logs.warn (fun m -> m "ignoring failure") ;
-      loop ()
-    | Ok (_, `Success _) ->
-      Logs.warn (fun m -> m "ignoring success") ;
-      loop ()
     | Ok (hdr, `Command (`Log_cmd lc)) ->
       if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
         Logs.warn (fun m -> m "unsupported version") ;
@@ -140,8 +134,8 @@ let handle mvar ring s addr () =
               Lwt.return_unit
             | Ok () -> loop () (* TODO no need to loop ;) *)
       end
-    | _ ->
-      Logs.err (fun m -> m "unknown command") ;
+    | Ok wire ->
+      Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire wire) ;
       loop ()
   in
   loop () >>= fun () ->

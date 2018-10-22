@@ -20,6 +20,6 @@ let () =
     Pkg.bin "provision/vmm_revoke" ;
       Pkg.bin "provision/vmm_gen_ca" ; *)
     (* Pkg.clib "stats/libvmm_stats_stubs.clib" ; *)
-(*    Pkg.bin "stats/vmm_stats_lwt" ;
-      Pkg.bin "app/vmm_influxdb_stats" ; *)
+    Pkg.bin "stats/vmm_stats_lwt" ;
+      Pkg.bin "app/vmm_influxdb_stats" ;
   ]

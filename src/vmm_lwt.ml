@@ -79,11 +79,7 @@ let read_wire s =
     else
         Lwt.return (Error `Eof)
 
-let write_wire s wire =
-  let data = Vmm_asn.wire_to_cstruct wire in
-  let dlen = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.len data)) ;
-  let buf = Cstruct.(to_bytes (append dlen data)) in
+let write_raw s buf =
   let rec w off l =
     Lwt.catch (fun () ->
         Lwt_unix.send s buf off l [] >>= fun n ->
@@ -97,6 +93,13 @@ let write_wire s wire =
   in
   (*  Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
   w 0 (Bytes.length buf)
+
+let write_wire s wire =
+  let data = Vmm_asn.wire_to_cstruct wire in
+  let dlen = Cstruct.create 4 in
+  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.len data)) ;
+  let buf = Cstruct.(to_bytes (append dlen data)) in
+  write_raw s buf
 
 let safe_close fd =
   Lwt.catch

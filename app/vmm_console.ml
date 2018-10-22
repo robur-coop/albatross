@@ -104,34 +104,30 @@ let handle s addr () =
   Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
   let rec loop () =
     Vmm_lwt.read_wire s >>= function
-    | Error (`Msg msg) ->
-      Logs.err (fun m -> m "error while reading %s" msg) ;
-      loop ()
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
-    | Ok (_, `Success _) ->
-      Logs.err (fun m -> m "unexpected success reply") ;
+    | Ok (header, `Command (`Console_cmd cmd)) ->
+      begin
+        (if not (Vmm_asn.version_eq header.Vmm_asn.version my_version) then
+           Lwt.return (Error (`Msg "ignoring data with bad version"))
+         else
+           match cmd with
+           | `Console_add -> add_fifo header.Vmm_asn.id
+           | `Console_subscribe -> subscribe s header.Vmm_asn.id
+           | `Console_data _ -> Lwt.return (Error (`Msg "unexpected command"))) >>= (function
+            | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
+            | Error (`Msg msg) ->
+              Logs.err (fun m -> m "error while processing command: %s" msg) ;
+              Vmm_lwt.write_wire s (header, `Failure msg)) >>= function
+        | Ok () -> loop ()
+        | Error _ ->
+          Logs.err (fun m -> m "exception while writing to socket") ;
+          Lwt.return_unit
+      end
+    | Ok wire ->
+      Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire wire) ;
       loop ()
-    | Ok (_, `Failure _) ->
-      Logs.err (fun m -> m "unexpected failure reply") ;
-      loop ()
-    | Ok (header, `Command cmd) ->
-      (if not (Vmm_asn.version_eq header.Vmm_asn.version my_version) then
-         Lwt.return (Error (`Msg "ignoring data with bad version"))
-       else
-         match cmd with
-         | `Console_cmd `Console_add -> add_fifo header.Vmm_asn.id
-         | `Console_cmd `Console_subscribe -> subscribe s header.Vmm_asn.id
-         | _ -> Lwt.return (Error (`Msg "unexpected command"))) >>= (function
-          | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
-          | Error (`Msg msg) ->
-            Logs.err (fun m -> m "error while processing command: %s" msg) ;
-            Vmm_lwt.write_wire s (header, `Failure msg)) >>= function
-      | Ok () -> loop ()
-      | Error _ ->
-        Logs.err (fun m -> m "exception while writing to socket") ;
-        Lwt.return_unit
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close s >|= fun () ->

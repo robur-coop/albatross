@@ -9,6 +9,8 @@ val wait_and_clear :
 val read_wire :
   Lwt_unix.file_descr ->
   (Vmm_asn.wire, [> `Eof | `Exception | `Toomuch ]) result Lwt.t
+val write_raw :
+  Lwt_unix.file_descr -> bytes -> (unit, [> `Exception ]) result Lwt.t
 val write_wire :
   Lwt_unix.file_descr -> Vmm_asn.wire -> (unit, [> `Exception ]) result Lwt.t
 val safe_close : Lwt_unix.file_descr -> unit Lwt.t
