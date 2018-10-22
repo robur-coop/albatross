@@ -628,13 +628,13 @@ let header =
            (required ~label:"sequence" int64)
            (required ~label:"id" (sequence_of utf8_string)))
 
-type success = [ `Empty | `String of string | `Policies of policy list | `Vms of vm_config list ]
+type success = [ `Empty | `String of string | `Policies of (id * policy) list | `Vms of (id * vm_config) list ]
 
 let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
-  | `Policies ps -> Fmt.(list ~sep:(unit "@.") pp_policy) ppf ps
-  | `Vms vms -> Fmt.(list ~sep:(unit "@.") pp_vm_config) ppf vms
+  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") pp_id pp_policy)) ppf ps
+  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") pp_id pp_vm_config)) ppf vms
 
 type wire = header * [
     | `Command of wire_command
@@ -685,8 +685,14 @@ let wire =
                  (explicit 1 (choice4
                                 (explicit 0 null)
                                 (explicit 1 utf8_string)
-                                (explicit 2 (sequence_of policy_obj))
-                                (explicit 3 (sequence_of vm_config))))
+                                (explicit 2 (sequence_of
+                                               (sequence2
+                                                  (required ~label:"name" (sequence_of utf8_string))
+                                                  (required ~label:"policy" policy_obj))))
+                                (explicit 3 (sequence_of
+                                               (sequence2
+                                                  (required ~label:"name" (sequence_of utf8_string))
+                                                  (required ~label:"vm_config" vm_config))))))
                  (explicit 2 utf8_string))))
 
 let wire_of_cstruct, wire_to_cstruct = projections_of wire

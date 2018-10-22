@@ -33,7 +33,7 @@ let remove t name = Vmm_trie.remove name t
 let fold t name f g acc =
   Vmm_trie.fold name t (fun prefix entry acc ->
       match entry with
-      | Vm vm -> f vm acc
+      | Vm vm -> f prefix vm acc
       | Policy p -> g prefix p acc) acc
 
 (* we should hide this type and confirm the following invariant:

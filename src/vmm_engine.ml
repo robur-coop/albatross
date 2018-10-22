@@ -122,86 +122,86 @@ let handle_command t (header, payload) =
   msg_to_err (
     let id = header.Vmm_asn.id in
     match payload with
-    | `Failure f ->
-      Logs.warn (fun m -> m "ignoring failure %s" f) ;
-      Ok (t, [], `End)
-    | `Success _ ->
-      Logs.warn (fun m -> m "ignoring success") ;
-      Ok (t, [], `End)
-    | `Command (`Policy_cmd `Policy_remove) ->
-      Logs.debug (fun m -> m "remove policy %a" pp_id header.Vmm_asn.id) ;
-      let resources = Vmm_resources.remove t.resources id in
-      Ok ({ t with resources }, [ `Data (header, `Success (`String "removed policy")) ], `End)
-    | `Command (`Policy_cmd (`Policy_add policy)) ->
-      Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
-      Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
-      Ok ({ t with resources }, [ `Data (header, `Success (`String "added policy")) ], `End)
-    | `Command (`Policy_cmd `Policy_info) ->
-      begin
-        Logs.debug (fun m -> m "policy %a" pp_id id) ;
-        let policies =
-          Vmm_resources.fold t.resources id
-            (fun _ policies -> policies)
-            (fun prefix policy policies-> (prefix, policy) :: policies)
-            []
-        in
-        match policies with
-        | [] ->
-          Logs.debug (fun m -> m "policies: couldn't find %a" pp_id id) ;
-          Error (`Msg "policy: not found")
-        | _ ->
-          Ok (t, [ `Data (header, `Success (`Policies policies)) ], `End)
+    | `Command (`Policy_cmd pc) ->
+      begin match pc with
+        | `Policy_remove ->
+          Logs.debug (fun m -> m "remove policy %a" pp_id header.Vmm_asn.id) ;
+          let resources = Vmm_resources.remove t.resources id in
+          Ok ({ t with resources }, [ `Data (header, `Success (`String "removed policy")) ], `End)
+        | `Policy_add policy ->
+          Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
+          Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
+          Ok ({ t with resources }, [ `Data (header, `Success (`String "added policy")) ], `End)
+        | `Policy_info ->
+          begin
+            Logs.debug (fun m -> m "policy %a" pp_id id) ;
+            let policies =
+              Vmm_resources.fold t.resources id
+                (fun _ _ policies -> policies)
+                (fun prefix policy policies-> (prefix, policy) :: policies)
+                []
+            in
+            match policies with
+            | [] ->
+              Logs.debug (fun m -> m "policies: couldn't find %a" pp_id id) ;
+              Error (`Msg "policy: not found")
+            | _ ->
+              Ok (t, [ `Data (header, `Success (`Policies policies)) ], `End)
+          end
       end
-    | `Command (`Vm_cmd `Vm_info) ->
-        begin
+    | `Command (`Vm_cmd vc) ->
+      begin match vc with
+        | `Vm_info ->
           Logs.debug (fun m -> m "info %a" pp_id id) ;
           let vms =
             Vmm_resources.fold t.resources id
-              (fun vm vms -> vm :: vms)
+              (fun id vm vms -> (id, vm.config) :: vms)
               (fun _ _ vms-> vms)
               []
           in
-          match vms with
-          | [] ->
-            Logs.debug (fun m -> m "info: couldn't find %a" pp_id id) ;
-            Error (`Msg "info: not found")
-          | _ ->
-            let vm_configs = List.map (fun vm -> vm.config) vms in
-            Ok (t, [ `Data (header, `Success (`Vms vm_configs)) ], `End)
-        end
-    | `Command (`Vm_cmd (`Vm_create vm_config)) ->
-      handle_create t header vm_config
-    | `Command (`Vm_cmd (`Vm_force_create vm_config)) ->
-      let resources = Vmm_resources.remove t.resources id in
-      if Vmm_resources.check_vm_policy resources id vm_config then
-        begin match Vmm_resources.find_vm t.resources id with
-          | None -> handle_create t header vm_config
-          | Some vm ->
-            Vmm_unix.destroy vm ;
-            let id_str = string_of_id id in
-            match String.Map.find_opt id_str t.tasks with
-            | None -> handle_create t header vm_config
-            | Some task ->
+          begin match vms with
+            | [] ->
+              Logs.debug (fun m -> m "info: couldn't find %a" pp_id id) ;
+              Error (`Msg "info: not found")
+            | _ ->
+              Ok (t, [ `Data (header, `Success (`Vms vms)) ], `End)
+          end
+        | `Vm_create vm_config ->
+          handle_create t header vm_config
+        | `Vm_force_create vm_config ->
+          let resources = Vmm_resources.remove t.resources id in
+          if Vmm_resources.check_vm_policy resources id vm_config then
+            begin match Vmm_resources.find_vm t.resources id with
+              | None -> handle_create t header vm_config
+              | Some vm ->
+                Vmm_unix.destroy vm ;
+                let id_str = string_of_id id in
+                match String.Map.find_opt id_str t.tasks with
+                | None -> handle_create t header vm_config
+                | Some task ->
+                  let tasks = String.Map.remove id_str t.tasks in
+                  let t = { t with tasks } in
+                  Ok (t, [], `Wait_and_create
+                        (task, fun t -> msg_to_err @@ handle_create t header vm_config))
+            end
+          else
+            Error (`Msg "wouldn't match policy")
+        | `Vm_destroy ->
+          begin match Vmm_resources.find_vm t.resources id with
+            | Some vm ->
+              Vmm_unix.destroy vm ;
+              let id_str = string_of_id id in
+              let out, next =
+                let s = [ `Data (header, `Success (`String "destroyed vm")) ] in
+                match String.Map.find_opt id_str t.tasks with
+                | None -> s, `End
+                | Some t -> [], `Wait (t, s)
+              in
               let tasks = String.Map.remove id_str t.tasks in
-              let t = { t with tasks } in
-              Ok (t, [], `Wait_and_create
-                    (task, fun t -> msg_to_err @@ handle_create t header vm_config))
-        end
-      else
-        Error (`Msg "wouldn't match policy")
-    | `Command (`Vm_cmd `Vm_destroy) ->
-      begin match Vmm_resources.find_vm t.resources id with
-        | Some vm ->
-          Vmm_unix.destroy vm ;
-          let id_str = string_of_id id in
-          let out, next =
-            let s = [ `Data (header, `Success (`String "destroyed vm")) ] in
-            match String.Map.find_opt id_str t.tasks with
-            | None -> s, `End
-          | Some t -> [], `Wait (t, s)
-          in
-          let tasks = String.Map.remove id_str t.tasks in
-          Ok ({ t with tasks }, out, next)
-        | None -> Error (`Msg "destroy: not found")
+              Ok ({ t with tasks }, out, next)
+            | None -> Error (`Msg "destroy: not found")
+          end
       end
-    | _ -> Error (`Msg "unknown command"))
+    | _ ->
+      Logs.err (fun m -> m "ignoring %a" Vmm_asn.pp_wire (header, payload)) ;
+      Error (`Msg "unknown command"))

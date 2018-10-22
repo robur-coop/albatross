@@ -219,7 +219,7 @@ type header = {
 
 type wire = header * [
     | `Command of wire_command
-    | `Success of [ `Empty | `String of string | `Policies of policy list | `Vms of vm_config list ]
+    | `Success of [ `Empty | `String of string | `Policies of (id * policy) list | `Vms of (id * vm_config) list ]
     | `Failure of string ]
 
 val pp_wire : wire Fmt.t

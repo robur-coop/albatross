@@ -36,5 +36,6 @@ val insert_policy : t -> Vmm_core.id -> Vmm_core.policy -> (t, [> `Msg of string
 val remove : t -> Vmm_core.id -> t
 
 (** [fold t id f g acc] folds [f] and [g] below [id] over [t]. *)
-val fold : t -> Vmm_core.id -> (Vmm_core.vm -> 'a -> 'a) ->
+val fold : t -> Vmm_core.id ->
+  (Vmm_core.id -> Vmm_core.vm -> 'a -> 'a) ->
   (Vmm_core.id -> Vmm_core.policy -> 'a -> 'a) -> 'a -> 'a

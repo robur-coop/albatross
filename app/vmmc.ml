@@ -167,7 +167,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   Term.(ret (const remove_policy $ setup_log $ socket $ opt_vmname)),
-  Term.info "remove" ~doc ~man
+  Term.info "remove_policy" ~doc ~man
 
 let info_cmd =
   let doc = "information about VMs" in
