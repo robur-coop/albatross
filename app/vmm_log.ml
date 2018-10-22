@@ -12,7 +12,7 @@
 
 open Lwt.Infix
 
-let my_version = `WV2
+let my_version = `AV2
 
 let broadcast prefix data t =
   Lwt_list.fold_left_s (fun t (id, s) ->
@@ -64,25 +64,24 @@ let tree = ref Vmm_trie.empty
 
 let bcast = ref 0L
 
-let send_history s ring id cmd_id =
+let send_history s ring id =
   let elements = Vmm_ring.read ring in
   let res =
     List.fold_left (fun acc (_, x) ->
         let cs = Cstruct.of_string x in
-        match Vmm_wire.Log.decode_log_hdr cs with
-        | Ok (hdr, _) ->
-          begin match Vmm_core.drop_super ~super:id ~sub:hdr.Vmm_core.Log.name with
-            | Some [] -> cs :: acc
-            | _ -> acc
-          end
+        match Vmm_asn.log_entry_of_cstruct cs with
+        | Ok (header, ts, event) ->
+          if Vmm_core.is_sub_id ~super:id ~sub:header.Vmm_asn.id
+          then (header, ts, event) :: acc
+          else acc
         | _ -> acc)
       [] elements
   in
   (* just need a wrapper in tag = Log.Data, id = reqid *)
-  Lwt_list.fold_left_s (fun r body ->
+  Lwt_list.fold_left_s (fun r (header, ts, event) ->
       match r with
       | Ok () ->
-        let data = Vmm_wire.encode ~body my_version cmd_id (Vmm_wire.Log.op_to_int Vmm_wire.Log.Broadcast) in
+        let data = header, `Command (`Log_cmd (`Log_data (ts, event))) in
         Vmm_lwt.write_wire s data
       | Error e -> Lwt.return (Error e))
     (Ok ()) res
@@ -99,53 +98,51 @@ let handle mvar ring s addr () =
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
-    | Ok (hdr, _) when Vmm_wire.is_reply hdr ->
-      Logs.warn (fun m -> m "ignoring reply") ;
+    | Ok (_, `Failure _) ->
+      Logs.warn (fun m -> m "ignoring failure") ;
       loop ()
-    | Ok (hdr, _) when not (Vmm_wire.version_eq hdr.Vmm_wire.version my_version) ->
-      Logs.warn (fun m -> m "unsupported version") ;
-      Lwt.return_unit
-    | Ok (hdr, data) -> match Vmm_wire.Log.int_to_op hdr.Vmm_wire.tag with
-      | Some Vmm_wire.Log.Log ->
-        begin match Vmm_wire.Log.decode_log_hdr data with
-          | Error (`Msg err) ->
-            Logs.warn (fun m -> m "ignoring error %s while decoding log" err) ;
-            loop ()
-          | Ok (hdr, _) ->
-            Vmm_ring.write ring (hdr.Vmm_core.Log.ts, Cstruct.to_string data) ;
-            Lwt_mvar.put mvar data >>= fun () ->
-            let data' = Vmm_wire.encode ~body:data my_version !bcast (Vmm_wire.Log.op_to_int Vmm_wire.Log.Broadcast) in
-            bcast := Int64.succ !bcast ;
-            broadcast hdr.Vmm_core.Log.name data' !tree >>= fun tree' ->
-            tree := tree' ;
-            loop ()
-        end
-      | Some Vmm_wire.Log.Subscribe ->
-        begin match Vmm_wire.decode_strings data with
-          | Error (`Msg err) ->
-            Logs.warn (fun m -> m "ignoring error %s while decoding subscribe" err) ;
-            loop ()
-          | Ok (id, _) ->
-            let tree', ret = Vmm_trie.insert id s !tree in
-            tree := tree' ;
-            (match ret with
-             | None -> Lwt.return_unit
-             | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
-            let out = Vmm_wire.success my_version hdr.Vmm_wire.id hdr.Vmm_wire.tag in
-            Vmm_lwt.write_wire s out >>= function
+    | Ok (_, `Success _) ->
+      Logs.warn (fun m -> m "ignoring success") ;
+      loop ()
+    | Ok (hdr, `Command (`Log_cmd lc)) ->
+      if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
+        Logs.warn (fun m -> m "unsupported version") ;
+        Lwt.return_unit
+      end else begin
+        match lc with
+        | `Log_data (ts, event) ->
+          let data = Vmm_asn.log_entry_to_cstruct (hdr, ts, event) in
+          Vmm_ring.write ring (ts, Cstruct.to_string data) ;
+          Lwt_mvar.put mvar data >>= fun () ->
+          let data' =
+            let header = Vmm_asn.{ version = my_version ; sequence = !bcast ; id = hdr.Vmm_asn.id } in
+            (header, `Command (`Log_cmd (`Log_data (ts, event))))
+          in
+          bcast := Int64.succ !bcast ;
+          broadcast hdr.Vmm_asn.id data' !tree >>= fun tree' ->
+          tree := tree' ;
+          loop ()
+        | `Log_subscribe ->
+          let tree', ret = Vmm_trie.insert hdr.Vmm_asn.id s !tree in
+          tree := tree' ;
+          (match ret with
+           | None -> Lwt.return_unit
+           | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
+          let out = `Success `Empty in
+          Vmm_lwt.write_wire s (hdr, out) >>= function
+          | Error _ ->
+            Logs.err (fun m -> m "error while sending reply for subscribe") ;
+            Lwt.return_unit
+          | Ok () ->
+            send_history s ring hdr.Vmm_asn.id >>= function
             | Error _ ->
-              Logs.err (fun m -> m "error while sending reply for subscribe") ;
+              Logs.err (fun m -> m "error while sending history") ;
               Lwt.return_unit
-            | Ok () ->
-              send_history s ring id hdr.Vmm_wire.id >>= function
-              | Error _ ->
-                Logs.err (fun m -> m "error while sending history") ;
-                Lwt.return_unit
-              | Ok () -> loop () (* TODO no need to loop ;) *)
-        end
-      | _ ->
-        Logs.err (fun m -> m "unknown command") ;
-        loop ()
+            | Ok () -> loop () (* TODO no need to loop ;) *)
+      end
+    | _ ->
+      Logs.err (fun m -> m "unknown command") ;
+      loop ()
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close s

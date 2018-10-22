@@ -118,6 +118,7 @@ let tick t =
                   | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.pp_id id Vmm_core.pp_id vmid) ; out
                   | Some real_id ->
                     let name = Vmm_core.string_of_id real_id in
+                    
                     let stats_encoded = Vmm_wire.Stats.(data 0L my_version name (encode_stats stats)) in
                     (socket, vmid, stats_encoded) :: out)
                 out xs)

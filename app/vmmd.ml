@@ -16,24 +16,34 @@ let pp_stats ppf s =
 
 open Lwt.Infix
 
-type out = [
-  | `Cons of Cstruct.t
-  | `Stat of Cstruct.t
-  | `Log of Cstruct.t
-]
+let version = `AV2
 
-let state = ref (Vmm_engine.init ())
+let state = ref (Vmm_engine.init version)
 
 let create c_fd process cont =
   Vmm_lwt.read_wire c_fd >>= function
-  | Ok (hdr, data) ->
-    if Vmm_wire.is_fail hdr then begin
-      Logs.err (fun m -> m "console failed with %s" (Cstruct.to_string data)) ;
+  | Error (`Msg msg) ->
+    Logs.err (fun m -> m "error %s while reading from console" msg) ;
+    Lwt.return_unit
+  | Error _ ->
+    Logs.err (fun m -> m "error while reading from console") ;
+    Lwt.return_unit
+  | Ok (header, wire) ->
+    if not (Vmm_asn.version_eq version header.Vmm_asn.version) then begin
+      Logs.err (fun m -> m "invalid version while reading from console") ;
       Lwt.return_unit
-    end else if Vmm_wire.is_reply hdr then begin
-      (* assert hdr.id = id! *)
-      let await, wakeme = Lwt.wait () in
-      begin match cont !state await with
+    end else
+      match wire with
+      | `Command _ ->
+        Logs.err (fun m -> m "console returned a command") ;
+        Lwt.return_unit
+      | `Failure f ->
+        Logs.err (fun m -> m "console failed with %s" f) ;
+        Lwt.return_unit
+      | `Success _msg ->
+        (* assert hdr.id = id! *)
+        let await, wakeme = Lwt.wait () in
+        match cont !state await with
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "create continuation failed %s" msg) ;
           Lwt.return_unit
@@ -48,25 +58,9 @@ let create c_fd process cont =
               process out' >|= fun () ->
               Lwt.wakeup wakeme ()) ;
           process out >>= fun () ->
-          begin match Vmm_engine.setup_stats !state vm with
-            | Ok (state', out) ->
-              state := state' ;
-              process out (* TODO: need to read from stats socket! *)
-            | Error (`Msg e) ->
-                    Logs.warn (fun m -> m "(ignored) error %s while setting up statistics" e) ;
-                    Lwt.return_unit
-          end
-      end
-    end else begin
-      Logs.err (fun m -> m "reading from console %lx, %a" hdr.Vmm_wire.tag Cstruct.hexdump_pp data) ;
-      Lwt.return_unit
-    end
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "error %s while reading from console" msg) ;
-    Lwt.return_unit
-  | Error _ ->
-    Logs.err (fun m -> m "error while reading from console") ;
-    Lwt.return_unit
+          let state', out = Vmm_engine.setup_stats !state vm in
+          state := state' ;
+          process out (* TODO: need to read from stats socket! *)
 
 let handle out c_fd fd addr =
   (* out is for `Log | `Stat | `Cons (including reconnect semantics) *)
@@ -86,7 +80,7 @@ let handle out c_fd fd addr =
   *)
   let process xs =
     Lwt_list.iter_p (function
-        | #out as o -> out o
+        | #Vmm_engine.service_out as o -> out o
         | `Data cs ->
           (* rather: terminate connection *)
           Vmm_lwt.write_wire fd cs >|= fun _ -> ()) xs
@@ -96,16 +90,15 @@ let handle out c_fd fd addr =
     | Error _ ->
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
-    | Ok (hdr, buf) ->
+    | Ok wire ->
       Logs.debug (fun m -> m "read sth") ;
-      let state', data, next = Vmm_engine.handle_command !state hdr buf in
+      let state', data, next = Vmm_engine.handle_command !state wire in
       state := state' ;
       process data >>= fun () ->
       match next with
       | `End -> Lwt.return_unit
       | `Wait (task, out) -> task >>= fun () -> process out
-      | `Wait_and_create (state', task, next) ->
-        state := state' ;
+      | `Wait_and_create (task, next) ->
         task >>= fun () ->
         let state', data, n = next !state in
         state := state' ;

@@ -295,6 +295,9 @@ let pp_rusage ppf r =
   Fmt.pf ppf "utime %Lu.%d stime %Lu.%d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
     (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
 
+let pp_vmm ppf vmm =
+  Fmt.(list ~sep:(unit "@,") (pair ~sep:(unit ": ") string int64)) ppf vmm
+
 type ifdata = {
   name : string ;
   flags : int32 ;
@@ -321,16 +324,6 @@ let pp_ifdata ppf i =
     i.name i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
 module Log = struct
-  type hdr = {
-    ts : Ptime.t ;
-    name : id ;
-  }
-
-  let pp_hdr ppf (hdr : hdr) =
-    Fmt.pf ppf "%a: %a" (Ptime.pp_rfc3339 ()) hdr.ts pp_id hdr.name
-
-  let hdr name = { ts = Ptime_clock.now () ; name }
-
   type event =
     [ `Startup
     | `Login of Ipaddr.V4.t * int
@@ -354,9 +347,4 @@ module Log = struct
         | `Stop n -> "stop", n
       in
       Fmt.pf ppf "STOPPED %d with %s %a" pid s Fmt.Dump.signal c
-
-  type msg = hdr * event
-
-  let pp ppf (hdr, event) =
-    Fmt.pf ppf "%a %a" pp_hdr hdr pp_event event
 end

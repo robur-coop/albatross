@@ -6,11 +6,20 @@ open Astring
 
 open Vmm_core
 
+let version = `AV2
+
 let process fd =
   Vmm_lwt.read_wire fd >|= function
-  | Error (`Msg m) -> Error (`Msg m)
-  | Error _ -> Error (`Msg "read error")
-  | Ok data -> Vmm_commands.handle_reply data
+  | Error _ ->
+    Error (`Msg "read or parse error")
+  | Ok (header, reply) ->
+    if Vmm_asn.version_eq header.Vmm_asn.version version then begin
+      Logs.app (fun m -> m "%a" Vmm_asn.pp_wire (header, reply)) ;
+      Ok ()
+    end else begin
+      Logs.err (fun m -> m "version not equal") ;
+      Error (`Msg "version not equal")
+    end
 
 let socket t = function
   | Some x -> x
@@ -25,53 +34,38 @@ let connect socket_path =
 let read fd =
   (* now we busy read and process output *)
   let rec loop () =
-    Vmm_lwt.read_wire fd >>= function
-    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop ()
-    | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
-    | Ok data -> match Vmm_commands.handle_reply data with
-      | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
-      | Ok (hdr, data) ->
-        if Vmm_wire.is_reply hdr then
-          let msg = match Vmm_wire.decode_string data with
-            | Error _ -> None
-            | Ok (m, _) -> Some m
-          in
-          Logs.app (fun m -> m "operation succeeded: %a" Fmt.(option ~none:(unit "") string) msg) ;
-          loop ()
-        else
-          match Vmm_commands.log_pp_reply (hdr, data) with
-          | Ok () -> loop ()
-          | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
+    process fd >>= function
+    | Error e -> Lwt.return (Error e)
+    | Ok () -> loop ()
   in
   loop ()
 
-let handle opt_socket (cmd : Vmm_commands.t) =
-  let sock, next, cmd = Vmm_commands.handle cmd in
+let handle opt_socket id (cmd : Vmm_asn.wire_command) =
+  let sock, next = Vmm_commands.handle cmd in
   connect (socket sock opt_socket) >>= fun fd ->
-  Vmm_lwt.write_wire fd cmd >>= function
+  let header = Vmm_asn.{ version ; sequence = 0L ; id } in
+  Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
   | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
   | Ok () ->
     (match next with
      | `Read -> read fd
-     | `End ->
-       process fd >|= function
-       | Error e -> Error e
-       | Ok data -> Vmm_commands.log_pp_reply data) >>= fun res ->
+     | `End -> process fd) >>= fun res ->
     Vmm_lwt.safe_close fd >|= fun () ->
     res
 
-let jump opt_socket cmd =
+let jump opt_socket name cmd =
   match
-    Lwt_main.run (handle opt_socket cmd)
+    Lwt_main.run (handle opt_socket name cmd)
   with
   | Ok () -> `Ok ()
   | Error (`Msg m) -> `Error (false, m)
 
-let info_ _ opt_socket name = jump opt_socket (`Info name)
+let info_ _ opt_socket name = jump opt_socket name (`Vm_cmd `Vm_info)
 
-let policy _ opt_socket name = jump opt_socket (`Policy name)
+let policy _ opt_socket name = jump opt_socket name (`Policy_cmd `Policy_info)
 
-let remove_policy _ opt_socket name = jump opt_socket (`Remove_policy name)
+let remove_policy _ opt_socket name =
+  jump opt_socket name (`Policy_cmd `Policy_remove)
 
 let add_policy _ opt_socket name vms memory cpus block bridges =
   let bridges = match bridges with
@@ -84,10 +78,10 @@ let add_policy _ opt_socket name vms memory cpus block bridges =
   and cpuids = IS.of_list cpus
   in
   let policy = { vms ; cpuids ; memory ; block ; bridges } in
-  jump opt_socket (`Add_policy (name, policy))
+  jump opt_socket name (`Policy_cmd (`Policy_add policy))
 
 let destroy _ opt_socket name =
-  jump opt_socket (`Destroy_vm name)
+  jump opt_socket name (`Vm_cmd `Vm_destroy)
 
 let create _ opt_socket force name image cpuid requested_memory boot_params block_device network =
   let image' = match Bos.OS.File.read (Fpath.v image) with
@@ -106,17 +100,17 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
   } in
   let cmd =
     if force then
-      `Force_create_vm vm_config
+      `Vm_force_create vm_config
     else
-      `Create_vm vm_config
+      `Vm_create vm_config
   in
-  jump opt_socket cmd
+  jump opt_socket name (`Vm_cmd cmd)
 
-let console _ opt_socket name = jump opt_socket (`Console name)
+let console _ opt_socket name = jump opt_socket name (`Console_cmd `Console_subscribe)
 
-let stats _ opt_socket name = jump opt_socket (`Statistics name)
+let stats _ opt_socket name = jump opt_socket name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ opt_socket name = jump opt_socket (`Log name)
+let event_log _ opt_socket name = jump opt_socket name (`Log_cmd `Log_subscribe)
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)

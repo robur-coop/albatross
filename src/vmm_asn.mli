@@ -75,7 +75,7 @@ end
 (** {1 Encoding and decoding functions} *)
 
 (** The type of versions of the ASN.1 grammar defined above. *)
-type version = [ `AV0 | `AV1 ]
+type version = [ `AV0 | `AV1 | `AV2 ]
 
 (** [version_eq a b] is true if [a] and [b] are equal. *)
 val version_eq : version -> version -> bool
@@ -171,3 +171,66 @@ val block_device_of_cert : version -> X509.t -> (string, [> `Msg of string ]) re
 
 (** [block_size_of_cert version cert] is either the decoded block size, or an error. *)
 val block_size_of_cert : version -> X509.t -> (int, [> `Msg of string ]) result
+
+open Vmm_core
+type console_cmd = [
+  | `Console_add
+  | `Console_subscribe
+  | `Console_data of Ptime.t * string
+]
+
+type stats_cmd = [
+  | `Stats_add of int * string list
+  | `Stats_remove
+  | `Stats_subscribe
+  | `Stats_data of rusage * (string * int64) list * ifdata list
+]
+
+type log_cmd = [
+  | `Log_data of Ptime.t * Log.event
+  | `Log_subscribe
+]
+
+type vm_cmd = [
+  | `Vm_info
+  | `Vm_create of vm_config
+  | `Vm_force_create of vm_config
+  | `Vm_destroy
+]
+
+type policy_cmd = [
+  | `Policy_info
+  | `Policy_add of policy
+  | `Policy_remove
+]
+
+type wire_command = [
+  | `Console_cmd of console_cmd
+  | `Stats_cmd of stats_cmd
+  | `Log_cmd of log_cmd
+  | `Vm_cmd of vm_cmd
+  | `Policy_cmd of policy_cmd ]
+
+type header = {
+  version : version ;
+  sequence : int64 ;
+  id : id ;
+}
+
+type wire = header * [
+    | `Command of wire_command
+    | `Success of [ `Empty | `String of string | `Policies of policy list | `Vms of vm_config list ]
+    | `Failure of string ]
+
+val pp_wire : wire Fmt.t
+
+val wire_to_cstruct : wire -> Cstruct.t
+
+val wire_of_cstruct : Cstruct.t -> (wire, [> `Msg of string ]) result
+
+type log_entry = header * Ptime.t * Log.event
+
+val log_entry_to_cstruct : log_entry -> Cstruct.t
+
+val log_entry_of_cstruct : Cstruct.t -> (log_entry, [> `Msg of string ]) result
+

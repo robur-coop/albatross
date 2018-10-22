@@ -14,7 +14,7 @@ open Lwt.Infix
 
 open Astring
 
-let my_version = `WV2
+let my_version = `AV2
 
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
@@ -31,7 +31,8 @@ let read_console name ring channel () =
         (match String.Map.find name !active with
          | None -> Lwt.return_unit
          | Some fd ->
-           Vmm_lwt.write_wire fd (Vmm_wire.Console.data my_version id t line) >>= function
+           let header = Vmm_asn.{ version = my_version ; sequence = 0L ; id } in
+           Vmm_lwt.write_wire fd (header, `Command (`Console_cmd (`Console_data (t, line)))) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
              active := String.Map.remove name !active
@@ -79,7 +80,7 @@ let add_fifo id =
   | None ->
     Error (`Msg "opening")
 
-let attach s id =
+let subscribe s id =
   let name = Vmm_core.string_of_id id in
   Logs.debug (fun m -> m "attempting to attach %a" Vmm_core.pp_id id) ;
   match String.Map.find name !t with
@@ -90,8 +91,8 @@ let attach s id =
     let entries = Vmm_ring.read r in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
-        let msg = Vmm_wire.Console.data my_version id i v in
-        Vmm_lwt.write_wire s msg >|= fun _ -> ())
+        let header = Vmm_asn.{ version = my_version ; sequence = 0L ; id } in
+        Vmm_lwt.write_wire s (header, `Command (`Console_cmd (`Console_data (i, v)))) >|= fun _ -> ())
       entries >>= fun () ->
     (match String.Map.find name !active with
      | None -> Lwt.return_unit
@@ -109,24 +110,24 @@ let handle s addr () =
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
-    | Ok (hdr, _) when Vmm_wire.is_reply hdr ->
-      Logs.err (fun m -> m "unexpected reply") ;
+    | Ok (_, `Success _) ->
+      Logs.err (fun m -> m "unexpected success reply") ;
       loop ()
-    | Ok (hdr, data) ->
-      (if not (Vmm_wire.version_eq hdr.Vmm_wire.version my_version) then
+    | Ok (_, `Failure _) ->
+      Logs.err (fun m -> m "unexpected failure reply") ;
+      loop ()
+    | Ok (header, `Command cmd) ->
+      (if not (Vmm_asn.version_eq header.Vmm_asn.version my_version) then
          Lwt.return (Error (`Msg "ignoring data with bad version"))
        else
-         match Vmm_wire.decode_strings data with
-         | Error e -> Lwt.return (Error e)
-         | Ok (id, _) -> match Vmm_wire.Console.int_to_op hdr.Vmm_wire.tag with
-           | Some Vmm_wire.Console.Add_console -> add_fifo id
-           | Some Vmm_wire.Console.Attach_console -> attach s id
-           | Some Vmm_wire.Console.Data -> Lwt.return (Error (`Msg "unexpected Data"))
-           | None -> Lwt.return (Error (`Msg "unknown command"))) >>= (function
-          | Ok msg -> Vmm_lwt.write_wire s (Vmm_wire.success ~msg my_version hdr.Vmm_wire.id hdr.Vmm_wire.tag)
+         match cmd with
+         | `Console_cmd `Console_add -> add_fifo header.Vmm_asn.id
+         | `Console_cmd `Console_subscribe -> subscribe s header.Vmm_asn.id
+         | _ -> Lwt.return (Error (`Msg "unexpected command"))) >>= (function
+          | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
           | Error (`Msg msg) ->
             Logs.err (fun m -> m "error while processing command: %s" msg) ;
-            Vmm_lwt.write_wire s (Vmm_wire.fail ~msg my_version hdr.Vmm_wire.id)) >>= function
+            Vmm_lwt.write_wire s (header, `Failure msg)) >>= function
       | Ok () -> loop ()
       | Error _ ->
         Logs.err (fun m -> m "exception while writing to socket") ;
