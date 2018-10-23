@@ -9,3 +9,4 @@ Vmm_resources
 Vmm_trie
 Vmm_unix
 Vmm_compress
+Vmm_ring
