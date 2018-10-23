@@ -106,32 +106,24 @@ let version_eq a b =
 type console_cmd = [
   | `Console_add
   | `Console_subscribe
-  | `Console_data of Ptime.t * string
 ]
 
 let pp_console_cmd ppf = function
   | `Console_add -> Fmt.string ppf "console add"
   | `Console_subscribe -> Fmt.string ppf "console subscribe"
-  | `Console_data (ts, line) -> Fmt.pf ppf "console data %a: %s"
-                                  (Ptime.pp_rfc3339 ()) ts line
 
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
     | `C2 () -> `Console_subscribe
-    | `C3 (timestamp, data) -> `Console_data (timestamp, data)
   and g = function
     | `Console_add -> `C1 ()
     | `Console_subscribe -> `C2 ()
-    | `Console_data (timestamp, data) -> `C3 (timestamp, data)
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice2
            (explicit 0 null)
-           (explicit 1 null)
-           (explicit 2 (sequence2
-                          (required ~label:"timestamp" utc_time)
-                          (required ~label:"data" utf8_string))))
+           (explicit 1 null))
 
 (* TODO is this good? *)
 let int64 =
@@ -211,41 +203,30 @@ type stats_cmd = [
   | `Stats_add of int * string list
   | `Stats_remove
   | `Stats_subscribe
-  | `Stats_data of stats
 ]
 
 let pp_stats_cmd ppf = function
   | `Stats_add (pid, taps) -> Fmt.pf ppf "stats add: pid %d taps %a" pid Fmt.(list ~sep:(unit ", ") string) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
-  | `Stats_data stats -> Fmt.pf ppf "stats data: %a" pp_stats stats
 
 let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
     | `C3 () -> `Stats_subscribe
-    | `C4 (ru, ifs, vmm) -> `Stats_data (ru, vmm, ifs)
   and g = function
     | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
     | `Stats_subscribe -> `C3 ()
-    | `Stats_data (ru, ifs, vmm) -> `C4 (ru, vmm, ifs)
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice3
            (explicit 0 (sequence2
                           (required ~label:"pid" int)
                           (required ~label:"taps" (sequence_of utf8_string))))
            (explicit 1 null)
-           (explicit 2 null)
-           (explicit 3 (sequence3
-                          (required ~label:"resource_usage" ru)
-                          (required ~label:"ifdata" (sequence_of ifdata))
-                          (optional ~label:"vmm_stats"
-                             (sequence_of (sequence2
-                                             (required ~label:"key" utf8_string)
-                                             (required ~label:"value" int64)))))))
+           (explicit 2 null))
 
 let addr =
   Asn.S.(sequence2
@@ -295,28 +276,20 @@ let log_event =
                                                        (explicit 2 int))))))
 
 type log_cmd = [
-  | `Log_data of Ptime.t * Log.event
   | `Log_subscribe
 ]
 
 let pp_log_cmd ppf = function
-  | `Log_data (ts, event) -> Fmt.pf ppf "log data: %a %a" (Ptime.pp_rfc3339 ()) ts Log.pp_event event
   | `Log_subscribe -> Fmt.string ppf "log subscribe"
 
 let log_cmd =
   let f = function
-    | `C1 (timestamp, event) -> `Log_data (timestamp, event)
-    | `C2 () -> `Log_subscribe
+    | () -> `Log_subscribe
   and g = function
-    | `Log_data (timestamp, event) -> `C1 (timestamp, event)
-    | `Log_subscribe -> `C2 ()
+    | `Log_subscribe -> ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice2
-           (explicit 0 (sequence2
-                          (required ~label:"timestamp" utc_time)
-                          (required ~label:"event" log_event)))
-           (explicit 1 null))
+  Asn.S.null
 
 type vm_cmd = [
   | `Vm_info
@@ -444,6 +417,45 @@ let wire_command : wire_command Asn.S.t =
            (explicit 3 vm_cmd)
            (explicit 4 policy_cmd))
 
+type data = [
+  | `Console_data of Ptime.t * string
+  | `Stats_data of stats
+  | `Log_data of Ptime.t * Log.event
+]
+
+let pp_data ppf = function
+  | `Console_data (ts, line) -> Fmt.pf ppf "console data %a: %s"
+                                  (Ptime.pp_rfc3339 ()) ts line
+  | `Stats_data stats -> Fmt.pf ppf "stats data: %a" pp_stats stats
+  | `Log_data (ts, event) -> Fmt.pf ppf "log data: %a %a" (Ptime.pp_rfc3339 ()) ts Log.pp_event event
+
+let data =
+  let f = function
+    | `C1 (timestamp, data) -> `Console_data (timestamp, data)
+    | `C2 (ru, ifs, vmm) -> `Stats_data (ru, vmm, ifs)
+    | `C3 (timestamp, event) -> `Log_data (timestamp, event)
+  and g = function
+    | `Console_data (timestamp, data) -> `C1 (timestamp, data)
+    | `Stats_data (ru, ifs, vmm) -> `C2 (ru, vmm, ifs)
+    | `Log_data (timestamp, event) -> `C3 (timestamp, event)
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice3
+           (explicit 0 (sequence2
+                          (required ~label:"timestamp" utc_time)
+                          (required ~label:"data" utf8_string)))
+           (explicit 1 (sequence3
+                          (required ~label:"resource_usage" ru)
+                          (required ~label:"ifdata" (sequence_of ifdata))
+                          (optional ~label:"vmm_stats"
+                             (sequence_of (sequence2
+                                             (required ~label:"key" utf8_string)
+                                             (required ~label:"value" int64))))))
+           (explicit 2 (sequence2
+                          (required ~label:"timestamp" utc_time)
+                          (required ~label:"event" log_event))))
+
+
 type header = {
   version : version ;
   sequence : int64 ;
@@ -471,7 +483,8 @@ let pp_success ppf = function
 type wire = header * [
     | `Command of wire_command
     | `Success of success
-    | `Failure of string ]
+    | `Failure of string
+    | `Data of data ]
 
 let pp_wire ppf (header, data) =
   let id = header.id in
@@ -479,6 +492,7 @@ let pp_wire ppf (header, data) =
   | `Command c -> Fmt.pf ppf "host %a: %a" pp_id id pp_wire_command c
   | `Failure f -> Fmt.pf ppf "host %a: command failed %s" pp_id id f
   | `Success s -> Fmt.pf ppf "host %a: %a" pp_id id pp_success s
+  | `Data d -> pp_data ppf d
 
 let wire =
   let f (header, payload) =
@@ -494,6 +508,7 @@ let wire =
       in
       `Success p
     | `C3 str -> `Failure str
+    | `C4 data -> `Data data
   and g (header, payload) =
     header,
     match payload with
@@ -507,12 +522,13 @@ let wire =
       in
       `C2 p
     | `Failure str -> `C3 str
+    | `Data d -> `C4 d
   in
   Asn.S.map f g @@
   Asn.S.(sequence2
            (required ~label:"header" header)
            (required ~label:"payload"
-              (choice3
+              (choice4
                  (explicit 0 wire_command)
                  (explicit 1 (choice4
                                 (explicit 0 null)
@@ -525,7 +541,8 @@ let wire =
                                                (sequence2
                                                   (required ~label:"name" (sequence_of utf8_string))
                                                   (required ~label:"vm_config" vm_config))))))
-                 (explicit 2 utf8_string))))
+                 (explicit 2 utf8_string)
+                 (explicit 3 data))))
 
 let wire_of_cstruct, wire_to_cstruct = projections_of wire
 

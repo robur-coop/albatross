@@ -73,9 +73,7 @@ let send_history s ring id =
   (* just need a wrapper in tag = Log.Data, id = reqid *)
   Lwt_list.fold_left_s (fun r (header, ts, event) ->
       match r with
-      | Ok () ->
-        let data = header, `Command (`Log_cmd (`Log_data (ts, event))) in
-        Vmm_lwt.write_wire s data
+      | Ok () -> Vmm_lwt.write_wire s (header, `Data (`Log_data (ts, event)))
       | Error e -> Lwt.return (Error e))
     (Ok ()) res
 
@@ -91,24 +89,29 @@ let handle mvar ring s addr () =
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
+    | Ok (hdr, `Data (`Log_data (ts, event))) ->
+      if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
+        Logs.warn (fun m -> m "unsupported version") ;
+        Lwt.return_unit
+      end else begin
+        let data = Vmm_asn.log_entry_to_cstruct (hdr, ts, event) in
+        Vmm_ring.write ring (ts, Cstruct.to_string data) ;
+        Lwt_mvar.put mvar data >>= fun () ->
+        let data' =
+          let header = Vmm_asn.{ version = my_version ; sequence = !bcast ; id = hdr.Vmm_asn.id } in
+          (header, `Data (`Log_data (ts, event)))
+        in
+        bcast := Int64.succ !bcast ;
+        broadcast hdr.Vmm_asn.id data' !tree >>= fun tree' ->
+        tree := tree' ;
+        loop ()
+      end
     | Ok (hdr, `Command (`Log_cmd lc)) ->
       if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
         Logs.warn (fun m -> m "unsupported version") ;
         Lwt.return_unit
       end else begin
         match lc with
-        | `Log_data (ts, event) ->
-          let data = Vmm_asn.log_entry_to_cstruct (hdr, ts, event) in
-          Vmm_ring.write ring (ts, Cstruct.to_string data) ;
-          Lwt_mvar.put mvar data >>= fun () ->
-          let data' =
-            let header = Vmm_asn.{ version = my_version ; sequence = !bcast ; id = hdr.Vmm_asn.id } in
-            (header, `Command (`Log_cmd (`Log_data (ts, event))))
-          in
-          bcast := Int64.succ !bcast ;
-          broadcast hdr.Vmm_asn.id data' !tree >>= fun tree' ->
-          tree := tree' ;
-          loop ()
         | `Log_subscribe ->
           let tree', ret = Vmm_trie.insert hdr.Vmm_asn.id s !tree in
           tree := tree' ;

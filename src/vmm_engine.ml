@@ -38,7 +38,7 @@ let log t id event =
   let header = Vmm_asn.{ version = t.wire_version ; sequence = t.log_counter ; id } in
   let log_counter = Int64.succ t.log_counter in
   Logs.debug (fun m -> m "LOG %a" Log.pp_event event) ;
-  ({ t with log_counter }, `Log (header, `Command (`Log_cmd data)))
+  ({ t with log_counter }, `Log (header, `Data data))
 
 let handle_create t hdr vm_config =
   let name = hdr.Vmm_asn.id in
@@ -80,13 +80,12 @@ let handle_shutdown t name vm r =
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
   let resources = Vmm_resources.remove t.resources name in
-  let stat_out = `Stats_remove in
   let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let tasks = String.Map.remove (string_of_id name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
   let t, logout = log t name (`VM_stop (vm.pid, r))
   in
-  (t, [ `Stat (header, `Command (`Stats_cmd stat_out)) ; logout ])
+  (t, [ `Stat (header, `Command (`Stats_cmd `Stats_remove)) ; logout ])
 
 let handle_command t (header, payload) =
   let msg_to_err = function

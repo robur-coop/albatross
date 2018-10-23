@@ -40,6 +40,9 @@ let create c_fd process cont =
       | `Failure f ->
         Logs.err (fun m -> m "console failed with %s" f) ;
         Lwt.return_unit
+      | `Data _ ->
+        Logs.err (fun m -> m "console replied with data") ;
+        Lwt.return_unit
       | `Success _msg ->
         (* assert hdr.id = id! *)
         let await, wakeme = Lwt.wait () in

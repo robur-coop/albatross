@@ -189,7 +189,7 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
       safe_close fd >>= fun () ->
       safe_close c >|= fun () ->
       true
-    | Ok (hdr, `Command (`Stats_cmd (`Stats_data (ru, vmm, ifs)))) ->
+    | Ok (hdr, `Data (`Stats_data (ru, vmm, ifs))) ->
       begin
         if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
           Logs.err (fun m -> m "unknown wire protocol version") ;

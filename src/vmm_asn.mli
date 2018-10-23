@@ -23,18 +23,15 @@ val pp_version : version Fmt.t
 type console_cmd = [
   | `Console_add
   | `Console_subscribe
-  | `Console_data of Ptime.t * string
 ]
 
 type stats_cmd = [
   | `Stats_add of int * string list
   | `Stats_remove
   | `Stats_subscribe
-  | `Stats_data of stats
 ]
 
 type log_cmd = [
-  | `Log_data of Ptime.t * Log.event
   | `Log_subscribe
 ]
 
@@ -60,6 +57,14 @@ type wire_command = [
 
 val pp_wire_command : wire_command Fmt.t
 
+type data = [
+  | `Console_data of Ptime.t * string
+  | `Stats_data of stats
+  | `Log_data of Ptime.t * Log.event
+]
+
+val pp_data : data Fmt.t
+
 type header = {
   version : version ;
   sequence : int64 ;
@@ -69,7 +74,8 @@ type header = {
 type wire = header * [
     | `Command of wire_command
     | `Success of [ `Empty | `String of string | `Policies of (id * policy) list | `Vms of (id * vm_config) list ]
-    | `Failure of string ]
+    | `Failure of string
+    | `Data of data ]
 
 val pp_wire : wire Fmt.t
 

@@ -32,7 +32,7 @@ let read_console name ring channel () =
          | None -> Lwt.return_unit
          | Some fd ->
            let header = Vmm_asn.{ version = my_version ; sequence = 0L ; id } in
-           Vmm_lwt.write_wire fd (header, `Command (`Console_cmd (`Console_data (t, line)))) >>= function
+           Vmm_lwt.write_wire fd (header, `Data (`Console_data (t, line))) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
              active := String.Map.remove name !active
@@ -92,7 +92,7 @@ let subscribe s id =
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
         let header = Vmm_asn.{ version = my_version ; sequence = 0L ; id } in
-        Vmm_lwt.write_wire s (header, `Command (`Console_cmd (`Console_data (i, v)))) >|= fun _ -> ())
+        Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >|= fun _ -> ())
       entries >>= fun () ->
     (match String.Map.find name !active with
      | None -> Lwt.return_unit
@@ -114,8 +114,7 @@ let handle s addr () =
          else
            match cmd with
            | `Console_add -> add_fifo header.Vmm_asn.id
-           | `Console_subscribe -> subscribe s header.Vmm_asn.id
-           | `Console_data _ -> Lwt.return (Error (`Msg "unexpected command"))) >>= (function
+           | `Console_subscribe -> subscribe s header.Vmm_asn.id) >>= (function
             | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
             | Error (`Msg msg) ->
               Logs.err (fun m -> m "error while processing command: %s" msg) ;

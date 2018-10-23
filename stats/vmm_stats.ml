@@ -121,8 +121,7 @@ let tick t =
                   | Some real_id ->
                     let header = Vmm_asn.{ version = my_version ; sequence = !bcast ; id = real_id } in
                     bcast := Int64.succ !bcast ;
-                    let data = `Stats_data stats in
-                    ((socket, vmid, (header, `Command (`Stats_cmd data))) :: out))
+                    ((socket, vmid, (header, `Data (`Stats_data stats))) :: out))
                 out xs)
           [] (Vmm_trie.all t'.vmid_pid)
   in
@@ -192,7 +191,6 @@ let handle t socket (header, wire) =
           | `Stats_subscribe ->
             let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
             Ok ({ t with name_sockets }, `None, close, Some "subscribed")
-          | _ -> Error (`Msg "unknown command")
         end
       | _ ->
         Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire (header, wire)) ;
