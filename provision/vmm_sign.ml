@@ -4,8 +4,6 @@ open Vmm_provision
 
 open Rresult.R.Infix
 
-open Astring
-
 let sign dbname cacert key csr days =
   let ri = X509.CA.info csr in
   Logs.app (fun m -> m "signing certificate with subject %s"
