@@ -6,25 +6,6 @@ open Rresult.R.Infix
 
 open Astring
 
-let has oid exts =
-  List.exists (function (_, `Unsupported (x, _)) when x = oid -> true | _ -> false) exts
-
-let req oid exts f =
-  try
-    let ext = List.find (function (_, `Unsupported (x, _)) when x = oid -> true | _ -> false) exts in
-    match ext with
-    | (_, `Unsupported (_, y)) -> f y
-    | _ -> Error (`Msg "not found")
-  with Not_found -> Error (`Msg "not found")
-
-let opt oid exts f =
-  try
-    let ext = List.find (function (_, `Unsupported (x, _)) when x = oid -> true | _ -> false) exts in
-    match ext with
-    | (_, `Unsupported (_, y)) -> f y >>= fun x -> Ok (Some x)
-    | _ -> Ok None
-  with Not_found -> Ok None
-
 let sign dbname cacert key csr days =
   let ri = X509.CA.info csr in
   Logs.app (fun m -> m "signing certificate with subject %s"
