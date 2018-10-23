@@ -1,3 +1,5 @@
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
+
 open Astring
 
 type 'a t = N of 'a option * 'a t String.Map.t

@@ -1,3 +1,5 @@
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
+
 open Vmm_core
 
 (** The type of versions of the grammar defined below. *)

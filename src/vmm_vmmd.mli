@@ -1,3 +1,4 @@
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 type 'a t
 

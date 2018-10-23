@@ -1,3 +1,5 @@
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
+
 val pp_sockaddr : Format.formatter -> Lwt_unix.sockaddr -> unit
 
 val pp_process_status : Format.formatter -> Unix.process_status -> unit

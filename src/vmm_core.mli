@@ -1,3 +1,5 @@
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
+
 val tmpdir : Fpath.t
 val dbdir : Fpath.t
 
