@@ -9,5 +9,6 @@ env:
   matrix:
     - OCAML_VERSION=4.05
     - OCAML_VERSION=4.06
+    - OCAML_VERSION=4.07
 notifications:
   email: false
