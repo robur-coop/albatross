@@ -29,20 +29,8 @@ end
 
 module IS = Set.Make(I)
 module IM = Map.Make(I)
-module IM64 = Map.Make(Int64)
 
 type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
-
-let vmtype_to_int = function
-  | `Hvt_amd64 -> 0
-  | `Hvt_arm64 -> 1
-  | `Hvt_amd64_compressed -> 2
-
-let int_to_vmtype = function
-  | 0 -> Some `Hvt_amd64
-  | 1 -> Some `Hvt_arm64
-  | 2 -> Some `Hvt_amd64_compressed
-  | _ -> None
 
 let pp_vmtype ppf = function
   | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
@@ -187,14 +175,6 @@ let translate_tap vm tap =
   match List.filter (fun (t, _) -> tap = t) (List.combine vm.taps vm.config.network) with
   | [ (_, b) ] -> Some b
   | _ -> None
-
-let identifier serial =
-  match Hex.of_cstruct @@ Nocrypto.Hash.SHA256.digest @@
-    Nocrypto.Numeric.Z.to_cstruct_be @@ serial
-  with
-  | `Hex str -> str
-
-let id cert = identifier (X509.serial cert)
 
 let name cert = X509.common_name_to_string cert
 

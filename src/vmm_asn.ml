@@ -88,17 +88,6 @@ let image =
 
 type version = [ `AV0 | `AV1 | `AV2 ]
 
-let version_of_int = function
-  | 0 -> Ok `AV0
-  | 1 -> Ok `AV1
-  | 2 -> Ok `AV2
-  | _ -> Error (`Msg "couldn't parse version")
-
-let version_to_int = function
-  | `AV0 -> 0
-  | `AV1 -> 1
-  | `AV2 -> 2
-
 let pp_version ppf v =
   Fmt.int ppf
     (match v with
@@ -418,10 +407,15 @@ let policy_cmd =
            (explicit 2 null))
 
 let version =
-  let f data = match version_of_int data with
-    | Ok v -> v
-    | Error (`Msg m) -> Asn.S.error (`Parse m)
-  and g = version_to_int
+  let f data = match data with
+    | 0 -> `AV0
+    | 1 -> `AV1
+    | 2 -> `AV2
+    | _ -> Asn.S.error (`Parse "unknown version number")
+  and g = function
+    | `AV0 -> 0
+    | `AV1 -> 1
+    | `AV2 -> 2
   in
   Asn.S.map f g Asn.S.int
 

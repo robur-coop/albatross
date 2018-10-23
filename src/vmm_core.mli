@@ -14,13 +14,7 @@ module IM : sig
   include Map.S with type key = I.t
 end
 
-module IM64 : sig
-  include Map.S with type key = Int64.t
-end
-
 type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
-val vmtype_to_int : vmtype -> int
-val int_to_vmtype : int -> vmtype option
 val pp_vmtype : vmtype Fmt.t
 
 type id = string list
@@ -32,8 +26,8 @@ val domain : 'a list -> 'a list
 val pp_id : id Fmt.t
 
 type bridge =
-    [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
-    | `Internal of string ]
+  [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
+  | `Internal of string ]
 val pp_bridge : bridge Fmt.t
 
 type policy = {
@@ -81,8 +75,6 @@ type vm = {
 val pp_vm : vm Fmt.t
 val translate_tap : vm -> string -> string option
 
-val identifier : Nocrypto.Numeric.Z.t -> string
-val id : X509.t -> string
 val name : X509.t -> string
 
 val separate_chain : 'a list -> ('a * 'a list, [> `Msg of string ]) result
