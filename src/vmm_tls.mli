@@ -1,5 +1,5 @@
-val read_tls : Tls_lwt.Unix.t ->
-  (Vmm_commands.wire, [> `Eof | `Exception | `Toomuch ]) result Lwt.t
 
-val write_tls :
-  Tls_lwt.Unix.t -> Vmm_commands.wire -> (unit, [> `Exception ]) result Lwt.t
+val handle :
+  'a -> Vmm_commands.version ->
+  X509.t list ->
+  (string list * Vmm_commands.t, [> `Msg of string ]) Result.result

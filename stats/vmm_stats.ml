@@ -133,8 +133,8 @@ let add_pid t vmid pid nics =
     let rec go cnt acc id =
       if id > 0 && cnt > 0 then
         match wrap sysctl_ifdata id with
-        | Some ifd when List.mem ifd.name nics ->
-          go (pred cnt) ((id, ifd.name) :: acc) (pred id)
+        | Some ifd when List.mem ifd.Vmm_core.Stats.name nics ->
+          go (pred cnt) ((id, ifd.Vmm_core.Stats.name) :: acc) (pred id)
         | _ -> go cnt acc (pred id)
       else
         List.rev acc

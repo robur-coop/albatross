@@ -18,7 +18,7 @@ open Lwt.Infix
 
 let version = `AV2
 
-let state = ref (Vmm_engine.init version)
+let state = ref (Vmm_vmmd.init version)
 
 let create c_fd process cont =
   Vmm_lwt.read_wire c_fd >>= function
@@ -55,13 +55,13 @@ let create c_fd process cont =
           s := { !s with vm_created = succ !s.vm_created } ;
           Lwt.async (fun () ->
               Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
-              let state', out' = Vmm_engine.handle_shutdown !state name vm r in
+              let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
               s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
               state := state' ;
               process out' >|= fun () ->
               Lwt.wakeup wakeme ()) ;
           process out >>= fun () ->
-          let state', out = Vmm_engine.setup_stats !state name vm in
+          let state', out = Vmm_vmmd.setup_stats !state name vm in
           state := state' ;
           process out (* TODO: need to read from stats socket! *)
 
@@ -83,7 +83,7 @@ let handle out c_fd fd addr =
   *)
   let process xs =
     Lwt_list.iter_p (function
-        | #Vmm_engine.service_out as o -> out o
+        | #Vmm_vmmd.service_out as o -> out o
         | `Data cs ->
           (* rather: terminate connection *)
           Vmm_lwt.write_wire fd cs >|= fun _ -> ()) xs
@@ -95,7 +95,7 @@ let handle out c_fd fd addr =
       Lwt.return_unit
     | Ok wire ->
       Logs.debug (fun m -> m "read sth") ;
-      let state', data, next = Vmm_engine.handle_command !state wire in
+      let state', data, next = Vmm_vmmd.handle_command !state wire in
       state := state' ;
       process data >>= fun () ->
       match next with

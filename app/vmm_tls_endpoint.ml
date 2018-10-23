@@ -45,7 +45,7 @@ let read fd tls =
     | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
     | Ok wire ->
       Logs.debug (fun m -> m "read proxying %a" Vmm_commands.pp_wire wire) ;
-      Vmm_tls.write_tls tls wire >>= function
+      Vmm_tls_lwt.write_tls tls wire >>= function
       | Ok () -> loop ()
       | Error `Exception -> Lwt.return (Error (`Msg "exception"))
   in
@@ -56,13 +56,13 @@ let process fd tls =
   | Error _ -> Lwt.return (Error (`Msg "read error"))
   | Ok wire ->
     Logs.debug (fun m -> m "proxying %a" Vmm_commands.pp_wire wire) ;
-    Vmm_tls.write_tls tls wire >|= function
+    Vmm_tls_lwt.write_tls tls wire >|= function
     | Ok () -> Ok ()
     | Error `Exception -> Error (`Msg "exception on write")
 
 let handle ca (tls, addr) =
   client_auth ca tls addr >>= fun chain ->
-  match Vmm_x509.handle addr chain with
+  match Vmm_tls.handle addr my_version chain with
   | Error (`Msg m) -> Lwt.fail_with m
   | Ok (name, cmd) ->
     let sock, next = Vmm_commands.endpoint cmd in

@@ -3,7 +3,7 @@
 open Lwt.Infix
 
 let rec read_tls_write_cons t =
-  Vmm_tls.read_tls t >>= function
+  Vmm_tls_lwt.read_tls t >>= function
   | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
   | Ok wire ->
     Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire) ;
