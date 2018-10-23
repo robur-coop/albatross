@@ -103,11 +103,14 @@ let create _ opt_socket force name image cpuid requested_memory boot_params bloc
   in
   jump opt_socket name (`Vm_cmd cmd)
 
-let console _ opt_socket name = jump opt_socket name (`Console_cmd `Console_subscribe)
+let console _ opt_socket name since =
+  jump opt_socket name (`Console_cmd (`Console_subscribe since))
 
-let stats _ opt_socket name = jump opt_socket name (`Stats_cmd `Stats_subscribe)
+let stats _ opt_socket name =
+  jump opt_socket name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ opt_socket name = jump opt_socket name (`Log_cmd `Log_subscribe)
+let event_log _ opt_socket name since =
+  jump opt_socket name (`Log_cmd (`Log_subscribe since))
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
@@ -265,13 +268,24 @@ let create_cmd =
   Term.(ret (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ mem $ args $ block $ net)),
   Term.info "create" ~doc ~man
 
+let timestamp_c =
+  let parse s = match Ptime.of_rfc3339 s with
+    | Ok (t, _, _) -> `Ok t
+    | Error _ -> `Error "couldn't parse timestamp"
+  in
+  (parse, Ptime.pp_rfc3339 ())
+
+let since =
+  let doc = "Since" in
+  Arg.(value & opt (some timestamp_c) None & info [ "since" ] ~doc)
+
 let console_cmd =
   let doc = "console of a VM" in
   let man =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(ret (const console $ setup_log $ socket $ vm_name)),
+  Term.(ret (const console $ setup_log $ socket $ vm_name $ since)),
   Term.info "console" ~doc ~man
 
 let stats_cmd =
@@ -289,7 +303,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(ret (const event_log $ setup_log $ socket $ opt_vmname)),
+  Term.(ret (const event_log $ setup_log $ socket $ opt_vmname $ since)),
   Term.info "log" ~doc ~man
 
 let help_cmd =

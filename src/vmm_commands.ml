@@ -21,12 +21,14 @@ let version_eq a b =
 
 type console_cmd = [
   | `Console_add
-  | `Console_subscribe
+  | `Console_subscribe of Ptime.t option
 ]
 
 let pp_console_cmd ppf = function
   | `Console_add -> Fmt.string ppf "console add"
-  | `Console_subscribe -> Fmt.string ppf "console subscribe"
+  | `Console_subscribe ts ->
+    Fmt.pf ppf "console subscribe since %a"
+      Fmt.(option ~none:(unit "epoch") (Ptime.pp_rfc3339 ())) ts
 
 type stats_cmd = [
   | `Stats_add of int * string list
@@ -40,11 +42,13 @@ let pp_stats_cmd ppf = function
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
 
 type log_cmd = [
-  | `Log_subscribe
+  | `Log_subscribe of Ptime.t option
 ]
 
 let pp_log_cmd ppf = function
-  | `Log_subscribe -> Fmt.string ppf "log subscribe"
+  | `Log_subscribe ts ->
+    Fmt.pf ppf "log subscribe since %a"
+      Fmt.(option ~none:(unit "epoch") (Ptime.pp_rfc3339 ())) ts
 
 type vm_cmd = [
   | `Vm_info

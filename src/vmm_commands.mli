@@ -13,7 +13,7 @@ val pp_version : version Fmt.t
 
 type console_cmd = [
   | `Console_add
-  | `Console_subscribe
+  | `Console_subscribe of Ptime.t option
 ]
 
 type stats_cmd = [
@@ -23,7 +23,7 @@ type stats_cmd = [
 ]
 
 type log_cmd = [
-  | `Log_subscribe
+  | `Log_subscribe of Ptime.t option
 ]
 
 type vm_cmd = [

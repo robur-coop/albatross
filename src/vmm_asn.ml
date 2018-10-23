@@ -90,15 +90,15 @@ let image =
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
-    | `C2 () -> `Console_subscribe
+    | `C2 ts -> `Console_subscribe ts
   and g = function
     | `Console_add -> `C1 ()
-    | `Console_subscribe -> `C2 ()
+    | `Console_subscribe ts -> `C2 ts
   in
   Asn.S.map f g @@
   Asn.S.(choice2
            (explicit 0 null)
-           (explicit 1 null))
+           (explicit 1 (sequence (single (optional ~label:"since" utc_time)))))
 
 (* TODO is this good? *)
 let int64 =
@@ -246,12 +246,12 @@ let log_event =
 
 let log_cmd =
   let f = function
-    | () -> `Log_subscribe
+    | ts -> `Log_subscribe ts
   and g = function
-    | `Log_subscribe -> ()
+    | `Log_subscribe ts -> ts
   in
   Asn.S.map f g @@
-  Asn.S.null
+  Asn.S.(sequence (single (optional ~label:"since" utc_time)))
 
 let vm_config =
   let f (cpuid, requested_memory, block_device, network, vmimage, argv) =
@@ -426,7 +426,7 @@ let wire =
                  (explicit 2 utf8_string)
                  (explicit 3 data))))
 
-let wire_of_cstruct, (wire_to_cstruct : Vmm_commands.wire -> Cstruct.t) = projections_of wire
+let wire_of_cstruct, wire_to_cstruct = projections_of wire
 
 let log_entry =
   Asn.S.(sequence2

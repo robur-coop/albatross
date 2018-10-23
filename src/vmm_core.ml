@@ -214,7 +214,7 @@ module Stats = struct
 
   type vmm = (string * int64) list
   let pp_vmm ppf vmm =
-    Fmt.(list ~sep:(unit "@,") (pair ~sep:(unit ": ") string int64)) ppf vmm
+    Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) ppf vmm
 
   type ifdata = {
     name : string ;

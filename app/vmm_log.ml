@@ -55,8 +55,12 @@ let write_to_file file =
 
 let tree = ref Vmm_trie.empty
 
-let send_history s ring id =
-  let elements = Vmm_ring.read ring in
+let send_history s ring id ts =
+  let elements =
+    match ts with
+    | None -> Vmm_ring.read ring
+    | Some since -> Vmm_ring.read_history ring since
+  in
   let res =
     List.fold_left (fun acc (_, x) ->
         let cs = Cstruct.of_string x in
@@ -112,7 +116,7 @@ let handle mvar ring s addr () =
         Lwt.return_unit
       end else begin
         match lc with
-        | `Log_subscribe ->
+        | `Log_subscribe ts ->
           let tree', ret = Vmm_trie.insert hdr.Vmm_commands.id s !tree in
           tree := tree' ;
           (match ret with
@@ -124,7 +128,7 @@ let handle mvar ring s addr () =
             Logs.err (fun m -> m "error while sending reply for subscribe") ;
             Lwt.return_unit
           | Ok () ->
-            send_history s ring hdr.Vmm_commands.id >>= function
+            send_history s ring hdr.Vmm_commands.id ts >>= function
             | Error _ ->
               Logs.err (fun m -> m "error while sending history") ;
               Lwt.return_unit

@@ -80,7 +80,7 @@ let add_fifo id =
   | None ->
     Error (`Msg "opening")
 
-let subscribe s id =
+let subscribe s id since =
   let name = Vmm_core.string_of_id id in
   Logs.debug (fun m -> m "attempting to attach %a" Vmm_core.pp_id id) ;
   match String.Map.find name !t with
@@ -88,7 +88,11 @@ let subscribe s id =
     active := String.Map.add name s !active ;
     Lwt.return (Ok "waiing for VM")
   | Some r ->
-    let entries = Vmm_ring.read r in
+    let entries =
+      match since with
+      | None -> Vmm_ring.read r
+      | Some ts -> Vmm_ring.read_history r ts
+    in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
         let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
@@ -114,7 +118,8 @@ let handle s addr () =
          else
            match cmd with
            | `Console_add -> add_fifo header.Vmm_commands.id
-           | `Console_subscribe -> subscribe s header.Vmm_commands.id) >>= (function
+           | `Console_subscribe ts -> subscribe s header.Vmm_commands.id ts)
+        >>= (function
             | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
             | Error (`Msg msg) ->
               Logs.err (fun m -> m "error while processing command: %s" msg) ;
