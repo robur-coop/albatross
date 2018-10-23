@@ -10,7 +10,8 @@ type res_entry = {
 let empty_res = { running_vms = 0 ; used_memory = 0 }
 
 let check_resource (policy : policy) (vm : vm_config) (res : res_entry) =
-  succ res.running_vms <= policy.vms && res.used_memory + vm.requested_memory <= policy.memory &&
+  succ res.running_vms <= policy.vms &&
+  res.used_memory + vm.requested_memory <= policy.memory &&
   vm_matches_res policy vm
 
 let check_resource_policy (policy : policy) (res : res_entry) =
@@ -81,8 +82,10 @@ let check_policy_below t name p =
         match res, entry with
         | Ok p, Policy p' -> if is_sub ~super:p ~sub:p then Ok p' else Error ()
         | Ok p, Vm vm ->
-          (* TODO block device *)
-          if IS.mem vm.config.cpuid p.cpuids && good_bridge vm.config.network p.bridges then Ok p else Error ()
+          let cfg = vm.config in
+          if IS.mem cfg.cpuid p.cpuids && good_bridge cfg.network p.bridges
+          then Ok p
+          else Error ()
         | res, _ -> res)
     (Ok p)
 

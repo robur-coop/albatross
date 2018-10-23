@@ -12,10 +12,6 @@ type 'a t = {
   console_counter : int64 ;
   stats_counter : int64 ;
   log_counter : int64 ;
-  (* TODO: refine, maybe:
-     bridges : (Macaddr.t String.Map.t * String.Set.t) String.Map.t ; *)
-  used_bridges : String.Set.t String.Map.t ;
-  (* TODO: used block devices (since each may only be active once) *)
   resources : Vmm_resources.t ;
   tasks : 'a String.Map.t ;
 }
@@ -25,7 +21,6 @@ let init wire_version = {
   console_counter = 1L ;
   stats_counter = 1L ;
   log_counter = 1L ;
-  used_bridges = String.Map.empty ;
   resources = Vmm_resources.empty ;
   tasks = String.Map.empty ;
 }
@@ -58,7 +53,6 @@ let handle_create t hdr vm_config =
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
-  (* TODO should we pre-reserve sth in t? *)
   let cons_out =
     let header = Vmm_asn.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
     (header, `Command (`Console_cmd `Console_add))
@@ -70,16 +64,7 @@ let handle_create t hdr vm_config =
           Logs.debug (fun m -> m "exec()ed vm") ;
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
           let tasks = String.Map.add (string_of_id name) task t.tasks in
-          let used_bridges =
-            List.fold_left2 (fun b br ta ->
-                let old = match String.Map.find br b with
-                  | None -> String.Set.empty
-                  | Some x -> x
-                in
-                String.Map.add br (String.Set.add ta old) b)
-              t.used_bridges vm_config.network taps
-          in
-          let t = { t with resources ; tasks ; used_bridges } in
+          let t = { t with resources ; tasks } in
           let t, out = log t name (`VM_start (vm.pid, vm.taps, None)) in
           let data = `Success (`String "created VM") in
           Ok (t, [ `Data (hdr, data) ; out ], name, vm)))
@@ -95,19 +80,10 @@ let handle_shutdown t name vm r =
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
   let resources = Vmm_resources.remove t.resources name in
-  let used_bridges =
-    List.fold_left2 (fun b br ta ->
-        let old = match String.Map.find br b with
-          | None -> String.Set.empty
-          | Some x -> x
-        in
-        String.Map.add br (String.Set.remove ta old) b)
-      t.used_bridges vm.config.network vm.taps
-  in
   let stat_out = `Stats_remove in
   let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let tasks = String.Map.remove (string_of_id name) t.tasks in
-  let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; used_bridges ; tasks } in
+  let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
   let t, logout = log t name (`VM_stop (vm.pid, r))
   in
   (t, [ `Stat (header, `Command (`Stats_cmd stat_out)) ; logout ])

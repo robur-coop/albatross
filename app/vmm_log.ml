@@ -5,8 +5,6 @@
 (* communication channel is a single unix domain socket shared between vmmd and
    vmm_log.  There are two commands from vmmd to vmm_log, history and data. *)
 
-(* TODO: this should (optionally?) persist to a remote target *)
-
 (* internally, a ring buffer for the last N events is preserved in memory
    each new event is directly written to disk! *)
 
@@ -54,11 +52,6 @@ let write_to_file file =
       write_loop ~retry ?data ?fd ()
   in
   mvar, write_loop
-
-(* TODO:
-   - should there be an unsubscribe <prefix> command?
-   - should there be acks for history/datain?
- *)
 
 let tree = ref Vmm_trie.empty
 

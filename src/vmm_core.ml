@@ -142,7 +142,6 @@ let good_bridge idxs nets =
   List.for_all (fun n -> String.Map.mem n nets) idxs
 
 let vm_matches_res (res : policy) (vm : vm_config)  =
-  (* TODO block device *)
   res.vms >= 1 && IS.mem vm.cpuid res.cpuids &&
   vm.requested_memory <= res.memory &&
   good_bridge vm.network res.bridges

@@ -146,7 +146,6 @@ let cpuset cpu =
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let exec name vm taps =
-  (* TODO: --net-mac=xx *)
   let net = List.map (fun t -> "--net=" ^ t) taps in
   let argv = match vm.argv with None -> [] | Some xs -> xs in
   (match taps with
