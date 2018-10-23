@@ -31,7 +31,7 @@ let read_console name ring channel () =
         (match String.Map.find name !active with
          | None -> Lwt.return_unit
          | Some fd ->
-           let header = Vmm_asn.{ version = my_version ; sequence = 0L ; id } in
+           let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
            Vmm_lwt.write_wire fd (header, `Data (`Console_data (t, line))) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
@@ -91,7 +91,7 @@ let subscribe s id =
     let entries = Vmm_ring.read r in
     Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
     Lwt_list.iter_s (fun (i, v) ->
-        let header = Vmm_asn.{ version = my_version ; sequence = 0L ; id } in
+        let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
         Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >|= fun _ -> ())
       entries >>= fun () ->
     (match String.Map.find name !active with
@@ -109,12 +109,12 @@ let handle s addr () =
       Lwt.return_unit
     | Ok (header, `Command (`Console_cmd cmd)) ->
       begin
-        (if not (Vmm_asn.version_eq header.Vmm_asn.version my_version) then
+        (if not (Vmm_commands.version_eq header.Vmm_commands.version my_version) then
            Lwt.return (Error (`Msg "ignoring data with bad version"))
          else
            match cmd with
-           | `Console_add -> add_fifo header.Vmm_asn.id
-           | `Console_subscribe -> subscribe s header.Vmm_asn.id) >>= (function
+           | `Console_add -> add_fifo header.Vmm_commands.id
+           | `Console_subscribe -> subscribe s header.Vmm_commands.id) >>= (function
             | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
             | Error (`Msg msg) ->
               Logs.err (fun m -> m "error while processing command: %s" msg) ;
@@ -125,7 +125,7 @@ let handle s addr () =
           Lwt.return_unit
       end
     | Ok wire ->
-      Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire wire) ;
+      Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
       loop ()
   in
   loop () >>= fun () ->

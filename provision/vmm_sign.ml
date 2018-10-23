@@ -29,12 +29,12 @@ let sign dbname cacert key csr days =
   with
   | [ (_, `Unsupported (_, v)) as ext ] ->
     Vmm_asn.cert_extension_of_cstruct v >>= fun (version, cmd) ->
-    (if Vmm_asn.version_eq version asn_version then
+    (if Vmm_commands.version_eq version asn_version then
        Ok ()
      else
        Error (`Msg "unknown version in request")) >>= fun () ->
     (* TODO l_exts / d_exts trouble *)
-    Logs.app (fun m -> m "signing %a" Vmm_asn.pp_wire_command cmd) ;
+    Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd) ;
     Ok (ext :: l_exts) >>= fun extensions ->
     sign ~dbname extensions issuer key csr (Duration.of_day days)
   | _ -> Error (`Msg "none or multiple albatross extensions found")

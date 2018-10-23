@@ -13,8 +13,8 @@ let process fd =
   | Error _ ->
     Error (`Msg "read or parse error")
   | Ok (header, reply) ->
-    if Vmm_asn.version_eq header.Vmm_asn.version version then begin
-      Logs.app (fun m -> m "%a" Vmm_asn.pp_wire (header, reply)) ;
+    if Vmm_commands.version_eq header.Vmm_commands.version version then begin
+      Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply)) ;
       Ok ()
     end else begin
       Logs.err (fun m -> m "version not equal") ;
@@ -40,10 +40,10 @@ let read fd =
   in
   loop ()
 
-let handle opt_socket id (cmd : Vmm_asn.wire_command) =
-  let sock, next = Vmm_commands.handle cmd in
+let handle opt_socket id (cmd : Vmm_commands.t) =
+  let sock, next = Vmm_commands.endpoint cmd in
   connect (socket sock opt_socket) >>= fun fd ->
-  let header = Vmm_asn.{ version ; sequence = 0L ; id } in
+  let header = Vmm_commands.{ version ; sequence = 0L ; id } in
   Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
   | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
   | Ok () ->

@@ -7,6 +7,8 @@ open Rresult.R.Infix
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
 
+type service = [ `Console | `Log | `Stats | `Vmmd ]
+
 let socket_path t =
   let path name = Fpath.(tmpdir / "util" / name + "sock") in
   let path = match t with
@@ -185,88 +187,104 @@ let separate_chain = function
   | [ leaf ] -> Ok (leaf, [])
   | leaf :: xs -> Ok (leaf, List.rev xs)
 
-type rusage = {
-  utime : (int64 * int) ;
-  stime : (int64 * int) ;
-  maxrss : int64 ;
-  ixrss : int64 ;
-  idrss : int64 ;
-  isrss : int64 ;
-  minflt : int64 ;
-  majflt : int64 ;
-  nswap : int64 ;
-  inblock : int64 ;
-  outblock : int64 ;
-  msgsnd : int64 ;
-  msgrcv : int64 ;
-  nsignals : int64 ;
-  nvcsw : int64 ;
-  nivcsw : int64 ;
-}
+module Stats = struct
+  type rusage = {
+    utime : (int64 * int) ;
+    stime : (int64 * int) ;
+    maxrss : int64 ;
+    ixrss : int64 ;
+    idrss : int64 ;
+    isrss : int64 ;
+    minflt : int64 ;
+    majflt : int64 ;
+    nswap : int64 ;
+    inblock : int64 ;
+    outblock : int64 ;
+    msgsnd : int64 ;
+    msgrcv : int64 ;
+    nsignals : int64 ;
+    nvcsw : int64 ;
+    nivcsw : int64 ;
+  }
 
-let pp_rusage ppf r =
-  Fmt.pf ppf "utime %Lu.%d stime %Lu.%d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
-    (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
+  let pp_rusage ppf r =
+    Fmt.pf ppf "utime %Lu.%d stime %Lu.%d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
+      (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
 
 
-type vmm_stats = (string * int64) list
-let pp_vmm_stats ppf vmm =
-  Fmt.(list ~sep:(unit "@,") (pair ~sep:(unit ": ") string int64)) ppf vmm
+  type vmm = (string * int64) list
+  let pp_vmm ppf vmm =
+    Fmt.(list ~sep:(unit "@,") (pair ~sep:(unit ": ") string int64)) ppf vmm
 
-type ifdata = {
-  name : string ;
-  flags : int32 ;
-  send_length : int32 ;
-  max_send_length : int32 ;
-  send_drops : int32 ;
-  mtu : int32 ;
-  baudrate : int64 ;
-  input_packets : int64 ;
-  input_errors : int64 ;
-  output_packets : int64 ;
-  output_errors : int64 ;
-  collisions : int64 ;
-  input_bytes : int64 ;
-  output_bytes : int64 ;
-  input_mcast : int64 ;
-  output_mcast : int64 ;
-  input_dropped : int64 ;
-  output_dropped : int64 ;
-}
+  type ifdata = {
+    name : string ;
+    flags : int32 ;
+    send_length : int32 ;
+    max_send_length : int32 ;
+    send_drops : int32 ;
+    mtu : int32 ;
+    baudrate : int64 ;
+    input_packets : int64 ;
+    input_errors : int64 ;
+    output_packets : int64 ;
+    output_errors : int64 ;
+    collisions : int64 ;
+    input_bytes : int64 ;
+    output_bytes : int64 ;
+    input_mcast : int64 ;
+    output_mcast : int64 ;
+    input_dropped : int64 ;
+    output_dropped : int64 ;
+  }
 
-let pp_ifdata ppf i =
-  Fmt.pf ppf "name %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
-    i.name i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
+  let pp_ifdata ppf i =
+    Fmt.pf ppf "name %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
+      i.name i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
-type stats = rusage * vmm_stats option * ifdata list
-let pp_stats ppf (ru, vmm, ifs) =
-  Fmt.pf ppf "%a@.%a@.%a"
-    pp_rusage ru
-    Fmt.(option ~none:(unit "no vmm stats") pp_vmm_stats) vmm
-    Fmt.(list ~sep:(unit "@.@.") pp_ifdata) ifs
+  type t = rusage * vmm option * ifdata list
+  let pp ppf (ru, vmm, ifs) =
+    Fmt.pf ppf "%a@.%a@.%a"
+      pp_rusage ru
+      Fmt.(option ~none:(unit "no vmm stats") pp_vmm) vmm
+      Fmt.(list ~sep:(unit "@.@.") pp_ifdata) ifs
+end
+
+type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
+
+let pp_process_exit ppf = function
+  | `Exit n -> Fmt.pf ppf "exit %a (%d)" Fmt.Dump.signal n n
+  | `Signal n -> Fmt.pf ppf "signal %a (%d)" Fmt.Dump.signal n n
+  | `Stop n -> Fmt.pf ppf "stop %a (%d)" Fmt.Dump.signal n n
 
 module Log = struct
-  type event =
-    [ `Startup
-    | `Login of Ipaddr.V4.t * int
-    | `Logout of Ipaddr.V4.t * int
-    | `VM_start of int * string list * string option
-    | `VM_stop of int * [ `Exit of int | `Signal of int | `Stop of int ]
-    ]
+  type log_event = [
+    | `Login of id * Ipaddr.V4.t * int
+    | `Logout of id * Ipaddr.V4.t * int
+    | `Startup
+    | `Vm_start of id * int * string list * string option
+    | `Vm_stop of id * int * process_exit
+  ]
 
-  let pp_event ppf = function
-    | `Startup -> Fmt.(pf ppf "STARTUP")
-    | `Login (ip, port) -> Fmt.pf ppf "LOGIN %a:%d" Ipaddr.V4.pp_hum ip port
-    | `Logout (ip, port) -> Fmt.pf ppf "LOGOUT %a:%d" Ipaddr.V4.pp_hum ip port
-    | `VM_start (pid, taps, block) ->
-      Fmt.pf ppf "STARTED %d (tap %a, block %a)"
-        pid Fmt.(list ~sep:(unit "; ") string) taps
+  let name = function
+    | `Startup -> []
+    | `Login (name, _, _) -> name
+    | `Logout (name, _, _) -> name
+    | `Vm_start (name, _, _ ,_) -> name
+    | `Vm_stop (name, _, _) -> name
+
+  let pp_log_event ppf = function
+    | `Startup -> Fmt.(pf ppf "startup")
+    | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" pp_id name Ipaddr.V4.pp_hum ip port
+    | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" pp_id name Ipaddr.V4.pp_hum ip port
+    | `Vm_start (name, pid, taps, block) ->
+      Fmt.pf ppf "%a started %d (tap %a, block %a)"
+        pp_id name pid Fmt.(list ~sep:(unit "; ") string) taps
         Fmt.(option ~none:(unit "no") string) block
-    | `VM_stop (pid, code) ->
-      let s, c = match code with
-        | `Exit n -> "exit", n
-        | `Signal n -> "signal", n
-        | `Stop n -> "stop", n
-      in
-      Fmt.pf ppf "STOPPED %d with %s %a" pid s Fmt.Dump.signal c
+    | `Vm_stop (name, pid, code) ->
+      Fmt.pf ppf "%a stopped %d with %a" pp_id name pid pp_process_exit code
+
+  type t = Ptime.t * log_event
+
+  let pp ppf (ts, ev) =
+    Fmt.pf ppf "%a: %a" (Ptime.pp_rfc3339 ()) ts pp_log_event ev
 end

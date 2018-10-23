@@ -1,20 +1,20 @@
 
 type 'a t
 
-val init : Vmm_asn.version -> 'a t
+val init : Vmm_commands.version -> 'a t
 
 type service_out = [
-  | `Stat of Vmm_asn.wire
-  | `Log of Vmm_asn.wire
-  | `Cons of Vmm_asn.wire
+  | `Stat of Vmm_commands.wire
+  | `Log of Vmm_commands.wire
+  | `Cons of Vmm_commands.wire
 ]
 
-type out = [ service_out | `Data of Vmm_asn.wire ]
+type out = [ service_out | `Data of Vmm_commands.wire ]
 
 val handle_shutdown : 'a t -> Vmm_core.id -> Vmm_core.vm ->
   [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * out list
 
-val handle_command : 'a t -> Vmm_asn.wire ->
+val handle_command : 'a t -> Vmm_commands.wire ->
   'a t * out list *
   [ `Create of 'c t -> 'c -> ('c t * out list * Vmm_core.id * Vmm_core.vm, [> Rresult.R.msg ]) result
   | `End

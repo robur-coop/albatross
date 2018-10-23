@@ -44,7 +44,7 @@ let read fd tls =
     Vmm_lwt.read_wire fd >>= function
     | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
     | Ok wire ->
-      Logs.debug (fun m -> m "read proxying %a" Vmm_asn.pp_wire wire) ;
+      Logs.debug (fun m -> m "read proxying %a" Vmm_commands.pp_wire wire) ;
       Vmm_tls.write_tls tls wire >>= function
       | Ok () -> loop ()
       | Error `Exception -> Lwt.return (Error (`Msg "exception"))
@@ -55,7 +55,7 @@ let process fd tls =
   Vmm_lwt.read_wire fd >>= function
   | Error _ -> Lwt.return (Error (`Msg "read error"))
   | Ok wire ->
-    Logs.debug (fun m -> m "proxying %a" Vmm_asn.pp_wire wire) ;
+    Logs.debug (fun m -> m "proxying %a" Vmm_commands.pp_wire wire) ;
     Vmm_tls.write_tls tls wire >|= function
     | Ok () -> Ok ()
     | Error `Exception -> Error (`Msg "exception on write")
@@ -65,10 +65,10 @@ let handle ca (tls, addr) =
   match Vmm_x509.handle addr chain with
   | Error (`Msg m) -> Lwt.fail_with m
   | Ok (name, cmd) ->
-    let sock, next = Vmm_commands.handle cmd in
+    let sock, next = Vmm_commands.endpoint cmd in
     connect (Vmm_core.socket_path sock) >>= fun fd ->
     let wire =
-      let header = Vmm_asn.{version = my_version ; sequence = !command ; id = name } in
+      let header = Vmm_commands.{version = my_version ; sequence = !command ; id = name } in
       command := Int64.succ !command ;
       (header, `Command cmd)
     in

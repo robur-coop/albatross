@@ -5,9 +5,9 @@ open Rresult.R.Infix
 
 open Vmm_core
 
-external sysctl_rusage : int -> rusage = "vmmanage_sysctl_rusage"
+external sysctl_rusage : int -> Stats.rusage = "vmmanage_sysctl_rusage"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
-external sysctl_ifdata : int -> ifdata = "vmmanage_sysctl_ifdata"
+external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
 type vmctx
 
@@ -17,8 +17,6 @@ external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
 external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
 
 let my_version = `AV2
-
-let bcast = ref 0L
 
 let descr = ref []
 
@@ -119,8 +117,7 @@ let tick t =
                   match Vmm_core.drop_super ~super:id ~sub:vmid with
                   | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.pp_id id Vmm_core.pp_id vmid) ; out
                   | Some real_id ->
-                    let header = Vmm_asn.{ version = my_version ; sequence = !bcast ; id = real_id } in
-                    bcast := Int64.succ !bcast ;
+                    let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id = real_id } in
                     ((socket, vmid, (header, `Data (`Stats_data stats))) :: out))
                 out xs)
           [] (Vmm_trie.all t'.vmid_pid)
@@ -174,13 +171,13 @@ let remove_vmids t vmids =
 
 let handle t socket (header, wire) =
   let r =
-    if not (Vmm_asn.version_eq my_version header.Vmm_asn.version) then
+    if not (Vmm_commands.version_eq my_version header.Vmm_commands.version) then
       Error (`Msg "cannot handle version")
     else
       match wire with
       | `Command (`Stats_cmd cmd) ->
         begin
-          let id = header.Vmm_asn.id in
+          let id = header.Vmm_commands.id in
           match cmd with
           | `Stats_add (pid, taps) ->
             add_pid t id pid taps >>= fun t ->
@@ -193,7 +190,7 @@ let handle t socket (header, wire) =
             Ok ({ t with name_sockets }, `None, close, Some "subscribed")
         end
       | _ ->
-        Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire (header, wire)) ;
+        Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, wire)) ;
         Ok (t, `None, None, None)
   in
   match r with

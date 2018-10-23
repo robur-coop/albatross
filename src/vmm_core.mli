@@ -1,8 +1,11 @@
 val tmpdir : Fpath.t
 val dbdir : Fpath.t
-val socket_path : [< `Console | `Log | `Stats | `Vmmd ] -> string
-val pp_socket :
-  Format.formatter -> [< `Console | `Log | `Stats | `Vmmd ] -> unit
+
+type service = [ `Console | `Log | `Stats | `Vmmd ]
+
+val socket_path : service -> string
+val pp_socket : service Fmt.t
+
 module I : sig type t = int val compare : int -> int -> int end
 
 module IS : sig
@@ -13,9 +16,6 @@ val pp_is : IS.t Fmt.t
 module IM : sig
   include Map.S with type key = I.t
 end
-
-type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
-val pp_vmtype : vmtype Fmt.t
 
 type id = string list
 val string_of_id : string list -> string
@@ -44,6 +44,9 @@ val sub_bridges : bridge Astring.String.map -> bridge Astring.String.map -> bool
 val sub_block : 'a option -> 'a option -> bool
 val sub_cpu : IS.t -> IS.t -> bool
 val is_sub : super:policy -> sub:policy -> bool
+
+type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
+val pp_vmtype : vmtype Fmt.t
 
 type vm_config = {
   cpuid : int;
@@ -79,68 +82,73 @@ val name : X509.t -> string
 
 val separate_chain : 'a list -> ('a * 'a list, [> `Msg of string ]) result
 
-type rusage = {
-  utime : int64 * int;
-  stime : int64 * int;
-  maxrss : int64;
-  ixrss : int64;
-  idrss : int64;
-  isrss : int64;
-  minflt : int64;
-  majflt : int64;
-  nswap : int64;
-  inblock : int64;
-  outblock : int64;
-  msgsnd : int64;
-  msgrcv : int64;
-  nsignals : int64;
-  nvcsw : int64;
-  nivcsw : int64;
-}
-val pp_rusage : rusage Fmt.t
+module Stats : sig
+  type rusage = {
+    utime : int64 * int;
+    stime : int64 * int;
+    maxrss : int64;
+    ixrss : int64;
+    idrss : int64;
+    isrss : int64;
+    minflt : int64;
+    majflt : int64;
+    nswap : int64;
+    inblock : int64;
+    outblock : int64;
+    msgsnd : int64;
+    msgrcv : int64;
+    nsignals : int64;
+    nvcsw : int64;
+    nivcsw : int64;
+  }
+  val pp_rusage : rusage Fmt.t
 
-type vmm_stats = (string * int64) list
-val pp_vmm_stats : vmm_stats Fmt.t
+  type vmm = (string * int64) list
+  val pp_vmm : vmm Fmt.t
 
-type ifdata = {
-  name : string;
-  flags : int32;
-  send_length : int32;
-  max_send_length : int32;
-  send_drops : int32;
-  mtu : int32;
-  baudrate : int64;
-  input_packets : int64;
-  input_errors : int64;
-  output_packets : int64;
-  output_errors : int64;
-  collisions : int64;
-  input_bytes : int64;
-  output_bytes : int64;
-  input_mcast : int64;
-  output_mcast : int64;
-  input_dropped : int64;
-  output_dropped : int64;
-}
-val pp_ifdata : ifdata Fmt.t
+  type ifdata = {
+    name : string;
+    flags : int32;
+    send_length : int32;
+    max_send_length : int32;
+    send_drops : int32;
+    mtu : int32;
+    baudrate : int64;
+    input_packets : int64;
+    input_errors : int64;
+    output_packets : int64;
+    output_errors : int64;
+    collisions : int64;
+    input_bytes : int64;
+    output_bytes : int64;
+    input_mcast : int64;
+    output_mcast : int64;
+    input_dropped : int64;
+    output_dropped : int64;
+  }
+  val pp_ifdata : ifdata Fmt.t
 
-type stats = rusage * vmm_stats option * ifdata list
-val pp_stats : stats Fmt.t
+  type t = rusage * vmm option * ifdata list
+  val pp : t Fmt.t
+end
 
-module Log :
-  sig
-    type event =
-        [ `Login of Ipaddr.V4.t * int
-        | `Logout of Ipaddr.V4.t * int
-        | `Startup
-        | `VM_start of int * string list * string option
-        | `VM_stop of int * [ `Exit of int | `Signal of int | `Stop of int ] ]
-    val pp_event :
-      Format.formatter ->
-      [< `Login of Ipaddr.V4.t * int
-       | `Logout of Ipaddr.V4.t * int
-       | `Startup
-       | `VM_start of int * string list * string option
-       | `VM_stop of int * [< `Exit of int | `Signal of int | `Stop of int ] ] ->
-      unit
-  end
+type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
+
+val pp_process_exit : process_exit Fmt.t
+
+module Log : sig
+  type log_event = [
+    | `Login of id * Ipaddr.V4.t * int
+    | `Logout of id * Ipaddr.V4.t * int
+    | `Startup
+    | `Vm_start of id * int * string list * string option
+    | `Vm_stop of id * int * process_exit ]
+
+  val name : log_event -> id
+
+  val pp_log_event : log_event Fmt.t
+
+  type t = Ptime.t * log_event
+
+  val pp : t Fmt.t
+end

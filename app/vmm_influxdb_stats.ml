@@ -5,6 +5,7 @@ open Lwt.Infix
 open Astring
 
 open Vmm_core
+open Vmm_core.Stats
 
 
 (*
@@ -191,13 +192,13 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
       true
     | Ok (hdr, `Data (`Stats_data (ru, vmm, ifs))) ->
       begin
-        if not (Vmm_asn.version_eq hdr.Vmm_asn.version my_version) then begin
+        if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
           Logs.err (fun m -> m "unknown wire protocol version") ;
           safe_close fd >>= fun () ->
           safe_close c >|= fun () ->
           false
         end else
-          let name = string_of_id hdr.Vmm_asn.id in
+          let name = string_of_id hdr.Vmm_commands.id in
           let ru = P.encode_ru name ru in
           let vmm = match vmm with None -> [] | Some xs -> [ P.encode_vmm name xs ] in
           let taps = List.map (P.encode_if name) ifs in
@@ -214,12 +215,12 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
             false
       end
     | Ok wire ->
-      Logs.warn (fun m -> m "ignoring %a" Vmm_asn.pp_wire wire) ;
+      Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
       Lwt.return (Some fd) >>= fun fd ->
       read_sock_write_tcp c ?fd addr addrtype
 
 let query_sock vm c =
-  let header = Vmm_asn.{ version = my_version ; sequence = !command ; id = vm } in
+  let header = Vmm_commands.{ version = my_version ; sequence = !command ; id = vm } in
   command := Int64.succ !command  ;
   Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id vm) ;
   Vmm_lwt.write_wire c (header, `Command (`Stats_cmd `Stats_subscribe))

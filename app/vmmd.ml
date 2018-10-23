@@ -29,7 +29,7 @@ let create c_fd process cont =
     Logs.err (fun m -> m "error while reading from console") ;
     Lwt.return_unit
   | Ok (header, wire) ->
-    if not (Vmm_asn.version_eq version header.Vmm_asn.version) then begin
+    if not (Vmm_commands.version_eq version header.Vmm_commands.version) then begin
       Logs.err (fun m -> m "invalid version while reading from console") ;
       Lwt.return_unit
     end else

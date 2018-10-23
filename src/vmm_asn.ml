@@ -1,6 +1,7 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
 open Vmm_core
+open Vmm_commands
 
 open Rresult
 open Astring
@@ -86,32 +87,6 @@ let image =
            (explicit 1 octet_string)
            (explicit 2 octet_string))
 
-type version = [ `AV0 | `AV1 | `AV2 ]
-
-let pp_version ppf v =
-  Fmt.int ppf
-    (match v with
-     | `AV0 -> 0
-     | `AV1 -> 1
-     | `AV2 -> 2)
-
-let version_eq a b =
-  match a, b with
-  | `AV0, `AV0 -> true
-  | `AV1, `AV1 -> true
-  | `AV2, `AV2 -> true
-  | _ -> false
-
-(* communication protocol *)
-type console_cmd = [
-  | `Console_add
-  | `Console_subscribe
-]
-
-let pp_console_cmd ppf = function
-  | `Console_add -> Fmt.string ppf "console add"
-  | `Console_subscribe -> Fmt.string ppf "console subscribe"
-
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
@@ -141,6 +116,7 @@ let timeval =
            (required ~label:"microseconds" int))
 
 let ru =
+  let open Stats in
   let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, nivcsw))))))))))))))) =
     { utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw }
   and g ru =
@@ -173,6 +149,7 @@ let int32 =
   Asn.S.map f g Asn.S.int
 
 let ifdata =
+  let open Stats in
   let f (name, (flags, (send_length, (max_send_length, (send_drops, (mtu, (baudrate, (input_packets, (input_errors, (output_packets, (output_errors, (collisions, (input_bytes, (output_bytes, (input_mcast, (output_mcast, (input_dropped, output_dropped))))))))))))))))) =
     { name; flags; send_length; max_send_length; send_drops; mtu; baudrate; input_packets; input_errors; output_packets; output_errors; collisions; input_bytes; output_bytes; input_mcast; output_mcast; input_dropped; output_dropped }
   and g i =
@@ -199,17 +176,6 @@ let ifdata =
        @ (required ~label:"input_dropped" int64)
       -@ (required ~label:"output_dropped" int64))
 
-type stats_cmd = [
-  | `Stats_add of int * string list
-  | `Stats_remove
-  | `Stats_subscribe
-]
-
-let pp_stats_cmd ppf = function
-  | `Stats_add (pid, taps) -> Fmt.pf ppf "stats add: pid %d taps %a" pid Fmt.(list ~sep:(unit ", ") string) taps
-  | `Stats_remove -> Fmt.string ppf "stat remove"
-  | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
-
 let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
@@ -228,59 +194,55 @@ let stats_cmd =
            (explicit 1 null)
            (explicit 2 null))
 
-let addr =
-  Asn.S.(sequence2
-           (required ~label:"ip" ipv4)
-           (required ~label:"port" int))
-
 let log_event =
   let f = function
     | `C1 () -> `Startup
-    | `C2 (ip, port) -> `Login (ip, port)
-    | `C3 (ip, port) -> `Logout (ip, port)
-    | `C4 (pid, taps, block) -> `VM_start (pid, taps, block)
-    | `C5 (pid, status) ->
+    | `C2 (name, ip, port) -> `Login (name, ip, port)
+    | `C3 (name, ip, port) -> `Logout (name, ip, port)
+    | `C4 (name, pid, taps, block) -> `Vm_start (name, pid, taps, block)
+    | `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
         | `C2 n -> `Signal n
         | `C3 n -> `Stop n
       in
-      `VM_stop (pid, status')
+      `Vm_stop (name, pid, status')
   and g = function
     | `Startup -> `C1 ()
-    | `Login (ip, port) -> `C2 (ip, port)
-    | `Logout (ip, port) -> `C3 (ip, port)
-    | `VM_start (pid, taps, block) -> `C4 (pid, taps, block)
-    | `VM_stop (pid, status) ->
+    | `Login (name, ip, port) -> `C2 (name, ip, port)
+    | `Logout (name, ip, port) -> `C3 (name, ip, port)
+    | `Vm_start (name, pid, taps, block) -> `C4 (name, pid, taps, block)
+    | `Vm_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
         | `Signal n -> `C2 n
         | `Stop n -> `C3 n
       in
-      `C5 (pid, status')
+      `C5 (name, pid, status')
+  in
+  let endp =
+    Asn.S.(sequence3
+            (required ~label:"name" (sequence_of utf8_string))
+            (required ~label:"ip" ipv4)
+            (required ~label:"port" int))
   in
   Asn.S.map f g @@
   Asn.S.(choice5
            (explicit 0 null)
-           (explicit 1 addr)
-           (explicit 2 addr)
-           (explicit 3 (sequence3
-                          (required ~label:"pid" int)
-                          (required ~label:"taps" (sequence_of utf8_string))
-                          (optional ~label:"block" utf8_string)))
-           (explicit 4 (sequence2
+           (explicit 1 endp)
+           (explicit 2 endp)
+           (explicit 3 (sequence4
+                         (required ~label:"name" (sequence_of utf8_string))
+                         (required ~label:"pid" int)
+                         (required ~label:"taps" (sequence_of utf8_string))
+                         (optional ~label:"block" utf8_string)))
+           (explicit 4 (sequence3
+                          (required ~label:"name" (sequence_of utf8_string))
                           (required ~label:"pid" int)
                           (required ~label:"status" (choice3
                                                        (explicit 0 int)
                                                        (explicit 1 int)
                                                        (explicit 2 int))))))
-
-type log_cmd = [
-  | `Log_subscribe
-]
-
-let pp_log_cmd ppf = function
-  | `Log_subscribe -> Fmt.string ppf "log subscribe"
 
 let log_cmd =
   let f = function
@@ -290,19 +252,6 @@ let log_cmd =
   in
   Asn.S.map f g @@
   Asn.S.null
-
-type vm_cmd = [
-  | `Vm_info
-  | `Vm_create of vm_config
-  | `Vm_force_create of vm_config
-  | `Vm_destroy
-]
-
-let pp_vm_cmd ppf = function
-  | `Vm_info -> Fmt.string ppf "vm info"
-  | `Vm_create vm_config -> Fmt.pf ppf "create %a" pp_vm_config vm_config
-  | `Vm_force_create vm_config -> Fmt.pf ppf "force create %a" pp_vm_config vm_config
-  | `Vm_destroy -> Fmt.string ppf "vm destroy"
 
 let vm_config =
   let f (cpuid, requested_memory, block_device, network, vmimage, argv) =
@@ -340,17 +289,6 @@ let vm_cmd =
            (explicit 2 vm_config)
            (explicit 3 null))
 
-type policy_cmd = [
-  | `Policy_info
-  | `Policy_add of policy
-  | `Policy_remove
-]
-
-let pp_policy_cmd ppf = function
-  | `Policy_info -> Fmt.string ppf "policy info"
-  | `Policy_add policy -> Fmt.pf ppf "add policy: %a" pp_policy policy
-  | `Policy_remove -> Fmt.string ppf "policy remove"
-
 let policy_cmd =
   let f = function
     | `C1 () -> `Policy_info
@@ -380,22 +318,7 @@ let version =
   in
   Asn.S.map f g Asn.S.int
 
-type wire_command = [
-    | `Console_cmd of console_cmd
-    | `Stats_cmd of stats_cmd
-    | `Log_cmd of log_cmd
-    | `Vm_cmd of vm_cmd
-    | `Policy_cmd of policy_cmd
-  ]
-
-let pp_wire_command ppf = function
-  | `Console_cmd c -> pp_console_cmd ppf c
-  | `Stats_cmd s -> pp_stats_cmd ppf s
-  | `Log_cmd l -> pp_log_cmd ppf l
-  | `Vm_cmd v -> pp_vm_cmd ppf v
-  | `Policy_cmd p -> pp_policy_cmd ppf p
-
-let wire_command : wire_command Asn.S.t =
+let wire_command =
   let f = function
     | `C1 console -> `Console_cmd console
     | `C2 stats -> `Stats_cmd stats
@@ -416,18 +339,6 @@ let wire_command : wire_command Asn.S.t =
            (explicit 2 log_cmd)
            (explicit 3 vm_cmd)
            (explicit 4 policy_cmd))
-
-type data = [
-  | `Console_data of Ptime.t * string
-  | `Stats_data of stats
-  | `Log_data of Ptime.t * Log.event
-]
-
-let pp_data ppf = function
-  | `Console_data (ts, line) -> Fmt.pf ppf "console data %a: %s"
-                                  (Ptime.pp_rfc3339 ()) ts line
-  | `Stats_data stats -> Fmt.pf ppf "stats data: %a" pp_stats stats
-  | `Log_data (ts, event) -> Fmt.pf ppf "log data: %a %a" (Ptime.pp_rfc3339 ()) ts Log.pp_event event
 
 let data =
   let f = function
@@ -455,13 +366,6 @@ let data =
                           (required ~label:"timestamp" utc_time)
                           (required ~label:"event" log_event))))
 
-
-type header = {
-  version : version ;
-  sequence : int64 ;
-  id : id ;
-}
-
 let header =
   let f (version, sequence, id) = { version ; sequence ; id }
   and g h = h.version, h.sequence, h.id
@@ -471,28 +375,6 @@ let header =
            (required ~label:"version" version)
            (required ~label:"sequence" int64)
            (required ~label:"id" (sequence_of utf8_string)))
-
-type success = [ `Empty | `String of string | `Policies of (id * policy) list | `Vms of (id * vm_config) list ]
-
-let pp_success ppf = function
-  | `Empty -> Fmt.string ppf "success"
-  | `String data -> Fmt.pf ppf "success: %s" data
-  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") pp_id pp_policy)) ppf ps
-  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") pp_id pp_vm_config)) ppf vms
-
-type wire = header * [
-    | `Command of wire_command
-    | `Success of success
-    | `Failure of string
-    | `Data of data ]
-
-let pp_wire ppf (header, data) =
-  let id = header.id in
-  match data with
-  | `Command c -> Fmt.pf ppf "host %a: %a" pp_id id pp_wire_command c
-  | `Failure f -> Fmt.pf ppf "host %a: command failed %s" pp_id id f
-  | `Success s -> Fmt.pf ppf "host %a: %a" pp_id id pp_success s
-  | `Data d -> pp_data ppf d
 
 let wire =
   let f (header, payload) =
@@ -544,19 +426,16 @@ let wire =
                  (explicit 2 utf8_string)
                  (explicit 3 data))))
 
-let wire_of_cstruct, wire_to_cstruct = projections_of wire
-
-type log_entry = header * Ptime.t * Log.event
+let wire_of_cstruct, (wire_to_cstruct : Vmm_commands.wire -> Cstruct.t) = projections_of wire
 
 let log_entry =
-  Asn.S.(sequence3
-           (required ~label:"headet" header)
+  Asn.S.(sequence2
            (required ~label:"timestamp" utc_time)
            (required ~label:"event" log_event))
 
 let log_entry_of_cstruct, log_entry_to_cstruct = projections_of log_entry
 
-type cert_extension = version * wire_command
+type cert_extension = version * t
 
 let cert_extension =
   Asn.S.(sequence2

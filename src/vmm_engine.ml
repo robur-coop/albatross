@@ -8,7 +8,7 @@ open Rresult
 open R.Infix
 
 type 'a t = {
-  wire_version : Vmm_asn.version ;
+  wire_version : Vmm_commands.version ;
   console_counter : int64 ;
   stats_counter : int64 ;
   log_counter : int64 ;
@@ -26,22 +26,22 @@ let init wire_version = {
 }
 
 type service_out = [
-  | `Stat of Vmm_asn.wire
-  | `Log of Vmm_asn.wire
-  | `Cons of Vmm_asn.wire
+  | `Stat of Vmm_commands.wire
+  | `Log of Vmm_commands.wire
+  | `Cons of Vmm_commands.wire
 ]
 
-type out = [ service_out | `Data of Vmm_asn.wire ]
+type out = [ service_out | `Data of Vmm_commands.wire ]
 
 let log t id event =
-  let data = `Log_data (Ptime_clock.now (), event) in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.log_counter ; id } in
+  let data = (Ptime_clock.now (), event) in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.log_counter ; id } in
   let log_counter = Int64.succ t.log_counter in
-  Logs.debug (fun m -> m "LOG %a" Log.pp_event event) ;
-  ({ t with log_counter }, `Log (header, `Data data))
+  Logs.debug (fun m -> m "log %a" Log.pp data) ;
+  ({ t with log_counter }, `Log (header, `Data (`Log_data data)))
 
 let handle_create t hdr vm_config =
-  let name = hdr.Vmm_asn.id in
+  let name = hdr.Vmm_commands.id in
   (match Vmm_resources.find_vm t.resources name with
    | Some _ -> Error (`Msg "VM with same name is already running")
    | None -> Ok ()) >>= fun () ->
@@ -54,7 +54,7 @@ let handle_create t hdr vm_config =
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   let cons_out =
-    let header = Vmm_asn.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
+    let header = Vmm_commands.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
     (header, `Command (`Console_cmd `Console_add))
   in
   Ok ({ t with console_counter = Int64.succ t.console_counter }, [ `Cons cons_out ],
@@ -65,13 +65,13 @@ let handle_create t hdr vm_config =
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
           let tasks = String.Map.add (string_of_id name) task t.tasks in
           let t = { t with resources ; tasks } in
-          let t, out = log t name (`VM_start (vm.pid, vm.taps, None)) in
+          let t, out = log t name (`Vm_start (name, vm.pid, vm.taps, None)) in
           let data = `Success (`String "created VM") in
           Ok (t, [ `Data (hdr, data) ; out ], name, vm)))
 
 let setup_stats t name vm =
   let stat_out = `Stats_add (vm.pid, vm.taps) in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, [ `Stat (header, `Command (`Stats_cmd stat_out)) ]
 
@@ -80,10 +80,10 @@ let handle_shutdown t name vm r =
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
   let resources = Vmm_resources.remove t.resources name in
-  let header = Vmm_asn.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let tasks = String.Map.remove (string_of_id name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
-  let t, logout = log t name (`VM_stop (vm.pid, r))
+  let t, logout = log t name (`Vm_stop (name, vm.pid, r))
   in
   (t, [ `Stat (header, `Command (`Stats_cmd `Stats_remove)) ; logout ])
 
@@ -96,12 +96,12 @@ let handle_command t (header, payload) =
       (t, [ `Data (header, out) ], `End)
   in
   msg_to_err (
-    let id = header.Vmm_asn.id in
+    let id = header.Vmm_commands.id in
     match payload with
     | `Command (`Policy_cmd pc) ->
       begin match pc with
         | `Policy_remove ->
-          Logs.debug (fun m -> m "remove policy %a" pp_id header.Vmm_asn.id) ;
+          Logs.debug (fun m -> m "remove policy %a" pp_id header.Vmm_commands.id) ;
           let resources = Vmm_resources.remove t.resources id in
           Ok ({ t with resources }, [ `Data (header, `Success (`String "removed policy")) ], `End)
         | `Policy_add policy ->
@@ -179,5 +179,5 @@ let handle_command t (header, payload) =
           end
       end
     | _ ->
-      Logs.err (fun m -> m "ignoring %a" Vmm_asn.pp_wire (header, payload)) ;
+      Logs.err (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, payload)) ;
       Error (`Msg "unknown command"))
