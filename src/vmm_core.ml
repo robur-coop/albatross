@@ -31,37 +31,6 @@ module IS = Set.Make(I)
 module IM = Map.Make(I)
 module IM64 = Map.Make(Int64)
 
-type command =
-  [ `Info | `Create_vm | `Force_create_vm | `Destroy_vm
-  | `Statistics | `Console | `Log | `Crl
-  | `Create_block | `Destroy_block ]
-
-let pp_command ppf cmd =
-  Fmt.string ppf @@ match cmd with
-  | `Info -> "info"
-  | `Create_vm -> "create-vm"
-  | `Force_create_vm -> "force-create-vm"
-  | `Destroy_vm -> "destroy-vm"
-  | `Statistics -> "statistics"
-  | `Console -> "console"
-  | `Log -> "log"
-  | `Crl -> "crl"
-  | `Create_block -> "create-block"
-  | `Destroy_block -> "destroy-block"
-
-let command_of_string = function
-  | x when x = "info" -> Some `Info
-  | x when x = "create-vm" -> Some `Create_vm
-  | x when x = "force-create-vm" -> Some `Force_create_vm
-  | x when x = "destroy-vm" -> Some `Destroy_vm
-  | x when x = "statistics" -> Some `Statistics
-  | x when x = "console" -> Some `Console
-  | x when x = "log" -> Some `Log
-  | x when x = "crl" -> Some `Crl
-  | x when x = "create-block" -> Some `Create_block
-  | x when x = "destroy-block" -> Some `Destroy_block
-  | _ -> None
-
 type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
 
 let vmtype_to_int = function

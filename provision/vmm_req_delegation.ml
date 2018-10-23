@@ -7,20 +7,17 @@ open Rresult.R.Infix
 
 open Astring
 
-let subca_csr key name cpus mem vms block bridges =
-  let block = match block with
-    | None -> []
-    | Some x -> [ (false, `Unsupported (Oid.block, int_to_cstruct x)) ]
-  and bridge = match bridges with
-    | [] -> []
-    | xs -> [ (false, `Unsupported (Oid.bridges, bridges_to_cstruct xs)) ]
+let subca_csr key name cpus memory vms block bridges =
+  let cpuids = Vmm_core.IS.of_list cpus
+  and bridges = List.fold_left (fun acc b -> match b with
+      | `Internal name -> String.Map.add name b acc
+      | `External (name, _, _, _, _) -> String.Map.add name b acc)
+      String.Map.empty bridges
   in
+  let policy = Vmm_core.{ vms ; cpuids ; memory ; block ; bridges } in
+  let cmd = `Policy_cmd (`Policy_add policy) in
   let exts =
-    [ (false, `Unsupported (Oid.version, version_to_cstruct asn_version)) ;
-      (false, `Unsupported (Oid.cpuids, ints_to_cstruct cpus)) ;
-      (false, `Unsupported (Oid.memory, int_to_cstruct mem)) ;
-      (false, `Unsupported (Oid.vms, int_to_cstruct vms)) ;
-    ] @ block @ bridge
+    [ (false, `Unsupported (oid, cert_extension_to_cstruct (asn_version, cmd))) ]
   and name = [ `CN name ]
   in
   X509.CA.request name ~extensions:[`Extensions exts] key

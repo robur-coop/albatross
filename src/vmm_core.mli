@@ -18,21 +18,6 @@ module IM64 : sig
   include Map.S with type key = Int64.t
 end
 
-type command =
-    [ `Console
-    | `Create_block
-    | `Create_vm
-    | `Crl
-    | `Destroy_block
-    | `Destroy_vm
-    | `Force_create_vm
-    | `Info
-    | `Log
-    | `Statistics ]
-val pp_command : command Fmt.t
-
-val command_of_string : string -> command option
-
 type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
 val vmtype_to_int : vmtype -> int
 val int_to_vmtype : int -> vmtype option

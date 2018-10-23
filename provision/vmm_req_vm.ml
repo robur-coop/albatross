@@ -6,31 +6,19 @@ open Rresult.R.Infix
 
 open Vmm_asn
 
-let vm_csr key name image cpu mem args block net force compression =
-  let block = match block with
-    | None -> []
-    | Some x -> [ (false, `Unsupported (Oid.block_device, string_to_cstruct x)) ]
-  and arg = match args with
-    | [] -> []
-    | xs -> [ (false, `Unsupported (Oid.argv, strings_to_cstruct xs)) ]
-  and net = match net with
-    | [] -> []
-    | xs -> [ (false, `Unsupported (Oid.network, strings_to_cstruct xs)) ]
-  and cmd = if force then `Force_create_vm else `Create_vm
+let vm_csr key name image cpuid requested_memory argv block_device network force compression =
+  let vm_config =
+    let vmimage = match compression with
+      | 0 -> `Hvt_amd64, image
+      | level ->
+        let img = Vmm_compress.compress ~level (Cstruct.to_string image) in
+        `Hvt_amd64_compressed, Cstruct.of_string img
+    and argv = match argv with [] -> None | xs -> Some xs
+    in
+    Vmm_core.{ cpuid ; requested_memory ; block_device ; network ; argv ; vmimage }
   in
-  let image = match compression with
-    | 0 -> image_to_cstruct (`Hvt_amd64, image)
-    | level ->
-      let img = Vmm_compress.compress ~level (Cstruct.to_string image) in
-      image_to_cstruct (`Hvt_amd64_compressed, Cstruct.of_string img)
-  in
-  let exts =
-    [ (false, `Unsupported (Oid.version, version_to_cstruct asn_version)) ;
-      (false, `Unsupported (Oid.cpuid, int_to_cstruct cpu)) ;
-      (false, `Unsupported (Oid.memory, int_to_cstruct mem)) ;
-      (false, `Unsupported (Oid.vmimage, image)) ;
-      (false, `Unsupported (Oid.command, command_to_cstruct cmd)) ;
-    ] @ block @ arg @ net
+  let cmd = if force then `Vm_force_create vm_config else `Vm_create vm_config in
+  let exts = [ (false, `Unsupported (oid, cert_extension_to_cstruct (asn_version, `Vm_cmd cmd))) ]
   and name = [ `CN name ]
   in
   X509.CA.request name ~extensions:[`Extensions exts] key
