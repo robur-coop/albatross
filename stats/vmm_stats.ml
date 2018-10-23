@@ -112,7 +112,7 @@ let tick t =
             | None -> Logs.err (fun m -> m "failed to get rusage for %d" pid) ; out
             | Some ru' ->
               let stats =
-                let vmm' = match vmm with None -> [] | Some xs -> List.combine !descr xs in
+                let vmm' = match vmm with None -> None | Some xs -> Some (List.combine !descr xs) in
                 ru', vmm', ifd
               in
               List.fold_left (fun out (id, socket) ->

@@ -199,7 +199,7 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
         end else
           let name = string_of_id hdr.Vmm_asn.id in
           let ru = P.encode_ru name ru in
-          let vmm = match vmm with [] -> [] | _ -> [ P.encode_vmm name vmm ] in
+          let vmm = match vmm with None -> [] | Some xs -> [ P.encode_vmm name xs ] in
           let taps = List.map (P.encode_if name) ifs in
           let out = (String.concat ~sep:"\n" (ru :: vmm @ taps)) ^ "\n" in
           Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;

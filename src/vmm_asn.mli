@@ -30,7 +30,7 @@ type stats_cmd = [
   | `Stats_add of int * string list
   | `Stats_remove
   | `Stats_subscribe
-  | `Stats_data of rusage * (string * int64) list * ifdata list
+  | `Stats_data of stats
 ]
 
 type log_cmd = [

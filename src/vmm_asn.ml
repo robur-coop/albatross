@@ -211,37 +211,26 @@ type stats_cmd = [
   | `Stats_add of int * string list
   | `Stats_remove
   | `Stats_subscribe
-  | `Stats_data of rusage * (string * int64) list * ifdata list
+  | `Stats_data of stats
 ]
 
 let pp_stats_cmd ppf = function
   | `Stats_add (pid, taps) -> Fmt.pf ppf "stats add: pid %d taps %a" pid Fmt.(list ~sep:(unit ", ") string) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
-  | `Stats_data (ru, vmm, ifs) -> Fmt.pf ppf "stats data: %a %a %a"
-                                    pp_rusage ru
-                                    pp_vmm vmm
-                                    Fmt.(list ~sep:(unit "@.@.") pp_ifdata) ifs
+  | `Stats_data stats -> Fmt.pf ppf "stats data: %a" pp_stats stats
 
 let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
     | `C3 () -> `Stats_subscribe
-    | `C4 (ru, vmm, ifdata) ->
-      let vmm = match vmm with None -> [] | Some vmm -> vmm
-      and ifdata = match ifdata with None -> [] | Some ifs -> ifs
-      in
-      `Stats_data (ru, vmm, ifdata)
+    | `C4 (ru, ifs, vmm) -> `Stats_data (ru, vmm, ifs)
   and g = function
     | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
     | `Stats_subscribe -> `C3 ()
-    | `Stats_data (ru, vmm, ifdata) ->
-      let vmm = match vmm with [] -> None | xs -> Some xs
-      and ifs = match ifdata with [] -> None | xs -> Some xs
-      in
-      `C4 (ru, vmm, ifs)
+    | `Stats_data (ru, ifs, vmm) -> `C4 (ru, vmm, ifs)
   in
   Asn.S.map f g @@
   Asn.S.(choice4
@@ -252,12 +241,11 @@ let stats_cmd =
            (explicit 2 null)
            (explicit 3 (sequence3
                           (required ~label:"resource_usage" ru)
-                          (optional ~label:"vmm_stats" @@ explicit 0
+                          (required ~label:"ifdata" (sequence_of ifdata))
+                          (optional ~label:"vmm_stats"
                              (sequence_of (sequence2
                                              (required ~label:"key" utf8_string)
-                                             (required ~label:"value" int64))))
-                          (optional ~label:"ifdata" @@ explicit 1
-                             (sequence_of ifdata)))))
+                                             (required ~label:"value" int64)))))))
 
 let addr =
   Asn.S.(sequence2

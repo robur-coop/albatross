@@ -98,7 +98,9 @@ type rusage = {
   nivcsw : int64;
 }
 val pp_rusage : rusage Fmt.t
-val pp_vmm : (string * int64) list Fmt.t
+
+type vmm_stats = (string * int64) list
+val pp_vmm_stats : vmm_stats Fmt.t
 
 type ifdata = {
   name : string;
@@ -121,6 +123,9 @@ type ifdata = {
   output_dropped : int64;
 }
 val pp_ifdata : ifdata Fmt.t
+
+type stats = rusage * vmm_stats option * ifdata list
+val pp_stats : stats Fmt.t
 
 module Log :
   sig
