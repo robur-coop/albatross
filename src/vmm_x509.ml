@@ -25,9 +25,8 @@ let handle _addr chain =
                  (X509.common_name_to_string leaf)
                  Fmt.(list ~sep:(unit " -> ") string)
                  (List.map X509.common_name_to_string chain)) ;
-  (* TODO here: inspect top-level-cert of chain.
-     may need to create bridges and/or block device subdirectory (zfs create) *)
-  (* let login_hdr, login_ev = Log.hdr name, `Login addr in *)
+  (* TODO: inspect top-level-cert of chain. *)
+  (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   (* TODO: update policies! *)
   Vmm_asn.wire_command_of_cert asn_version leaf >>| fun wire ->
   (name, wire)
