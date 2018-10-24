@@ -435,6 +435,33 @@ let log_entry =
 
 let log_entry_of_cstruct, log_entry_to_cstruct = projections_of log_entry
 
+let log_disk =
+  Asn.S.(sequence2
+           (required ~label:"version" version)
+           (required ~label:"entry" log_entry))
+
+let log_disk_of_cstruct, log_disk_to_cstruct = projections_of log_disk
+
+let log_to_disk version entry =
+  log_disk_to_cstruct (version, entry)
+
+let logs_of_disk version buf =
+  let rec next acc buf =
+    match Asn.decode (Asn.codec Asn.der log_disk) buf with
+    | Ok ((version', entry), cs) ->
+      let acc' =
+        if Vmm_commands.version_eq version version' then
+          entry :: acc
+        else
+          acc
+      in
+      next acc' cs
+    | Error (`Parse msg) ->
+      Logs.warn (fun m -> m "parse error %s while parsing log" msg) ;
+      acc (* ignore *)
+  in
+  next [] buf
+
 type cert_extension = version * t
 
 let cert_extension =
