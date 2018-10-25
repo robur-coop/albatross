@@ -96,11 +96,12 @@ let send_history s ring id ts =
       | Error e -> Lwt.return (Error e))
     (Ok ()) (List.rev res)
 
-let handle_data mvar ring hdr entry =
+let handle_data s mvar ring hdr entry =
   if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
     Logs.warn (fun m -> m "unsupported version") ;
     Lwt.return_unit
   end else begin
+    Vmm_lwt.write_wire s (hdr, `Success `Empty) >>= fun _ ->
     Vmm_ring.write ring entry ;
     Lwt_mvar.put mvar entry >>= fun () ->
     let data' = (hdr, `Data (`Log_data entry)) in
@@ -115,7 +116,7 @@ let read_data mvar ring s =
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
     | Ok (hdr, `Data (`Log_data entry)) ->
-      handle_data mvar ring hdr entry >>= fun () ->
+      handle_data s mvar ring hdr entry >>= fun () ->
       loop ()
     | Ok wire ->
       Logs.warn (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire wire) ;
@@ -130,7 +131,7 @@ let handle mvar ring s addr () =
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
     | Ok (hdr, `Data (`Log_data entry)) ->
-      handle_data mvar ring hdr entry >>= fun () ->
+      handle_data s mvar ring hdr entry >>= fun () ->
       read_data mvar ring s
     | Ok (hdr, `Command (`Log_cmd lc)) ->
       if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
