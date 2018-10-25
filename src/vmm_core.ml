@@ -177,16 +177,6 @@ let translate_tap vm tap =
   | [ (_, b) ] -> Some b
   | _ -> None
 
-let name cert = X509.common_name_to_string cert
-
-(* this separates the leaf and top-level certificate from the chain,
-   and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
-   in which subCA' signed leaf *)
-let separate_chain = function
-  | [] -> Error (`Msg "empty chain")
-  | [ leaf ] -> Ok (leaf, [])
-  | leaf :: xs -> Ok (leaf, List.rev xs)
-
 module Stats = struct
   type rusage = {
     utime : (int64 * int) ;

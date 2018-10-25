@@ -328,7 +328,7 @@ let cmd =
     `P "$(tname) connects to a vmm stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
   Term.(pure run_client $ setup_log $ socket $ influx $ opt_vmname),
-  Term.info "vmm_influxdb_stats" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "vmmd_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd

@@ -29,7 +29,7 @@ start_cmd="albatross_console_start"
 : ${albatross_console_user:="albatross"}
 
 pidfile="/var/run/albatross_console.pid"
-procname="/usr/local/libexec/albatross/vmm_console"
+procname="/usr/local/libexec/albatross/vmmd_console"
 
 albatross_console_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_console_user}" \

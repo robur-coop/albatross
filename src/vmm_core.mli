@@ -80,10 +80,6 @@ type vm = {
 val pp_vm : vm Fmt.t
 val translate_tap : vm -> string -> string option
 
-val name : X509.t -> string
-
-val separate_chain : 'a list -> ('a * 'a list, [> `Msg of string ]) result
-
 module Stats : sig
   type rusage = {
     utime : int64 * int;

@@ -440,14 +440,16 @@ let log_disk =
            (required ~label:"version" version)
            (required ~label:"entry" log_entry))
 
-let log_disk_of_cstruct, log_disk_to_cstruct = projections_of log_disk
+let log_disk_of_cstruct, log_disk_to_cstruct =
+  let c = Asn.codec Asn.der log_disk in
+  (Asn.decode c, Asn.encode c)
 
 let log_to_disk version entry =
   log_disk_to_cstruct (version, entry)
 
 let logs_of_disk version buf =
   let rec next acc buf =
-    match Asn.decode (Asn.codec Asn.der log_disk) buf with
+    match log_disk_of_cstruct buf with
     | Ok ((version', entry), cs) ->
       let acc' =
         if Vmm_commands.version_eq version version' then
@@ -471,13 +473,3 @@ let cert_extension =
 
 let cert_extension_of_cstruct, cert_extension_to_cstruct =
   projections_of cert_extension
-
-let wire_command_of_cert version cert =
-  match X509.Extension.unsupported cert oid with
-  | None -> R.error_msgf "albatross OID is not present in certificate (%a)" Asn.OID.pp oid
-  | Some (_, data) ->
-    cert_extension_of_cstruct data >>= fun (v, wire) ->
-    if not (version_eq v version) then
-      R.error_msgf "unexpected version %a (expected %a)" pp_version v pp_version version
-    else
-      Ok wire

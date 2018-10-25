@@ -14,7 +14,9 @@
 
 open Lwt.Infix
 
-let t = ref (Vmm_stats.empty ())
+open Vmm_stats_pure
+
+let t = ref (empty ())
 
 let pp_sockaddr ppf = function
   | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
@@ -29,7 +31,7 @@ let handle s addr () =
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return pids
     | Ok wire ->
-      match Vmm_stats.handle !t s wire with
+      match handle !t s wire with
       | Error (`Msg msg) ->
         Vmm_lwt.write_wire s (fst wire, `Failure msg) >>= fun _ ->
         Lwt.return pids
@@ -56,17 +58,17 @@ let handle s addr () =
   loop [] >>= fun vmids ->
   Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnect, dropping %d vms!" (List.length vmids)) ;
-  let t' = Vmm_stats.remove_vmids !t vmids in
+  let t' = remove_vmids !t vmids in
   t := t'
 
 let rec timer interval () =
-  let t', outs = Vmm_stats.tick !t in
+  let t', outs = tick !t in
   t := t' ;
   Lwt_list.iter_p (fun (s, name, stat) ->
       Vmm_lwt.write_wire s stat >>= function
       | Ok () -> Lwt.return_unit
       | Error `Exception ->
-        t := Vmm_stats.remove_entry !t name ;
+        t := remove_entry !t name ;
         Vmm_lwt.safe_close s)
     outs >>= fun () ->
   Lwt_unix.sleep interval >>= fun () ->
@@ -113,6 +115,6 @@ let interval =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket $ interval)),
-  Term.info "vmm_stats" ~version:"%%VERSION_NUM%%"
+  Term.info "vmmd_stats" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

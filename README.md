@@ -1,9 +1,22 @@
-# Albatross: Managing virtual machines
+# Albatross: orchestrate and manage MirageOS unikernels
 
 [![Build Status](https://travis-ci.org/hannesm/albatross.svg?branch=master)](https://travis-ci.org/hannesm/albatross)
 
-A set of binaries to manage, provision, and deploy virtual machine images.  This
-is very much work in progress, don't expect anything stable.
+A set of binaries to manage, provision, and deploy MirageOS unikernels.
+Some daemons are supposed to run in the host system, communicating via Unix domain sockets:
+- `vmmd`: privileged to create and destroy unikernels (also creates tap devices and attaches these to bridges)
+- `vmmd_console`: reads the console output of unikernels (via a fifo passed from `vmmd`)
+- `vmmd_log`: event log
+- `vmmd_stats`: statistics (`getrusage`, ifstat, BHyve debug counters) gathering
+- `vmmd_tls`: authenticates and proxies commands carried by a client certificate
+- `vmmd_influx`: reports statistics from stats to influx listener
+
+Command-line applications for local and remote management are provided as well
+- `vmmc_local`: executes a command locally via Unix domain sockets
+- `vmmc_remote`: connects to `vmm_tls_endpoint` and executes command
+- `vmmc_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key on host)
+- `vmmp_request`: creates a certificate signing request containing a command
+- `vmmp_sign`: signs a certificate signing request
 
 Please read [the blog article](https://hannes.nqsb.io/Posts/VMM) for motivation
 and an overview.

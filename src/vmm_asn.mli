@@ -25,6 +25,3 @@ type cert_extension = Vmm_commands.version * Vmm_commands.t
 
 val cert_extension_of_cstruct : Cstruct.t -> (cert_extension, [> `Msg of string ]) result
 val cert_extension_to_cstruct : cert_extension -> Cstruct.t
-
-val wire_command_of_cert : Vmm_commands.version -> X509.t ->
-  (Vmm_commands.t, [> `Msg of string ]) result

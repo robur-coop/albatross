@@ -189,6 +189,6 @@ let socket =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket)),
-  Term.info "vmm_console" ~version:"%%VERSION_NUM%%"
+  Term.info "vmmd_console" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

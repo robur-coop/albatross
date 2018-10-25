@@ -29,7 +29,7 @@ start_cmd="albatross_stat_start"
 : ${albatross_stat_user:="albatross"}
 
 pidfile="/var/run/albatross_stat.pid"
-procname="/usr/local/libexec/albatross/vmm_stats_lwt"
+procname="/usr/local/libexec/albatross/vmmd_stats"
 
 albatross_stat_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_stat_user}" \

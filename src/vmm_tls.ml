@@ -1,8 +1,29 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
+open Rresult
 open Rresult.R.Infix
 
-open Vmm_core
+let name cert = X509.common_name_to_string cert
+
+(* this separates the leaf and top-level certificate from the chain,
+   and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
+   in which subCA' signed leaf *)
+let separate_chain = function
+  | [] -> Error (`Msg "empty chain")
+  | [ leaf ] -> Ok (leaf, [])
+  | leaf :: xs -> Ok (leaf, List.rev xs)
+
+let wire_command_of_cert version cert =
+  match X509.Extension.unsupported cert Vmm_asn.oid with
+  | None -> R.error_msgf "albatross OID is not present in certificate (%a)" Asn.OID.pp Vmm_asn.oid
+  | Some (_, data) ->
+    Vmm_asn.cert_extension_of_cstruct data >>= fun (v, wire) ->
+    if not (Vmm_commands.version_eq v version) then
+      R.error_msgf "unexpected version %a (expected %a)"
+        Vmm_commands.pp_version v
+        Vmm_commands.pp_version version
+    else
+      Ok wire
 
 (* let check_policy =
      (* get names and static resources *)
@@ -28,7 +49,7 @@ let handle _addr version chain =
   (* TODO: inspect top-level-cert of chain. *)
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   (* TODO: update policies (parse chain for policy, and apply them)! *)
-  Vmm_asn.wire_command_of_cert version leaf >>= fun wire ->
+  wire_command_of_cert version leaf >>= fun wire ->
   (* we only allow some commands via certificate *)
   match wire with
   | `Console_cmd (`Console_subscribe _)

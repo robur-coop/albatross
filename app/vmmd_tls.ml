@@ -167,6 +167,6 @@ let port =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ cacert $ cert $ key $ port)),
-  Term.info "vmm_tls_endpoint" ~version:"%%VERSION_NUM%%"
+  Term.info "vmmd_tls" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

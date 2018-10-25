@@ -19,8 +19,8 @@ let () =
       flag ["link"; "library"; "ocaml"; "native"; "use_vmm_stats"]
         (S ([A "-cclib"; A "-lvmm_stats_stubs"]));
       flag ["link"; "ocaml"; "link_vmm_stats"]
-        (S ([A "stats/libvmm_stats_stubs.a"] @ vmm_lib));
-      dep ["link"; "ocaml"; "use_vmm_stats"] ["stats/libvmm_stats_stubs.a"];
-      dep ["link"; "ocaml"; "link_vmm_stats"] ["stats/libvmm_stats_stubs.a"];
+        (S ([A "app/libvmm_stats_stubs.a"] @ vmm_lib));
+      dep ["link"; "ocaml"; "use_vmm_stats"] ["app/libvmm_stats_stubs.a"];
+      dep ["link"; "ocaml"; "link_vmm_stats"] ["app/libvmm_stats_stubs.a"];
     | _ -> ()
   end

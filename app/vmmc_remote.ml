@@ -14,6 +14,12 @@ let client cas host port cert priv_key =
   let auth = if Sys.is_directory cas then `Ca_dir cas else `Ca_file cas in
   X509_lwt.authenticator auth >>= fun authenticator ->
   Lwt.catch (fun () ->
+    (* TODO TLS certificate verification and gethostbyname:
+       - allow IP address and hostname
+       - if IP is specified, use it (and no TLS name verification - or SubjAltName with IP?)
+       - if hostname is specified
+         - no ip: gethostbyname
+         - ip: connecto to ip and verify hostname *)
     Lwt_unix.gethostbyname host >>= fun host_entry ->
     let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
     let fd = Lwt_unix.socket host_entry.Lwt_unix.h_addrtype Lwt_unix.SOCK_STREAM 0 in
@@ -88,7 +94,7 @@ let cmd =
     `P "$(tname) connects to a server and initiates a TLS handshake" ]
   in
   Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "vmm_client" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "vmmd_remote" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd
