@@ -170,36 +170,27 @@ let remove_vmids t vmids =
   List.fold_left remove_vmid t vmids
 
 let handle t socket (header, wire) =
-  let r =
-    if not (Vmm_commands.version_eq my_version header.Vmm_commands.version) then
-      Error (`Msg "cannot handle version")
-    else
-      match wire with
-      | `Command (`Stats_cmd cmd) ->
-        begin
-          let id = header.Vmm_commands.id in
-          match cmd with
-          | `Stats_add (pid, taps) ->
-            add_pid t id pid taps >>= fun t ->
-            Ok (t, `Add id, None, Some "added")
-          | `Stats_remove ->
-            let t = remove_vmid t id in
-            Ok (t, `Remove id, None, Some "removed")
-          | `Stats_subscribe ->
-            let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
-            Ok ({ t with name_sockets }, `None, close, Some "subscribed")
-        end
-      | _ ->
-        Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, wire)) ;
-        Ok (t, `None, None, None)
-  in
-  match r with
-  | Ok (t, action, close, out) ->
-    let out = match out with
-      | None -> None
-      | Some str -> Some (header, `Success (`String str))
-    in
-    t, action, close, out
-  | Error (`Msg msg) ->
-    Logs.err (fun m -> m "error while processing %s" msg) ;
-    t, `None, None, Some (header, `Failure msg)
+  if not (Vmm_commands.version_eq my_version header.Vmm_commands.version) then begin
+    Logs.err (fun m -> m "invalid version %a (mine is %a)"
+                 Vmm_commands.pp_version header.Vmm_commands.version
+                 Vmm_commands.pp_version my_version) ;
+    Error (`Msg "cannot handle version")
+  end else
+    match wire with
+    | `Command (`Stats_cmd cmd) ->
+      begin
+        let id = header.Vmm_commands.id in
+        match cmd with
+        | `Stats_add (pid, taps) ->
+          add_pid t id pid taps >>= fun t ->
+          Ok (t, `Add id, "added")
+        | `Stats_remove ->
+          let t = remove_vmid t id in
+          Ok (t, `Remove id, "removed")
+        | `Stats_subscribe ->
+          let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
+          Ok ({ t with name_sockets }, `Close close, "subscribed")
+      end
+    | _ ->
+      Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire (header, wire)) ;
+      Error (`Msg "unexpected command")

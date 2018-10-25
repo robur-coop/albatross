@@ -1,9 +1,9 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-type t
+type 'a t
 
-val create : ?size:int -> unit -> t
+val create : ?size:int -> 'a -> unit -> 'a t
 
-val write : t -> Ptime.t * string -> unit
-val read : t -> (Ptime.t * string) list
-val read_history : t -> Ptime.t -> (Ptime.t * string) list
+val write : 'a t -> Ptime.t * 'a -> unit
+val read : 'a t -> (Ptime.t * 'a) list
+val read_history : 'a t -> Ptime.t -> (Ptime.t * 'a) list

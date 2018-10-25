@@ -71,38 +71,42 @@ let add_fifo id =
   let name = Vmm_core.string_of_id id in
   open_fifo name >|= function
   | Some f ->
-    let ring = Vmm_ring.create () in
-    Logs.debug (fun m -> m "inserting %s" name) ;
+    let ring = Vmm_ring.create "" () in
+    Logs.debug (fun m -> m "inserting fifo %s" name) ;
     let map = String.Map.add name ring !t in
     t := map ;
     Lwt.async (read_console name ring f) ;
-    Ok "reading"
+    Ok ()
   | None ->
     Error (`Msg "opening")
 
-let subscribe s id since =
+let subscribe s id =
   let name = Vmm_core.string_of_id id in
-  Logs.debug (fun m -> m "attempting to attach %a" Vmm_core.pp_id id) ;
+  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.pp_id id) ;
   match String.Map.find name !t with
   | None ->
     active := String.Map.add name s !active ;
-    Lwt.return (Ok "waiing for VM")
+    Lwt.return (None, "waiting for VM")
   | Some r ->
-    let entries =
-      match since with
-      | None -> Vmm_ring.read r
-      | Some ts -> Vmm_ring.read_history r ts
-    in
-    Logs.debug (fun m -> m "found %d history" (List.length entries)) ;
-    Lwt_list.iter_s (fun (i, v) ->
-        let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
-        Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >|= fun _ -> ())
-      entries >>= fun () ->
     (match String.Map.find name !active with
      | None -> Lwt.return_unit
      | Some s -> Vmm_lwt.safe_close s) >|= fun () ->
     active := String.Map.add name s !active ;
-    Ok "attached"
+    (Some r, "subscribed")
+
+let send_history s r id since =
+  let entries =
+    match since with
+    | None -> Vmm_ring.read r
+    | Some ts -> Vmm_ring.read_history r ts
+  in
+  Logs.debug (fun m -> m "%a found %d history" Vmm_core.pp_id id (List.length entries)) ;
+  Lwt_list.iter_s (fun (i, v) ->
+      let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
+      Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >>= function
+      | Ok () -> Lwt.return_unit
+      | Error _ -> Vmm_lwt.safe_close s)
+    entries
 
 let handle s addr () =
   Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
@@ -112,26 +116,39 @@ let handle s addr () =
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
     | Ok (header, `Command (`Console_cmd cmd)) ->
-      begin
-        (if not (Vmm_commands.version_eq header.Vmm_commands.version my_version) then
-           Lwt.return (Error (`Msg "ignoring data with bad version"))
-         else
-           match cmd with
-           | `Console_add -> add_fifo header.Vmm_commands.id
-           | `Console_subscribe ts -> subscribe s header.Vmm_commands.id ts)
-        >>= (function
-            | Ok msg -> Vmm_lwt.write_wire s (header, `Success (`String msg))
-            | Error (`Msg msg) ->
-              Logs.err (fun m -> m "error while processing command: %s" msg) ;
-              Vmm_lwt.write_wire s (header, `Failure msg)) >>= function
-        | Ok () -> loop ()
-        | Error _ ->
-          Logs.err (fun m -> m "exception while writing to socket") ;
-          Lwt.return_unit
+      if not (Vmm_commands.version_eq header.Vmm_commands.version my_version) then begin
+        Logs.err (fun m -> m "ignoring data with bad version") ;
+        Lwt.return_unit
+      end else begin
+        let name = header.Vmm_commands.id in
+        match cmd with
+        | `Console_add ->
+          begin
+            add_fifo name >>= fun res ->
+            let reply = match res with
+              | Ok () -> `Success `Empty
+              | Error (`Msg msg) -> `Failure msg
+            in
+            Vmm_lwt.write_wire s (header, reply) >>= function
+            | Ok () -> loop ()
+            | Error _ ->
+              Logs.err (fun m -> m "error while writing") ;
+              Lwt.return_unit
+          end
+        | `Console_subscribe ts ->
+          subscribe s name >>= fun (ring, res) ->
+          Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+          | Error _ -> Vmm_lwt.safe_close s
+          | Ok () ->
+            (match ring with
+             | None -> Lwt.return_unit
+             | Some r -> send_history s r name ts) >>= fun () ->
+            (* now we wait for the next read and terminate*)
+            Vmm_lwt.read_wire s >|= fun _ -> ()
       end
     | Ok wire ->
-      Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
-      loop ()
+      Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire wire) ;
+      Lwt.return ()
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close s >|= fun () ->

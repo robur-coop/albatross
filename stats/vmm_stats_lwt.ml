@@ -23,25 +23,35 @@ let pp_sockaddr ppf = function
 
 let handle s addr () =
   Logs.info (fun m -> m "handling stats connection %a" pp_sockaddr addr) ;
-  let rec loop acc =
+  let rec loop pids =
     Vmm_lwt.read_wire s >>= function
-    | Error (`Msg msg) -> Logs.err (fun m -> m "error while reading %s" msg) ; loop acc
-    | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return acc
+    | Error _ ->
+      Logs.err (fun m -> m "exception while reading") ;
+      Lwt.return pids
     | Ok wire ->
-      let t', action, close, out = Vmm_stats.handle !t s wire in
-      let acc = match action with
-        | `Add pid -> pid :: acc
-        | `Remove pid -> List.filter (fun m -> m <> pid) acc
-        | `None -> acc
-      in
-      t := t' ;
-      (match close with None -> Lwt.return_unit | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
-      match out with
-      | None -> loop acc
-      | Some out ->
-        Vmm_lwt.write_wire s out >>= function
-        | Ok () -> loop acc
-        | Error _ -> Logs.err (fun m -> m "exception while writing") ; Lwt.return acc
+      match Vmm_stats.handle !t s wire with
+      | Error (`Msg msg) ->
+        Vmm_lwt.write_wire s (fst wire, `Failure msg) >>= fun _ ->
+        Lwt.return pids
+      | Ok (t', action, out) ->
+        t := t' ;
+        let pids = match action with
+        | `Add pid -> pid :: pids
+        | `Remove pid -> List.filter (fun m -> m <> pid) pids
+        | `Close _ -> pids
+        in
+        t := t' ;
+        Vmm_lwt.write_wire s (fst wire, `Success (`String out)) >>= function
+        | Ok () ->
+          (match action with
+           | `Close (Some s') ->
+             Vmm_lwt.safe_close s' >>= fun () ->
+             (* read the next *)
+             Vmm_lwt.read_wire s >|= fun _ -> pids
+           | _ -> loop pids)
+        | Error _ ->
+          Logs.err (fun m -> m "error while writing") ;
+          Lwt.return pids
   in
   loop [] >>= fun vmids ->
   Vmm_lwt.safe_close s >|= fun () ->

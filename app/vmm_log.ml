@@ -12,12 +12,9 @@ open Lwt.Infix
 
 let my_version = `AV2
 
-let entry_to_ring (ts, event) =
-  (ts, Cstruct.to_string (Vmm_asn.log_entry_to_cstruct (ts, event)))
-
-let broadcast prefix data t =
+let broadcast prefix wire t =
   Lwt_list.fold_left_s (fun t (id, s) ->
-      Vmm_lwt.write_wire s data >|= function
+      Vmm_lwt.write_wire s wire >|= function
       | Ok () -> t
       | Error `Exception -> Vmm_trie.remove id t)
     t (Vmm_trie.collect prefix t)
@@ -83,14 +80,11 @@ let send_history s ring id ts =
     | Some since -> Vmm_ring.read_history ring since
   in
   let res =
-    List.fold_left (fun acc (_, x) ->
-        match Vmm_asn.log_entry_of_cstruct (Cstruct.of_string x) with
-        | Ok (ts, event) ->
-          let sub = Vmm_core.Log.name event in
-          if Vmm_core.is_sub_id ~super:id ~sub
-          then (ts, event) :: acc
-          else acc
-        | _ -> acc)
+    List.fold_left (fun acc (ts, event) ->
+        let sub = Vmm_core.Log.name event in
+        if Vmm_core.is_sub_id ~super:id ~sub
+        then (ts, event) :: acc
+        else acc)
       [] elements
   in
   (* just need a wrapper in tag = Log.Data, id = reqid *)
@@ -102,31 +96,42 @@ let send_history s ring id ts =
       | Error e -> Lwt.return (Error e))
     (Ok ()) (List.rev res)
 
-let handle mvar ring s addr () =
-  Logs.info (fun m -> m "handling connection from %a" Vmm_lwt.pp_sockaddr addr) ;
+let handle_data mvar ring hdr entry =
+  if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
+    Logs.warn (fun m -> m "unsupported version") ;
+    Lwt.return_unit
+  end else begin
+    Vmm_ring.write ring entry ;
+    Lwt_mvar.put mvar entry >>= fun () ->
+    let data' = (hdr, `Data (`Log_data entry)) in
+    broadcast hdr.Vmm_commands.id data' !tree >|= fun tree' ->
+    tree := tree'
+  end
+
+let read_data mvar ring s =
   let rec loop () =
     Vmm_lwt.read_wire s >>= function
-    | Error (`Msg e) ->
-      Logs.err (fun m -> m "error while reading %s" e) ;
-      loop ()
     | Error _ ->
-      Logs.err (fun m -> m "exception while reading") ;
+      Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
     | Ok (hdr, `Data (`Log_data entry)) ->
-      if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
-        Logs.warn (fun m -> m "unsupported version") ;
-        Lwt.return_unit
-      end else begin
-        Vmm_ring.write ring (entry_to_ring entry) ;
-        Lwt_mvar.put mvar entry >>= fun () ->
-        let data' =
-          let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id = hdr.Vmm_commands.id } in
-          (header, `Data (`Log_data entry))
-        in
-        broadcast hdr.Vmm_commands.id data' !tree >>= fun tree' ->
-        tree := tree' ;
-        loop ()
-      end
+      handle_data mvar ring hdr entry >>= fun () ->
+      loop ()
+    | Ok wire ->
+      Logs.warn (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire wire) ;
+      Lwt.return_unit
+  in
+  loop ()
+
+let handle mvar ring s addr () =
+  Logs.info (fun m -> m "handling connection from %a" Vmm_lwt.pp_sockaddr addr) ;
+  Vmm_lwt.read_wire s >>= begin function
+    | Error _ ->
+      Logs.err (fun m -> m "error while reading") ;
+      Lwt.return_unit
+    | Ok (hdr, `Data (`Log_data entry)) ->
+      handle_data mvar ring hdr entry >>= fun () ->
+      read_data mvar ring s
     | Ok (hdr, `Command (`Log_cmd lc)) ->
       if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
         Logs.warn (fun m -> m "unsupported version") ;
@@ -141,23 +146,21 @@ let handle mvar ring s addr () =
            | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
           let out = `Success `Empty in
           Vmm_lwt.write_wire s (hdr, out) >>= function
-          | Error _ ->
-            Logs.err (fun m -> m "error while sending reply for subscribe") ;
+          | Error _ -> Logs.err (fun m -> m "error while sending reply for subscribe") ;
             Lwt.return_unit
           | Ok () ->
             send_history s ring hdr.Vmm_commands.id ts >>= function
-            | Error _ ->
-              Logs.err (fun m -> m "error while sending history") ;
-              Lwt.return_unit
-            | Ok () -> loop () (* TODO no need to loop ;) *)
+            | Error _ -> Logs.err (fun m -> m "error while sending history") ; Lwt.return_unit
+            | Ok () ->
+              (* command processing is finished, but we leave the socket open
+                 until read returns (either with a message we ignore or a failure from the closed connection) *)
+              Vmm_lwt.read_wire s >|= fun _ -> ()
       end
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
-      loop ()
-  in
-  loop () >>= fun () ->
+      Lwt.return_unit
+  end >>= fun () ->
   Vmm_lwt.safe_close s
-  (* should remove all the s from the tree above *)
 
 let jump _ file sock =
   Sys.(set_signal sigpipe Signal_ignore) ;
@@ -168,13 +171,13 @@ let jump _ file sock =
      let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
      Lwt_unix.(bind s (ADDR_UNIX sock)) >>= fun () ->
      Lwt_unix.listen s 1 ;
-     let ring = Vmm_ring.create () in
+     let ring = Vmm_ring.create `Startup () in
      read_from_file file >>= fun entries ->
-     List.iter (Vmm_ring.write ring) (List.map entry_to_ring entries) ;
+     List.iter (Vmm_ring.write ring) entries ;
      let mvar, writer = write_to_file file in
      let start = Ptime_clock.now (), `Startup in
      Lwt_mvar.put mvar start >>= fun () ->
-     Vmm_ring.write ring (entry_to_ring start) ;
+     Vmm_ring.write ring start ;
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        Lwt.async (handle mvar ring cs addr) ;
