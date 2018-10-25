@@ -27,6 +27,13 @@ let handle _addr version chain =
                  (List.map X509.common_name_to_string chain)) ;
   (* TODO: inspect top-level-cert of chain. *)
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
-  (* TODO: update policies! *)
-  Vmm_asn.wire_command_of_cert version leaf >>| fun wire ->
-  (name, wire)
+  (* TODO: update policies (parse chain for policy, and apply them)! *)
+  Vmm_asn.wire_command_of_cert version leaf >>= fun wire ->
+  (* we only allow some commands via certificate *)
+  match wire with
+  | `Console_cmd (`Console_subscribe _)
+  | `Stats_cmd `Stats_subscribe
+  | `Log_cmd (`Log_subscribe _)
+  | `Vm_cmd _
+  | `Policy_cmd _ -> Ok (name, wire) (* TODO policy_cmd is special (via delegation chain) *)
+  | _ -> Error (`Msg "unexpected command")
