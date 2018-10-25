@@ -1,5 +1,7 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
+open Vmm_cli
+
 type stats = {
   start : Ptime.t ;
   vm_created : int ;
@@ -20,54 +22,36 @@ let version = `AV2
 
 let state = ref (Vmm_vmmd.init version)
 
-let create c_fd process cont =
-  Vmm_lwt.read_wire c_fd >>= function
+let create process cont =
+  let await, wakeme = Lwt.wait () in
+  match cont !state await with
   | Error (`Msg msg) ->
-    Logs.err (fun m -> m "error %s while reading from console" msg) ;
+    Logs.err (fun m -> m "create continuation failed %s" msg) ;
     Lwt.return_unit
-  | Error _ ->
-    Logs.err (fun m -> m "error while reading from console") ;
-    Lwt.return_unit
-  | Ok (header, wire) ->
-    if not (Vmm_commands.version_eq version header.Vmm_commands.version) then begin
-      Logs.err (fun m -> m "invalid version while reading from console") ;
-      Lwt.return_unit
-    end else
-      match wire with
-      | `Command _ ->
-        Logs.err (fun m -> m "console returned a command") ;
-        Lwt.return_unit
-      | `Failure f ->
-        Logs.err (fun m -> m "console failed with %s" f) ;
-        Lwt.return_unit
-      | `Data _ ->
-        Logs.err (fun m -> m "console replied with data") ;
-        Lwt.return_unit
-      | `Success _msg ->
-        (* assert hdr.id = id! *)
-        let await, wakeme = Lwt.wait () in
-        match cont !state await with
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "create continuation failed %s" msg) ;
-          Lwt.return_unit
-        | Ok (state'', out, name, vm) ->
-          state := state'' ;
-          s := { !s with vm_created = succ !s.vm_created } ;
-          Lwt.async (fun () ->
-              Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
-              let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
-              s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
-              state := state' ;
-              process out' >|= fun () ->
-              Lwt.wakeup wakeme ()) ;
-          process out >>= fun () ->
-          let state', out = Vmm_vmmd.setup_stats !state name vm in
-          state := state' ;
-          process out (* TODO: need to read from stats socket! *)
+  | Ok (state'', out, name, vm) ->
+    state := state'' ;
+    s := { !s with vm_created = succ !s.vm_created } ;
+    Lwt.async (fun () ->
+        Vmm_lwt.wait_and_clear vm.Vmm_core.pid vm.Vmm_core.stdout >>= fun r ->
+        let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
+        s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
+        state := state' ;
+        (process out' >|= function
+          | Error (`Msg msg) ->
+            Logs.err (fun m -> m "error %s on handling shutdown" msg)
+          | Ok () -> ()) >|= fun () ->
+        Lwt.wakeup wakeme ()) ;
+    (process out >|= function
+      | Error (`Msg msg) -> Logs.err (fun m -> m "error %s while setting up stats and logging" msg)
+      | Ok () -> ()) >>= fun () ->
+    let state', out = Vmm_vmmd.setup_stats !state name vm in
+    state := state' ;
+    process [ out ] >|= function
+    | Error (`Msg msg) -> Logs.err (fun m -> m "error %s sending information to stats" msg)
+    | Ok () -> ()
 
-let handle out c_fd fd addr =
+let handle out fd addr =
   (* out is for `Log | `Stat | `Cons (including reconnect semantics) *)
-  (* need to handle data out (+ die on write failure) *)
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
   (* now we need to read a packet and handle it
     (1)
@@ -81,12 +65,16 @@ let handle out c_fd fd addr =
          -- Lwt effects happen (stats, logs, wait_and_clear) --
     (2) goto (1)
   *)
-  let process xs =
-    Lwt_list.iter_p (function
-        | #Vmm_vmmd.service_out as o -> out o
-        | `Data cs ->
+  let process wires =
+    Lwt_list.fold_left_s (fun r data ->
+        match r, data with
+        | Ok (), (#Vmm_vmmd.service_out as o) -> out o
+        | Ok (), `Data wire ->
           (* rather: terminate connection *)
-          Vmm_lwt.write_wire fd cs >|= fun _ -> ()) xs
+          Vmm_lwt.write_wire fd wire >|= fun _ ->
+          Ok ()
+        | Error e, _ -> Lwt.return (Error e))
+      (Ok ()) wires
   in
   Logs.debug (fun m -> m "now reading") ;
   (Vmm_lwt.read_wire fd >>= function
@@ -97,20 +85,24 @@ let handle out c_fd fd addr =
       Logs.debug (fun m -> m "read sth") ;
       let state', data, next = Vmm_vmmd.handle_command !state wire in
       state := state' ;
-      process data >>= fun () ->
-      match next with
-      | `End -> Lwt.return_unit
-      | `Wait (task, out) -> task >>= fun () -> process out
+      process data >>= function
+      | Error (`Msg msg) -> Logs.err (fun m -> m "received error %s" msg) ; Lwt.return_unit
+      | Ok () -> match next with
+        | `End -> Lwt.return_unit
+        | `Wait (task, out) ->
+          task >>= fun () ->
+          process [ out ] >|= fun _ ->
+          ()
       | `Wait_and_create (task, next) ->
         task >>= fun () ->
         let state', data, n = next !state in
         state := state' ;
-        process data >>= fun () ->
+        process data >>= fun _ ->
         (match n with
          | `End -> Lwt.return_unit
-         | `Create cont -> create c_fd process cont)
+         | `Create cont -> create process cont)
       | `Create cont ->
-        create c_fd process cont
+        create process cont
         (* data contained a write to console, we need to wait for its reply first *)
   ) >>= fun () ->
   Vmm_lwt.safe_close fd
@@ -172,32 +164,41 @@ let jump _ =
      create_mbox `Stats >>= fun s ->
      (create_mbox `Log >|= function
        | None -> invalid_arg "cannot connect to log socket"
-       | Some l -> l) >>= fun (l, _l_fd) ->
+       | Some l -> l) >>= fun (l, l_fd) ->
+     let write_reply (header, cmd) mvar fd =
+       Lwt_mvar.put mvar (header, cmd) >>= fun () ->
+       Vmm_lwt.read_wire fd >|= function
+       | Ok (header', reply) ->
+         if not Vmm_commands.(version_eq header.version header'.version) then
+           Error (`Msg "wrong version in reply")
+         else if not Vmm_commands.(Int64.equal header.sequence header'.sequence) then
+           Error (`Msg "wrong id in reply")
+         else begin match reply with
+           | `Success _ -> Ok ()
+           | `Failure msg -> Error (`Msg msg)
+           | _ -> Error (`Msg "unexpected data")
+         end
+       | Error _ -> Error (`Msg "error in read")
+     in
      let out = function
-       | `Stat data -> (match s with None -> Lwt.return_unit | Some (s, _s_fd) -> Lwt_mvar.put s data)
-       | `Log data -> Lwt_mvar.put l data
-       | `Cons data -> Lwt_mvar.put c data
+       | `Stat wire ->
+         begin match s with
+           | None -> Lwt.return (Ok ())
+           | Some (s, s_fd) -> write_reply wire s s_fd
+         end
+       | `Log wire -> write_reply wire l l_fd
+       | `Cons wire -> write_reply wire c c_fd
      in
      Lwt.async stats_loop ;
      let rec loop () =
        Lwt_unix.accept ss >>= fun (fd, addr) ->
        Lwt_unix.set_close_on_exec fd ;
-       Lwt.async (fun () -> handle out c_fd fd addr) ;
+       Lwt.async (fun () -> handle out fd addr) ;
        loop ()
      in
      loop ())
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
 
 let cmd =
   Term.(ret (const jump $ setup_log)),

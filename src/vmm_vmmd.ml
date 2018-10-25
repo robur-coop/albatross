@@ -57,7 +57,8 @@ let handle_create t hdr vm_config =
     let header = Vmm_commands.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
     (header, `Command (`Console_cmd `Console_add))
   in
-  Ok ({ t with console_counter = Int64.succ t.console_counter }, [ `Cons cons_out ],
+  Ok ({ t with console_counter = Int64.succ t.console_counter },
+      [ `Cons cons_out ],
       `Create (fun t task ->
           (* actually execute the vm *)
           Vmm_unix.exec name vm_config taps >>= fun vm ->
@@ -73,7 +74,7 @@ let setup_stats t name vm =
   let stat_out = `Stats_add (vm.pid, vm.taps) in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
-  t, [ `Stat (header, `Command (`Stats_cmd stat_out)) ]
+  t, `Stat (header, `Command (`Stats_cmd stat_out))
 
 let handle_shutdown t name vm r =
   (match Vmm_unix.shutdown name vm with
@@ -92,9 +93,9 @@ let handle_command t (header, payload) =
     | Ok x -> x
     | Error (`Msg msg) ->
       Logs.debug (fun m -> m "error while processing command: %s" msg) ;
-      let out = `Failure msg in
-      (t, [ `Data (header, out) ], `End)
+      (t, [ `Data (header, `Failure msg) ], `End)
   in
+  let reply x = `Data (header, `Success x) in
   msg_to_err (
     let id = header.Vmm_commands.id in
     match payload with
@@ -103,11 +104,11 @@ let handle_command t (header, payload) =
         | `Policy_remove ->
           Logs.debug (fun m -> m "remove policy %a" pp_id header.Vmm_commands.id) ;
           let resources = Vmm_resources.remove t.resources id in
-          Ok ({ t with resources }, [ `Data (header, `Success (`String "removed policy")) ], `End)
+          Ok ({ t with resources }, [ reply (`String "removed policy") ], `End)
         | `Policy_add policy ->
           Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
           Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
-          Ok ({ t with resources }, [ `Data (header, `Success (`String "added policy")) ], `End)
+          Ok ({ t with resources }, [ reply (`String "added policy") ], `End)
         | `Policy_info ->
           begin
             Logs.debug (fun m -> m "policy %a" pp_id id) ;
@@ -122,7 +123,7 @@ let handle_command t (header, payload) =
               Logs.debug (fun m -> m "policies: couldn't find %a" pp_id id) ;
               Error (`Msg "policy: not found")
             | _ ->
-              Ok (t, [ `Data (header, `Success (`Policies policies)) ], `End)
+              Ok (t, [ reply (`Policies policies) ], `End)
           end
       end
     | `Command (`Vm_cmd vc) ->
@@ -140,7 +141,7 @@ let handle_command t (header, payload) =
               Logs.debug (fun m -> m "info: couldn't find %a" pp_id id) ;
               Error (`Msg "info: not found")
             | _ ->
-              Ok (t, [ `Data (header, `Success (`Vms vms)) ], `End)
+              Ok (t, [ reply (`Vms vms) ], `End)
           end
         | `Vm_create vm_config ->
           handle_create t header vm_config
@@ -168,9 +169,9 @@ let handle_command t (header, payload) =
               Vmm_unix.destroy vm ;
               let id_str = string_of_id id in
               let out, next =
-                let s = [ `Data (header, `Success (`String "destroyed vm")) ] in
+                let s = reply (`String "destroyed vm") in
                 match String.Map.find_opt id_str t.tasks with
-                | None -> s, `End
+                | None -> [ s ], `End
                 | Some t -> [], `Wait (t, s)
               in
               let tasks = String.Map.remove id_str t.tasks in
