@@ -4,16 +4,24 @@ open Vmm_provision
 
 open Rresult.R.Infix
 
-let sign dbname cacert key csr days =
-  let ri = X509.CA.info csr in
-  Logs.app (fun m -> m "signing certificate with subject %s"
-               (X509.distinguished_name_to_string ri.X509.CA.subject)) ;
-  let issuer = X509.subject cacert in
-  (* TODO: handle version mismatch of the delegation cert specially here *)
-  (* TODO: check delegation! *)
+let l_exts =
+  [ (true, `Key_usage [ `Digital_signature ; `Key_encipherment ])
+  ; (true, `Basic_constraints (false, None))
+  ; (true, `Ext_key_usage [`Client_auth]) ]
+
+let d_exts ?len () =
+  [ (true, (`Basic_constraints (true, len)))
+  ; (true, (`Key_usage [ `Key_cert_sign ; `CRL_sign ; `Digital_signature ; `Content_commitment ])) ]
+
+let s_exts =
+  [ (true, `Key_usage [ `Digital_signature ; `Key_encipherment ])
+  ; (true, `Basic_constraints (false, None))
+  ; (true, `Ext_key_usage [`Server_auth]) ]
+
+let albatross_extension csr =
   let req_exts =
     match
-      List.find (function `Extensions _ -> true | _ -> false) ri.X509.CA.extensions
+      List.find (function `Extensions _ -> true | _ -> false) X509.CA.((info csr).extensions)
     with
     | exception Not_found -> []
     | `Extensions x -> x
@@ -25,7 +33,18 @@ let sign dbname cacert key csr days =
         | _ -> false)
       req_exts
   with
-  | [ (_, `Unsupported (_, v)) as ext ] ->
+  | [ (_, `Unsupported (_, v)) as ext ] -> Ok (ext, v)
+  | _ -> Error (`Msg "couldn't find albatross extension in CSR")
+
+let sign dbname cacert key csr days =
+  let ri = X509.CA.info csr in
+  Logs.app (fun m -> m "signing certificate with subject %s"
+               (X509.distinguished_name_to_string ri.X509.CA.subject)) ;
+  let issuer = X509.subject cacert in
+  (* TODO: handle version mismatch of the delegation cert specially here *)
+  (* TODO: check delegation! *)
+  match albatross_extension csr with
+  | Ok (ext, v) ->
     Vmm_asn.cert_extension_of_cstruct v >>= fun (version, cmd) ->
     (if Vmm_commands.version_eq version asn_version then
        Ok ()
@@ -35,7 +54,7 @@ let sign dbname cacert key csr days =
     Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd) ;
     Ok (ext :: l_exts) >>= fun extensions ->
     sign ~dbname extensions issuer key csr (Duration.of_day days)
-  | _ -> Error (`Msg "none or multiple albatross extensions found")
+  | Error e -> Error e
 
 let jump _ db cacert cakey csrname days =
   Nocrypto_entropy_unix.initialize () ;
@@ -75,11 +94,6 @@ let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
 open Vmm_provision
 
 open Rresult.R.Infix
-
-let s_exts =
-  [ (true, `Key_usage [ `Digital_signature ; `Key_encipherment ])
-  ; (true, `Basic_constraints (false, None))
-  ; (true, `Ext_key_usage [`Server_auth]) ]
 
 let jump _ name db days sname sdays =
   Nocrypto_entropy_unix.initialize () ;
