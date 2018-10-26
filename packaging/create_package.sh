@@ -23,15 +23,12 @@ for f in albatross_log \
 do install -U $basedir/packaging/rc.d/$f $rootdir/usr/local/etc/rc.d/$f; done
 
 # stage albatross app binaries
-for f in vmmd vmmd_log vmmd_console; do
+for f in vmmd vmmd_log vmmd_console vmmd_stats; do
     install -U $basedir/_build/app/$f.native \
 	 $rootdir/usr/local/libexec/albatross/$f; done
 
-install -U $basedir/_build/app/vmmd_stats.native \
-	$rootdir/usr/local/libexec/albatross/vmmd_stats
-
-install -U $basedir/_build/app/vmm_local.native \
-	$rootdir/usr/local/sbin/vmm_local
+install -U $basedir/_build/app/vmmc_local.native \
+	$rootdir/usr/local/sbin/vmmc_local
 
 # create +MANIFEST
 flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |
