@@ -117,21 +117,12 @@ let help _ _ man_format cmds = function
   | Some t when List.mem t cmds -> `Help (man_format, Some t)
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
+open Vmm_cli
 
 let socket =
   let doc = "Socket to connect to" in
-  Arg.(value & opt (some string) None & info [ "s" ; "socket" ] ~doc)
+  Arg.(value & opt (some string) None & info [ "socket" ] ~doc)
 
 let force =
   let doc = "force VM creation." in
@@ -140,11 +131,6 @@ let force =
 let image =
   let doc = "File of virtual machine image." in
   Arg.(required & pos 1 (some file) None & info [] ~doc)
-
-let vm_c =
-  let parse s = `Ok (Vmm_core.id_of_string s)
-  in
-  (parse, Vmm_core.pp_id)
 
 let vm_name =
   let doc = "Name virtual machine." in
@@ -159,17 +145,13 @@ let destroy_cmd =
   Term.(ret (const destroy $ setup_log $ socket $ vm_name)),
   Term.info "destroy" ~doc ~man
 
-let opt_vmname =
-  let doc = "Name virtual machine." in
-  Arg.(value & opt vm_c [] & info [ "n" ; "name"] ~doc)
-
 let remove_policy_cmd =
   let doc = "removes a policy" in
   let man =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
-  Term.(ret (const remove_policy $ setup_log $ socket $ opt_vmname)),
+  Term.(ret (const remove_policy $ setup_log $ socket $ opt_vm_name)),
   Term.info "remove_policy" ~doc ~man
 
 let info_cmd =
@@ -178,7 +160,7 @@ let info_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(ret (const info_ $ setup_log $ socket $ opt_vmname)),
+  Term.(ret (const info_ $ setup_log $ socket $ opt_vm_name)),
   Term.info "info" ~doc ~man
 
 let policy_cmd =
@@ -187,11 +169,11 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(ret (const policy $ setup_log $ socket $ opt_vmname)),
+  Term.(ret (const policy $ setup_log $ socket $ opt_vm_name)),
   Term.info "policy" ~doc ~man
 
 let cpus =
-  let doc = "CPUids to allow" in
+  let doc = "CPUs to allow" in
   Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
 
 let vms =
@@ -206,33 +188,9 @@ let mem =
   let doc = "Memory to allow" in
   Arg.(value & opt int 512 & info [ "mem" ] ~doc)
 
-let b =
-  let parse s =
-    match String.cuts ~sep:"/" s with
-    | [ name ; fst ; lst ; gw ; nm ] ->
-      begin match Ipaddr.V4.(of_string fst, of_string lst, of_string gw) with
-        | Some fst, Some lst, Some gw ->
-          (try
-             let nm = int_of_string nm in
-             if nm > 0 && nm <= 32 then
-               let net = Ipaddr.V4.Prefix.make nm gw in
-               if Ipaddr.V4.Prefix.mem fst net && Ipaddr.V4.Prefix.mem lst net then
-                 `Ok (`External (name, fst, lst, gw, nm))
-               else
-                 `Error "first or last IP are not in subnet"
-             else
-               `Error "netmask must be > 0 and <= 32"
-           with Failure _ -> `Error "couldn't parse netmask")
-        | _ -> `Error "couldn't parse IP address"
-      end
-    | [ name ] -> `Ok (`Internal name)
-    | _ -> `Error "couldn't parse bridge (either 'name' or 'name/fstIP/lstIP/gwIP/netmask')"
-  in
-  (parse, Vmm_core.pp_bridge)
-
 let bridge =
-  let doc = "Bridge to provision" in
-  Arg.(value & opt_all b [] & info [ "bridge" ] ~doc)
+  let doc = "Bridge to allow" in
+  Arg.(value & opt_all bridge [] & info [ "bridge" ] ~doc)
 
 let add_policy_cmd =
   let doc = "Add a policy" in
@@ -240,7 +198,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ socket $ opt_vmname $ vms $ mem $ cpus $ block $ bridge)),
+  Term.(ret (const add_policy $ setup_log $ socket $ opt_vm_name $ vms $ mem $ cpus $ block $ bridge)),
   Term.info "add_policy" ~doc ~man
 
 let cpu =
@@ -294,7 +252,7 @@ let stats_cmd =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(ret (const stats $ setup_log $ socket $ opt_vmname)),
+  Term.(ret (const stats $ setup_log $ socket $ opt_vm_name)),
   Term.info "stats" ~doc ~man
 
 let log_cmd =
@@ -303,7 +261,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(ret (const event_log $ setup_log $ socket $ opt_vmname $ since)),
+  Term.(ret (const event_log $ setup_log $ socket $ opt_vm_name $ since)),
   Term.info "log" ~doc ~man
 
 let help_cmd =

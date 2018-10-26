@@ -170,22 +170,13 @@ let jump _ file =
      in
      loop ())
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
 
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
+open Vmm_cli
 
 let socket =
-  let doc = "Socket to listen on" in
-  let sock = Vmm_core.socket_path `Console in
-  Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
+  let doc = "socket to use" in
+  Arg.(value & opt string (Vmm_core.socket_path `Console) & info [ "socket" ] ~doc)
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket)),

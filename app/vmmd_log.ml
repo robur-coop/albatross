@@ -71,8 +71,6 @@ let write_to_file file =
   in
   mvar, write_loop
 
-let tree = ref Vmm_trie.empty
-
 let send_history s ring id ts =
   let elements =
     match ts with
@@ -95,6 +93,8 @@ let send_history s ring id ts =
         Vmm_lwt.write_wire s (header, `Data (`Log_data (ts, event)))
       | Error e -> Lwt.return (Error e))
     (Ok ()) (List.rev res)
+
+let tree = ref Vmm_trie.empty
 
 let handle_data s mvar ring hdr entry =
   if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
@@ -187,22 +187,12 @@ let jump _ file sock =
      Lwt.pick [ loop () ; writer () ]) ;
   `Ok ()
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
+open Vmm_cli
 
 let socket =
-  let doc = "Socket to listen on" in
-  let sock = Vmm_core.socket_path `Log in
-  Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
+  let doc = "socket to use" in
+  Arg.(value & opt string (Vmm_core.socket_path `Log) & info [ "socket" ] ~doc)
 
 let file =
   let doc = "File to write the log to" in

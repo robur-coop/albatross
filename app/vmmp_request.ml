@@ -107,6 +107,7 @@ let jump _ name key vms mem cpus block bridges =
   | Error (`Msg m) -> `Error (false, m)
 
 open Cmdliner
+open Vmm_cli
 
 let cpus =
   let doc = "CPUids to provision" in
@@ -120,33 +121,9 @@ let block =
   let doc = "Block storage to provision" in
   Arg.(value & opt (some int) None & info [ "block" ] ~doc)
 
-let b =
-  let parse s =
-    match String.cuts ~sep:"/" s with
-    | [ name ; fst ; lst ; gw ; nm ] ->
-      begin match Ipaddr.V4.(of_string fst, of_string lst, of_string gw) with
-        | Some fst, Some lst, Some gw ->
-          (try
-             let nm = int_of_string nm in
-             if nm > 0 && nm <= 32 then
-               let net = Ipaddr.V4.Prefix.make nm gw in
-               if Ipaddr.V4.Prefix.mem fst net && Ipaddr.V4.Prefix.mem lst net then
-                 `Ok (`External (name, fst, lst, gw, nm))
-               else
-                 `Error "first or last IP are not in subnet"
-             else
-               `Error "netmask must be > 0 and <= 32"
-           with Failure _ -> `Error "couldn't parse netmask")
-        | _ -> `Error "couldn't parse IP address"
-      end
-    | [ name ] -> `Ok (`Internal name)
-    | _ -> `Error "couldn't parse bridge (either 'name' or 'name/fstIP/lstIP/gwIP/netmask')"
-  in
-  (parse, Vmm_core.pp_bridge)
-
 let bridge =
   let doc = "Bridge to provision" in
-  Arg.(value & opt_all b [] & info [ "bridge" ] ~doc)
+  Arg.(value & opt_all bridge [] & info [ "bridge" ] ~doc)
 
 let cmd =
   Term.(ret (const jump $ setup_log $ nam $ key $ vms $ mem $ cpus $ block $ bridge)),

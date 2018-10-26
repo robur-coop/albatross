@@ -23,7 +23,6 @@ let client cas host port cert priv_key =
     Lwt_unix.gethostbyname host >>= fun host_entry ->
     let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
     let fd = Lwt_unix.socket host_entry.Lwt_unix.h_addrtype Lwt_unix.SOCK_STREAM 0 in
-
     Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun _ ->
     X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
     let certificates = `Single cert in
@@ -43,33 +42,8 @@ let run_client _ cas cert key (host, port) =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run (client cas host port cert key)
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
-
-let host_port : (string * int) Arg.converter =
-  let parse s =
-    try
-      let open String in
-      let colon = index s ':' in
-      let hostname = sub s 0 colon
-      and port =
-        let csucc = succ colon in
-        sub s csucc (length s - csucc)
-      in
-      `Ok (hostname, int_of_string port)
-    with
-      Not_found -> `Error "broken"
-  in
-  parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
+open Vmm_cli
 
 let cas =
   let doc = "The full path to PEM encoded certificate authorities. Can either be a FILE or a DIRECTORY." in
@@ -88,13 +62,13 @@ let destination =
          ~doc:"the destination hostname:port to connect to")
 
 let cmd =
-  let doc = "VMM TLS client" in
+  let doc = "VMM remote TLS client" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a server and initiates a TLS handshake" ]
   in
   Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "vmmd_remote" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "vmmc_remote" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd

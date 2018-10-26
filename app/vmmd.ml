@@ -51,7 +51,6 @@ let create process cont =
     | Ok () -> ()
 
 let handle out fd addr =
-  (* out is for `Log | `Stat | `Cons (including reconnect semantics) *)
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
   (* now we need to read a packet and handle it
     (1)
@@ -152,8 +151,6 @@ let rec stats_loop () =
   Lwt_unix.sleep 600. >>= fun () ->
   stats_loop ()
 
-(* TODO nobody reads stat and log file descriptors - that's likely a bad idea!
-   - create_mbox could after take & write do a read and check for failures! *)
 let jump _ =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run

@@ -279,47 +279,16 @@ let run_client _ socket (influxhost, influxport) vm =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run (client socket influxhost influxport vm)
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
-
-let host_port : (string * int) Arg.converter =
-  let parse s =
-    match String.cut ~sep:":" s with
-    | None -> `Error "broken: no port specified"
-    | Some (hostname, port) ->
-      try
-        `Ok (hostname, int_of_string port)
-      with
-        Not_found -> `Error "failed to parse port"
-  in
-  parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
+open Vmm_cli
 
 let socket =
-  let doc = "Stat socket to connect onto" in
-  let sock = Vmm_core.socket_path `Stats in
-  Arg.(value & opt string sock & info [ "s" ; "socket" ] ~doc)
+  let doc = "socket to use" in
+  Arg.(value & opt string (Vmm_core.socket_path `Stats) & info [ "socket" ] ~doc)
 
 let influx =
   Arg.(required & pos 0 (some host_port) None & info [] ~docv:"influx"
          ~doc:"the influx hostname:port to connect to")
-
-let vm_c =
-  let parse s = `Ok (Vmm_core.id_of_string s)
-  in
-  (parse, Vmm_core.pp_id)
-
-let opt_vmname =
-  let doc = "Name virtual machine." in
-  Arg.(value & opt vm_c [] & info [ "n" ; "name"] ~doc)
 
 let cmd =
   let doc = "VMM InfluxDB connector" in
@@ -327,7 +296,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a vmm stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(pure run_client $ setup_log $ socket $ influx $ opt_vmname),
+  Term.(pure run_client $ setup_log $ socket $ influx $ opt_vm_name),
   Term.info "vmmd_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
