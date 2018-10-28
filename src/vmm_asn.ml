@@ -307,13 +307,9 @@ let policy_cmd =
 
 let version =
   let f data = match data with
-    | 0 -> `AV0
-    | 1 -> `AV1
     | 2 -> `AV2
     | _ -> Asn.S.error (`Parse "unknown version number")
   and g = function
-    | `AV0 -> 0
-    | `AV1 -> 1
     | `AV2 -> 2
   in
   Asn.S.map f g Asn.S.int
@@ -376,55 +372,54 @@ let header =
            (required ~label:"sequence" int64)
            (required ~label:"id" (sequence_of utf8_string)))
 
-let wire =
-  let f (header, payload) =
-    header,
-    match payload with
+let success =
+  let f = function
+    | `C1 () -> `Empty
+    | `C2 str -> `String str
+    | `C3 policies -> `Policies policies
+    | `C4 vms -> `Vms vms
+  and g = function
+    | `Empty -> `C1 ()
+    | `String s -> `C2 s
+    | `Policies ps -> `C3 ps
+    | `Vms vms -> `C4 vms
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice4
+           (explicit 0 null)
+           (explicit 1 utf8_string)
+           (explicit 2 (sequence_of
+                          (sequence2
+                             (required ~label:"name" (sequence_of utf8_string))
+                             (required ~label:"policy" policy))))
+           (explicit 3 (sequence_of
+                          (sequence2
+                             (required ~label:"name" (sequence_of utf8_string))
+                             (required ~label:"vm_config" vm_config)))))
+
+let payload =
+  let f = function
     | `C1 cmd -> `Command cmd
-    | `C2 data ->
-      let p = match data with
-        | `C1 () -> `Empty
-        | `C2 str -> `String str
-        | `C3 policies -> `Policies policies
-        | `C4 vms -> `Vms vms
-      in
-      `Success p
+    | `C2 s -> `Success s
     | `C3 str -> `Failure str
     | `C4 data -> `Data data
-  and g (header, payload) =
-    header,
-    match payload with
+  and g = function
     | `Command cmd -> `C1 cmd
-    | `Success data ->
-      let p = match data with
-        | `Empty -> `C1 ()
-        | `String s -> `C2 s
-        | `Policies ps -> `C3 ps
-        | `Vms vms -> `C4 vms
-      in
-      `C2 p
+    | `Success s -> `C2 s
     | `Failure str -> `C3 str
     | `Data d -> `C4 d
   in
   Asn.S.map f g @@
+  Asn.S.(choice4
+           (explicit 0 wire_command)
+           (explicit 1 success)
+           (explicit 2 utf8_string)
+           (explicit 3 data))
+
+let wire =
   Asn.S.(sequence2
            (required ~label:"header" header)
-           (required ~label:"payload"
-              (choice4
-                 (explicit 0 wire_command)
-                 (explicit 1 (choice4
-                                (explicit 0 null)
-                                (explicit 1 utf8_string)
-                                (explicit 2 (sequence_of
-                                               (sequence2
-                                                  (required ~label:"name" (sequence_of utf8_string))
-                                                  (required ~label:"policy" policy))))
-                                (explicit 3 (sequence_of
-                                               (sequence2
-                                                  (required ~label:"name" (sequence_of utf8_string))
-                                                  (required ~label:"vm_config" vm_config))))))
-                 (explicit 2 utf8_string)
-                 (explicit 3 data))))
+           (required ~label:"payload" payload))
 
 let wire_of_cstruct, wire_to_cstruct = projections_of wire
 

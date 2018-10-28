@@ -3,7 +3,7 @@
 open Vmm_core
 
 (** The type of versions of the grammar defined below. *)
-type version = [ `AV0 | `AV1 | `AV2 ]
+type version = [ `AV2 ]
 
 (** [version_eq a b] is true if [a] and [b] are equal. *)
 val version_eq : version -> version -> bool
