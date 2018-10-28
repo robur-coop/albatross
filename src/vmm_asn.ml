@@ -6,7 +6,7 @@ open Vmm_commands
 open Rresult
 open Astring
 
-let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 43)
+let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
 
 open Rresult.R.Infix
 
