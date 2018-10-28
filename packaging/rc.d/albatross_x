@@ -39,14 +39,14 @@ albatross_x_start () {
 	_ALL)
 	    for _vm in $albatross_x_vms; do
 		eval _create_args=\"\$albatross_x_args_${_vm}\"
-		/usr/local/sbin/vmmc create $_vm $_create_args
+		/usr/local/sbin/vmmc_local create $_vm $_create_args
 	    done
 	    return
 	    ;;
     esac
     for _vm in $@; do
 	eval _create_args=\"\$albatross_x_args_${_vm}\"
-	/usr/local/sbin/vmmc create $_vm $_create_args
+	/usr/local/sbin/vmmc_local create $_vm $_create_args
     done
 }
 
@@ -54,15 +54,16 @@ albatross_x_stop () {
     case $1 in
 	ALL)
 	    for _vm in $albatross_x_vms
-	    do /usr/local/sbin/vmmc destroy $_vm; done
+	    do /usr/local/sbin/vmmc_local destroy $_vm; done
 	    return
     esac
     for _vm in $@
-    do /usr/local/sbin/vmmc destroy $_vm; done
+    do /usr/local/sbin/vmmc_local destroy $_vm; done
 }
 
 albatross_x_status () {
-    /usr/local/sbin/vmmc info
+    for _vm in $@
+    do /usr/local/sbin/vmmc_local info $_vm; done
 }
 
 case $# in
