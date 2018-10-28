@@ -30,6 +30,9 @@ val pp_id : id Fmt.t
 type bridge =
   [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
   | `Internal of string ]
+
+val eq_bridge : bridge -> bridge -> bool
+
 val pp_bridge : bridge Fmt.t
 
 type policy = {
@@ -39,6 +42,9 @@ type policy = {
   block : int option;
   bridges : bridge Astring.String.Map.t;
 }
+
+val eq_policy : policy -> policy -> bool
+
 val pp_policy : policy Fmt.t
 
 val sub_bridges : bridge Astring.String.map -> bridge Astring.String.map -> bool

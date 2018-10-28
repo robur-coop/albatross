@@ -107,8 +107,15 @@ let handle_command t (header, payload) =
           Ok ({ t with resources }, [ reply (`String "removed policy") ], `End)
         | `Policy_add policy ->
           Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
-          Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
-          Ok ({ t with resources }, [ reply (`String "added policy") ], `End)
+          let same_policy = match Vmm_resources.find_policy t.resources id with
+            | None -> false
+            | Some p' -> eq_policy policy p'
+          in
+          if same_policy then
+            Ok (t, [ reply (`String "no modification of policy") ], `End)
+          else
+            Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
+            Ok ({ t with resources }, [ reply (`String "added policy") ], `End)
         | `Policy_info ->
           begin
             Logs.debug (fun m -> m "policy %a" pp_id id) ;

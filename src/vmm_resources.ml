@@ -58,6 +58,10 @@ let find_vm t name = match Vmm_trie.find name t with
   | Some (Vm vm) -> Some vm
   | _ -> None
 
+let find_policy t name = match Vmm_trie.find name t with
+  | Some (Policy p) -> Some p
+  | _ -> None
+
 let check_vm_policy t name vm =
   let dom = domain name in
   let res = resource_usage t dom in

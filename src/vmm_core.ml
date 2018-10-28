@@ -70,6 +70,20 @@ type bridge = [
   | `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
 ]
 
+let eq_int (a : int) (b : int) = a = b
+
+let eq_bridge b1 b2 = match b1, b2 with
+  | `Internal a, `Internal a' -> String.equal a a'
+  | `External (name, ip_start, ip_end, ip_gw, netmask),
+    `External (name', ip_start', ip_end', ip_gw', netmask') ->
+    let eq_ip a b = Ipaddr.V4.compare a b = 0 in
+    String.equal name name' &&
+    eq_ip ip_start ip_start' &&
+    eq_ip ip_end ip_end' &&
+    eq_ip ip_gw ip_gw' &&
+    eq_int netmask netmask'
+  | _ -> false
+
 let pp_bridge ppf = function
   | `Internal name -> Fmt.pf ppf "%s (internal)" name
   | `External (name, l, h, gw, nm) ->
@@ -83,6 +97,18 @@ type policy = {
   block : int option ;
   bridges : bridge String.Map.t ;
 }
+
+let eq_policy p1 p2 =
+  let eq_opt a b = match a, b with
+    | None, None -> true
+    | Some a, Some b -> eq_int a b
+    | _ -> false
+  in
+  eq_int p1.vms p2.vms &&
+  IS.equal p1.cpuids p2.cpuids &&
+  eq_int p1.memory p2.memory &&
+  eq_opt p1.block p2.block &&
+  String.Map.equal eq_bridge p1.bridges p2.bridges
 
 let pp_policy ppf res =
   Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"

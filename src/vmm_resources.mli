@@ -20,6 +20,9 @@ val empty : t
 (** [find_vm t id] is either [Some vm] or [None]. *)
 val find_vm : t -> Vmm_core.id -> Vmm_core.vm option
 
+(** [find_policy t id] is either [Some policy] or [None]. *)
+val find_policy : t -> Vmm_core.id -> Vmm_core.policy option
+
 (** [check_vm_policy t vm] checks whether [vm] under [id] in [t] would be
     allowed under the current policies. *)
 val check_vm_policy : t -> Vmm_core.id -> Vmm_core.vm_config -> bool
