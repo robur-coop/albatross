@@ -39,8 +39,7 @@ let sign dbname cacert key csr days =
   Logs.app (fun m -> m "signing certificate with subject %s"
                (X509.distinguished_name_to_string ri.X509.CA.subject)) ;
   let issuer = X509.subject cacert in
-  (* TODO: handle version mismatch of the delegation cert specially here *)
-  (* TODO: check delegation! *)
+  (* TODO: check delegation! verify whitelisted commands!? *)
   match albatross_extension csr with
   | Ok (ext, v) ->
     Vmm_asn.cert_extension_of_cstruct v >>= fun (version, cmd) ->
@@ -48,9 +47,12 @@ let sign dbname cacert key csr days =
        Ok ()
      else
        Error (`Msg "unknown version in request")) >>= fun () ->
-    (* TODO l_exts / d_exts trouble *)
+    let exts = match cmd with
+      | `Policy_cmd (`Policy_add _) -> d_exts ()
+      | _ -> l_exts
+    in
     Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd) ;
-    Ok (ext :: l_exts) >>= fun extensions ->
+    Ok (ext :: exts) >>= fun extensions ->
     Vmm_provision.sign ~dbname extensions issuer key csr (Duration.of_day days)
   | Error e -> Error e
 
