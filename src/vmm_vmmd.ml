@@ -80,7 +80,12 @@ let handle_shutdown t name vm r =
   (match Vmm_unix.shutdown name vm with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
-  let resources = Vmm_resources.remove t.resources name in
+  let resources = match Vmm_resources.remove_vm t.resources name with
+    | Error (`Msg e) ->
+      Logs.warn (fun m -> m "%s while removing vm %a from resources" e pp_vm vm) ;
+      t.resources
+    | Ok resources -> resources
+  in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
   let tasks = String.Map.remove (string_of_id name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
@@ -103,7 +108,7 @@ let handle_command t (header, payload) =
       begin match pc with
         | `Policy_remove ->
           Logs.debug (fun m -> m "remove policy %a" pp_id header.Vmm_commands.id) ;
-          let resources = Vmm_resources.remove t.resources id in
+          Vmm_resources.remove_policy t.resources id >>= fun resources ->
           Ok ({ t with resources }, [ reply (`String "removed policy") ], `End)
         | `Policy_add policy ->
           Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
@@ -153,7 +158,7 @@ let handle_command t (header, payload) =
         | `Vm_create vm_config ->
           handle_create t header vm_config
         | `Vm_force_create vm_config ->
-          let resources = Vmm_resources.remove t.resources id in
+          Vmm_resources.remove_vm t.resources id >>= fun resources ->
           if Vmm_resources.check_vm_policy resources id vm_config then
             begin match Vmm_resources.find_vm t.resources id with
               | None -> handle_create t header vm_config

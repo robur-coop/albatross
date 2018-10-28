@@ -36,8 +36,6 @@ let pp ppf t =
 
 let empty = Vmm_trie.empty
 
-let remove t name = Vmm_trie.remove name t
-
 let fold t name f g acc =
   Vmm_trie.fold name t (fun prefix entry acc ->
       match entry with
@@ -61,6 +59,14 @@ let find_vm t name = match Vmm_trie.find name t with
 let find_policy t name = match Vmm_trie.find name t with
   | Some (Policy p) -> Some p
   | _ -> None
+
+let remove_vm t name =  match find_vm t name with
+  | None -> Error (`Msg "unknown vm")
+  | Some _ -> Ok (Vmm_trie.remove name t)
+
+let remove_policy t name = match find_policy t name with
+  | None -> Error (`Msg "unknown policy")
+  | Some _ -> Ok (Vmm_trie.remove name t)
 
 let check_vm_policy t name vm =
   let dom = domain name in

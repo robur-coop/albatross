@@ -35,8 +35,11 @@ val insert_vm : t -> Vmm_core.id -> Vmm_core.vm -> (t, [> `Msg of string]) resul
    the new [t] or an error. *)
 val insert_policy : t -> Vmm_core.id -> Vmm_core.policy -> (t, [> `Msg of string]) result
 
-(** [remove t id] removes [id] from [t]. *)
-val remove : t -> Vmm_core.id -> t
+(** [remove_vm t id] removes vm [id] from [t]. *)
+val remove_vm : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
+
+(** [remove_policy t id] removes policy [id] from [t]. *)
+val remove_policy : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
 
 (** [fold t id f g acc] folds [f] and [g] below [id] over [t]. *)
 val fold : t -> Vmm_core.id ->
