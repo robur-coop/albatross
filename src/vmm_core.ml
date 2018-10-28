@@ -7,6 +7,23 @@ open Rresult.R.Infix
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
 
+type service = [ `Console | `Log | `Stats | `Vmmd ]
+
+let socket_path t =
+  let path name = Fpath.(tmpdir / "util" / name + "sock") in
+  let path = match t with
+    | `Console -> path "console"
+    | `Vmmd -> Fpath.(tmpdir / "vmmd" + "sock")
+    | `Stats -> path "stat"
+    | `Log -> path "log"
+  in
+  Fpath.to_string path
+
+let pp_socket ppf t =
+  let name = socket_path t in
+  Fmt.pf ppf "socket: %s" name
+
+
 module I = struct
   type t = int
   let compare : int -> int -> int = compare
@@ -15,83 +32,12 @@ end
 module IS = Set.Make(I)
 module IM = Map.Make(I)
 
-type permission =
-  [ `All | `Info | `Create | `Block | `Statistics | `Console | `Log | `Crl | `Force_create]
-
-let pp_permission ppf = function
-  | `All -> Fmt.pf ppf "all"
-  | `Info -> Fmt.pf ppf "info"
-  | `Create -> Fmt.pf ppf "create"
-  | `Block -> Fmt.pf ppf "block"
-  | `Statistics -> Fmt.pf ppf "statistics"
-  | `Console -> Fmt.pf ppf "console"
-  | `Log -> Fmt.pf ppf "log"
-  | `Crl -> Fmt.pf ppf "crl"
-  | `Force_create -> Fmt.pf ppf "force-create"
-
-let permission_of_string = function
-  | x when x = "all" -> Some `All
-  | x when x = "info" -> Some `Info
-  | x when x = "create" -> Some `Create
-  | x when x = "block" -> Some `Block
-  | x when x = "statistics" -> Some `Statistics
-  | x when x = "console" -> Some `Console
-  | x when x = "log" -> Some `Log
-  | x when x = "crl" -> Some `Crl
-  | x when x = "force-create" -> Some `Force_create
-  | _ -> None
-
-type cmd =
-  | Info
-  | Destroy_vm
-  | Create_block
-  | Destroy_block
-  | Statistics
-  | Attach
-  | Detach
-  | Log
-
-let pp_cmd ppf = function
-  | Info -> Fmt.pf ppf "info"
-  | Destroy_vm -> Fmt.pf ppf "destroy"
-  | Create_block -> Fmt.pf ppf "create-block"
-  | Destroy_block -> Fmt.pf ppf "destroy-block"
-  | Statistics -> Fmt.pf ppf "statistics"
-  | Attach -> Fmt.pf ppf "attach"
-  | Detach -> Fmt.pf ppf "detach"
-  | Log -> Fmt.pf ppf "log"
-
-let cmd_of_string = function
-  | x when x = "info" -> Some Info
-  | x when x = "destroy" -> Some Destroy_vm
-  | x when x = "create-block" -> Some Create_block
-  | x when x = "destroy-block" -> Some Destroy_block
-  | x when x = "statistics" -> Some Statistics
-  | x when x = "attach" -> Some Attach
-  | x when x = "detach" -> Some Detach
-  | x when x = "log" -> Some Log
-  | _ -> None
-
-let cmd_allowed permissions cmd =
-  List.mem `All permissions ||
-  let perm = match cmd with
-    | Info -> `Info
-    | Destroy_vm -> `Create
-    | Create_block -> `Block
-    | Destroy_block -> `Block
-    | Statistics -> `Statistics
-    | Attach -> `Console
-    | Detach -> `Console
-    | Log -> `Log
-  in
-  List.mem perm permissions
-
-type vmtype = [ `Ukvm_amd64 | `Ukvm_arm64 | `Ukvm_amd64_compressed ]
+type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
 
 let pp_vmtype ppf = function
-  | `Ukvm_amd64 -> Fmt.pf ppf "ukvm-amd64"
-  | `Ukvm_amd64_compressed -> Fmt.pf ppf "ukvm-amd64-compressed"
-  | `Ukvm_arm64 -> Fmt.pf ppf "ukvm-arm64"
+  | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
+  | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
+  | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
 
 type id = string list
 
@@ -110,8 +56,12 @@ let drop_super ~super ~sub =
 let is_sub_id ~super ~sub =
   match drop_super ~super ~sub with None -> false | Some _ -> true
 
+let domain id = match List.rev id with
+  | _::prefix -> List.rev prefix
+  | [] -> []
+
 let pp_id ppf ids =
-  Fmt.(pf ppf "%a" (list ~sep:(unit ".") string) ids)
+  Fmt.(pf ppf "(%d)%a" (List.length ids) (list ~sep:(unit ".") string) ids)
 
 let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
 
@@ -120,13 +70,27 @@ type bridge = [
   | `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
 ]
 
+let eq_int (a : int) (b : int) = a = b
+
+let eq_bridge b1 b2 = match b1, b2 with
+  | `Internal a, `Internal a' -> String.equal a a'
+  | `External (name, ip_start, ip_end, ip_gw, netmask),
+    `External (name', ip_start', ip_end', ip_gw', netmask') ->
+    let eq_ip a b = Ipaddr.V4.compare a b = 0 in
+    String.equal name name' &&
+    eq_ip ip_start ip_start' &&
+    eq_ip ip_end ip_end' &&
+    eq_ip ip_gw ip_gw' &&
+    eq_int netmask netmask'
+  | _ -> false
+
 let pp_bridge ppf = function
   | `Internal name -> Fmt.pf ppf "%s (internal)" name
   | `External (name, l, h, gw, nm) ->
     Fmt.pf ppf "%s: %a - %a, GW: %a/%d"
       name Ipaddr.V4.pp_hum l Ipaddr.V4.pp_hum h Ipaddr.V4.pp_hum gw nm
 
-type delegation = {
+type policy = {
   vms : int ;
   cpuids : IS.t ;
   memory : int ;
@@ -134,8 +98,20 @@ type delegation = {
   bridges : bridge String.Map.t ;
 }
 
-let pp_delegation ppf res =
-  Fmt.pf ppf "delegated: %d vms %a cpus %d MB memory %a MB block bridges: %a"
+let eq_policy p1 p2 =
+  let eq_opt a b = match a, b with
+    | None, None -> true
+    | Some a, Some b -> eq_int a b
+    | _ -> false
+  in
+  eq_int p1.vms p2.vms &&
+  IS.equal p1.cpuids p2.cpuids &&
+  eq_int p1.memory p2.memory &&
+  eq_opt p1.block p2.block &&
+  String.Map.equal eq_bridge p1.bridges p2.bridges
+
+let pp_policy ppf res =
+  Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
     res.vms pp_is res.cpuids res.memory
     Fmt.(option ~none:(unit "no") int) res.block
     Fmt.(list ~sep:(unit ", ") pp_bridge)
@@ -169,8 +145,6 @@ let is_sub ~super ~sub =
   sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
 
 type vm_config = {
-  prefix : id ;
-  vname : string ;
   cpuid : int ;
   requested_memory : int ;
   block_device : string option ;
@@ -179,22 +153,13 @@ type vm_config = {
   argv : string list option ;
 }
 
-let fullname vm = vm.prefix @ [ vm.vname ]
-
-let vm_id vm = string_of_id (fullname vm)
-
-(* used for block devices *)
-let location vm = match vm.prefix with
-  | tld::rest -> tld, String.concat ~sep:"." (rest@[vm.vname])
-  | [] -> invalid_arg "dunno how this happened"
-
 let pp_image ppf (typ, blob) =
   let l = Cstruct.len blob in
   Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
 
 let pp_vm_config ppf (vm : vm_config) =
-  Fmt.pf ppf "%s cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
-    vm.vname vm.cpuid vm.requested_memory
+  Fmt.pf ppf "cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
+    vm.cpuid vm.requested_memory
     Fmt.(option ~none:(unit "no") string) vm.block_device
     Fmt.(list ~sep:(unit ", ") string) vm.network
     pp_image vm.vmimage
@@ -204,7 +169,7 @@ let good_bridge idxs nets =
   (* TODO: uniqueness of n -- it should be an ordered set? *)
   List.for_all (fun n -> String.Map.mem n nets) idxs
 
-let vm_matches_res (res : delegation) (vm : vm_config)  =
+let vm_matches_res (res : policy) (vm : vm_config)  =
   res.vms >= 1 && IS.mem vm.cpuid res.cpuids &&
   vm.requested_memory <= res.memory &&
   good_bridge vm.network res.bridges
@@ -238,150 +203,104 @@ let translate_tap vm tap =
   | [ (_, b) ] -> Some b
   | _ -> None
 
-let identifier serial =
-  match Hex.of_cstruct @@ Nocrypto.Hash.SHA256.digest @@
-    Nocrypto.Numeric.Z.to_cstruct_be @@ serial
-  with
-  | `Hex str -> fst (String.span ~max:6 str)
-
-let id cert = identifier (X509.serial cert)
-
-let parse_db lines =
-  List.fold_left (fun acc s ->
-      acc >>= fun datas ->
-      match String.cut ~sep:" " s with
-      | None -> Rresult.R.error_msgf "unable to parse entry %s" s
-      | Some (a, b) ->
-        (try Ok (Z.of_string a) with Invalid_argument x -> Error (`Msg x)) >>= fun s ->
-        Ok ((s, b) :: datas))
-    (Ok []) lines
-
-let find_in_db label db tst =
-  try Ok (List.find tst db)
-  with Not_found -> Rresult.R.error_msgf "couldn't find %s in database" label
-
-let find_name db name =
-  find_in_db name db (fun (_, n) -> String.equal n name) >>= fun (serial, _) ->
-  Ok serial
-
-let translate_serial db serial =
-  let tst (s, _) = String.equal serial (identifier s) in
-  match find_in_db "" db tst with
-  | Ok (_, n) -> n
-  | Error _ -> serial
-
-let translate_name db name =
-  match find_name db name with
-  | Ok serial -> identifier serial
-  | Error _ -> name
-
-(* this separates the leaf and top-level certificate from the chain,
-   and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
-   in which subCA' signed leaf *)
-let separate_chain = function
-  | [] -> Error (`Msg "empty chain")
-  | [ leaf ] -> Ok (leaf, [])
-  | leaf :: xs -> Ok (leaf, List.rev xs)
-
-type rusage = {
-  utime : (int64 * int) ;
-  stime : (int64 * int) ;
-  maxrss : int64 ;
-  ixrss : int64 ;
-  idrss : int64 ;
-  isrss : int64 ;
-  minflt : int64 ;
-  majflt : int64 ;
-  nswap : int64 ;
-  inblock : int64 ;
-  outblock : int64 ;
-  msgsnd : int64 ;
-  msgrcv : int64 ;
-  nsignals : int64 ;
-  nvcsw : int64 ;
-  nivcsw : int64 ;
-}
-
-let pp_rusage ppf r =
-  Fmt.pf ppf "utime %Lu.%d stime %Lu.%d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
-    (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
-
-type ifdata = {
-  name : string ;
-  flags : int32 ;
-  send_length : int32 ;
-  max_send_length : int32 ;
-  send_drops : int32 ;
-  mtu : int32 ;
-  baudrate : int64 ;
-  input_packets : int64 ;
-  input_errors : int64 ;
-  output_packets : int64 ;
-  output_errors : int64 ;
-  collisions : int64 ;
-  input_bytes : int64 ;
-  output_bytes : int64 ;
-  input_mcast : int64 ;
-  output_mcast : int64 ;
-  input_dropped : int64 ;
-  output_dropped : int64 ;
-}
-
-let pp_ifdata ppf i =
-  Fmt.pf ppf "name %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
-    i.name i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
-
-module Log = struct
-  type hdr = {
-    ts : Ptime.t ;
-    context : id ;
-    name : string ;
+module Stats = struct
+  type rusage = {
+    utime : (int64 * int) ;
+    stime : (int64 * int) ;
+    maxrss : int64 ;
+    ixrss : int64 ;
+    idrss : int64 ;
+    isrss : int64 ;
+    minflt : int64 ;
+    majflt : int64 ;
+    nswap : int64 ;
+    inblock : int64 ;
+    outblock : int64 ;
+    msgsnd : int64 ;
+    msgrcv : int64 ;
+    nsignals : int64 ;
+    nvcsw : int64 ;
+    nivcsw : int64 ;
   }
 
-  let pp_hdr db ppf (hdr : hdr) =
-    let name = translate_serial db hdr.name in
-    Fmt.pf ppf "%a: %s" (Ptime.pp_human ~tz_offset_s:0 ()) hdr.ts name
+  let pp_rusage ppf r =
+    Fmt.pf ppf "utime %Lu.%d stime %Lu.%d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
+      (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
 
-  let hdr context name = { ts = Ptime_clock.now () ; context ; name }
 
-  type event =
-    [ `Startup
-    | `Login of Ipaddr.V4.t * int
-    | `Logout of Ipaddr.V4.t * int
-    | `VM_start of int * string list * string option
-    | `VM_stop of int * [ `Exit of int | `Signal of int | `Stop of int ]
-    | `Block_create of string * int
-    | `Block_destroy of string
-    | `Delegate of string list * string option
-      (* | `CRL of string *)
-    ]
+  type vmm = (string * int64) list
+  let pp_vmm ppf vmm =
+    Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) ppf vmm
 
-  let pp_event ppf = function
-    | `Startup -> Fmt.(pf ppf "STARTUP")
-    | `Login (ip, port) -> Fmt.pf ppf "LOGIN %a:%d" Ipaddr.V4.pp_hum ip port
-    | `Logout (ip, port) -> Fmt.pf ppf "LOGOUT %a:%d" Ipaddr.V4.pp_hum ip port
-    | `VM_start (pid, taps, block) ->
-      Fmt.pf ppf "STARTED %d (tap %a, block %a)"
-        pid Fmt.(list ~sep:(unit "; ") string) taps
+  type ifdata = {
+    name : string ;
+    flags : int32 ;
+    send_length : int32 ;
+    max_send_length : int32 ;
+    send_drops : int32 ;
+    mtu : int32 ;
+    baudrate : int64 ;
+    input_packets : int64 ;
+    input_errors : int64 ;
+    output_packets : int64 ;
+    output_errors : int64 ;
+    collisions : int64 ;
+    input_bytes : int64 ;
+    output_bytes : int64 ;
+    input_mcast : int64 ;
+    output_mcast : int64 ;
+    input_dropped : int64 ;
+    output_dropped : int64 ;
+  }
+
+  let pp_ifdata ppf i =
+    Fmt.pf ppf "name %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
+      i.name i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
+
+  type t = rusage * vmm option * ifdata list
+  let pp ppf (ru, vmm, ifs) =
+    Fmt.pf ppf "%a@.%a@.%a"
+      pp_rusage ru
+      Fmt.(option ~none:(unit "no vmm stats") pp_vmm) vmm
+      Fmt.(list ~sep:(unit "@.@.") pp_ifdata) ifs
+end
+
+type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
+
+let pp_process_exit ppf = function
+  | `Exit n -> Fmt.pf ppf "exit %a (%d)" Fmt.Dump.signal n n
+  | `Signal n -> Fmt.pf ppf "signal %a (%d)" Fmt.Dump.signal n n
+  | `Stop n -> Fmt.pf ppf "stop %a (%d)" Fmt.Dump.signal n n
+
+module Log = struct
+  type log_event = [
+    | `Login of id * Ipaddr.V4.t * int
+    | `Logout of id * Ipaddr.V4.t * int
+    | `Startup
+    | `Vm_start of id * int * string list * string option
+    | `Vm_stop of id * int * process_exit
+  ]
+
+  let name = function
+    | `Startup -> []
+    | `Login (name, _, _) -> name
+    | `Logout (name, _, _) -> name
+    | `Vm_start (name, _, _ ,_) -> name
+    | `Vm_stop (name, _, _) -> name
+
+  let pp_log_event ppf = function
+    | `Startup -> Fmt.(pf ppf "startup")
+    | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" pp_id name Ipaddr.V4.pp_hum ip port
+    | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" pp_id name Ipaddr.V4.pp_hum ip port
+    | `Vm_start (name, pid, taps, block) ->
+      Fmt.pf ppf "%a started %d (tap %a, block %a)"
+        pp_id name pid Fmt.(list ~sep:(unit "; ") string) taps
         Fmt.(option ~none:(unit "no") string) block
-    | `VM_stop (pid, code) ->
-      let s, c = match code with
-        | `Exit n -> "exit", n
-        | `Signal n -> "signal", n
-        | `Stop n -> "stop", n
-      in
-      Fmt.pf ppf "STOPPED %d with %s %a" pid s Fmt.Dump.signal c
-    | `Block_create (name, size) ->
-      Fmt.pf ppf "BLOCK_CREATE %s %d" name size
-    | `Block_destroy name -> Fmt.pf ppf "BLOCK_DESTROY %s" name
-    | `Delegate (bridges, block) ->
-      Fmt.pf ppf "DELEGATE %a, block %a"
-        Fmt.(list ~sep:(unit "; ") string) bridges
-        Fmt.(option ~none:(unit "no") string) block
-      (* | `CRL of string *)
+    | `Vm_stop (name, pid, code) ->
+      Fmt.pf ppf "%a stopped %d with %a" pp_id name pid pp_process_exit code
 
-  type msg = hdr * event
+  type t = Ptime.t * log_event
 
-  let pp db ppf (hdr, event) =
-    Fmt.pf ppf "%a %a" (pp_hdr db) hdr pp_event event
+  let pp ppf (ts, ev) =
+    Fmt.pf ppf "%a: %a" (Ptime.pp_rfc3339 ()) ts pp_log_event ev
 end

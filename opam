@@ -1,12 +1,12 @@
-opam-version: "1.2"
+opam-version: "2.0"
 maintainer: "Hannes Mehnert <hannes@mehnert.org>"
 authors: ["Hannes Mehnert <hannes@mehnert.org>"]
-homepage: "https://github.com/hannesm/vmm"
-dev-repo: "https://github.com/hannesm/vmm.git"
-bug-reports: "https://github.com/hannesm/vmm/issues"
-available: [ ocaml-version >= "4.04.0"]
+homepage: "https://github.com/hannesm/albatross"
+dev-repo: "git+https://github.com/hannesm/albatross.git"
+bug-reports: "https://github.com/hannesm/albatross/issues"
 
 depends: [
+  "ocaml" {>= "4.05.0"}
   "ocamlfind" {build}
   "ocamlbuild" {build}
   "topkg" {build}
@@ -14,7 +14,6 @@ depends: [
   "ipaddr" {>= "2.2.0"}
   "hex"
   "cstruct"
-  "ppx_cstruct" {build & >= "3.0.0"}
   "logs"
   "rresult"
   "bos"
@@ -27,9 +26,10 @@ depends: [
   "nocrypto"
   "asn1-combinators" {>= "0.2.0"}
   "duration"
-  "decompress" {>= "0.7"}
+  "decompress" {= "0.7"}
 ]
 
 build: [
   [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
 ]
+synopsis: "Albatross - orchestrate and manage MirageOS unikernels"

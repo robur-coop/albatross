@@ -2,6 +2,11 @@
 
 open Lwt.Infix
 
+let pp_sockaddr ppf = function
+  | Lwt_unix.ADDR_UNIX str -> Fmt.pf ppf "unix domain socket %s" str
+  | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
+                                         (Unix.string_of_inet_addr addr) port
+
 let pp_process_status ppf = function
   | Unix.WEXITED c -> Fmt.pf ppf "exited with %d" c
   | Unix.WSIGNALED s -> Fmt.pf ppf "killed by signal %a" Fmt.Dump.signal s
@@ -27,7 +32,7 @@ let rec waitpid pid =
 let wait_and_clear pid stdout =
   Logs.debug (fun m -> m "waitpid() for pid %d" pid) ;
   waitpid pid >|= fun r ->
-  Vmm_commands.close_no_err stdout ;
+  Vmm_unix.close_no_err stdout ;
   match r with
   | Error () ->
     Logs.err (fun m -> m "waitpid() for %d returned error" pid) ;
@@ -36,8 +41,8 @@ let wait_and_clear pid stdout =
     Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
     ret s
 
-let read_exactly s =
-  let buf = Bytes.create 8 in
+let read_wire s =
+  let buf = Bytes.create 4 in
   let rec r b i l =
     Lwt.catch (fun () ->
         Lwt_unix.read s b i l >>= function
@@ -53,29 +58,28 @@ let read_exactly s =
          let err = Printexc.to_string e in
          Logs.err (fun m -> m "exception %s while reading" err) ;
          Lwt.return (Error `Exception))
-
   in
-  r buf 0 8 >>= function
+  r buf 0 4 >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
-    match Vmm_wire.parse_header (Bytes.to_string buf) with
-    | Error (`Msg m) -> Lwt.return (Error (`Msg m))
-    | Ok hdr ->
-      let l = hdr.Vmm_wire.length in
-      if l > 0 then
-        let b = Bytes.create l in
-        r b 0 l >|= function
-        | Error e -> Error e
-        | Ok () ->
-          (* Logs.debug (fun m -> m "read hdr %a, body %a"
+    let len = Cstruct.BE.get_uint32 (Cstruct.of_bytes buf) 0 in
+    if len > 0l then
+      let b = Bytes.create (Int32.to_int len) in
+      r b 0 (Int32.to_int len) >|= function
+      | Error e -> Error e
+      | Ok () ->
+        (*          Logs.debug (fun m -> m "read hdr %a, body %a"
                          Cstruct.hexdump_pp (Cstruct.of_bytes buf)
                          Cstruct.hexdump_pp (Cstruct.of_bytes b)) ; *)
-          Ok (hdr, Bytes.to_string b)
-      else
-        Lwt.return (Ok (hdr, ""))
+        match Vmm_asn.wire_of_cstruct (Cstruct.of_bytes b) with
+        | Ok w -> Ok w
+        | Error (`Msg msg) ->
+          Logs.err (fun m -> m "error %s while parsing data" msg) ;
+          Error `Exception
+    else
+        Lwt.return (Error `Eof)
 
 let write_raw s buf =
-  let buf = Bytes.unsafe_of_string buf in
   let rec w off l =
     Lwt.catch (fun () ->
         Lwt_unix.send s buf off l [] >>= fun n ->
@@ -87,5 +91,42 @@ let write_raw s buf =
          Logs.err (fun m -> m "exception %s while writing" (Printexc.to_string e)) ;
          Lwt.return (Error `Exception))
   in
-  (* Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
+  (*  Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
   w 0 (Bytes.length buf)
+
+let write_wire s wire =
+  let data = Vmm_asn.wire_to_cstruct wire in
+  let dlen = Cstruct.create 4 in
+  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.len data)) ;
+  let buf = Cstruct.(to_bytes (append dlen data)) in
+  write_raw s buf
+
+let safe_close fd =
+  Lwt.catch
+    (fun () -> Lwt_unix.close fd)
+    (fun _ -> Lwt.return_unit)
+
+let read_from_file file =
+  Lwt.catch (fun () ->
+      Lwt_unix.stat file >>= fun stat ->
+      let size = stat.Lwt_unix.st_size in
+      Lwt_unix.openfile file Lwt_unix.[O_RDONLY] 0 >>= fun fd ->
+      Lwt.catch (fun () ->
+          let buf = Bytes.create size in
+          let rec read off =
+            Lwt_unix.read fd buf off (size - off) >>= fun bytes ->
+            if bytes + off = size then
+              Lwt.return_unit
+            else
+              read (bytes + off)
+          in
+          read 0 >>= fun () ->
+          safe_close fd >|= fun () ->
+          Cstruct.of_bytes buf)
+        (fun e ->
+           Logs.err (fun m -> m "exception %s while reading %s" (Printexc.to_string e) file) ;
+           safe_close fd >|= fun () ->
+           Cstruct.empty))
+    (fun e ->
+       Logs.err (fun m -> m "exception %s while reading %s" (Printexc.to_string e) file) ;
+       Lwt.return Cstruct.empty)

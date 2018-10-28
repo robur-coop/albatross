@@ -1,6 +1,6 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-(** A tree data structure tracking dynamic resource usage.
+(** A tree data structure including policies and dynamic usage.
 
     Considering delegation of resources to someone, and further delegation
     to others - using a process which is not controlled by the authority -
@@ -14,43 +14,37 @@
 (** The type of the resource tree. *)
 type t
 
-(** The type of the resource tree entry. *)
-type entry
-
 (** [empty] is the empty tree. *)
 val empty : t
-
-(** [pp ppf t] pretty prints the tree. *)
-val pp : t Fmt.t
-
-(** [pp_entry ppf e] pretty prints the entry. *)
-val pp_entry : entry Fmt.t
-
-(** [check_dynamic t vm delegates] checks whether creating [vm] would violate
-    the policies of the [delegates] with respect to the running vms. *)
-val check_dynamic : t ->
-  Vmm_core.vm_config -> (string * Vmm_core.delegation) list ->
-  (unit, [> `Msg of string ]) result
-
-(** [exists t id] is [true] if the [id] already exists, [false] otherwise. *)
-val exists : t -> Vmm_core.id -> bool
-
-(** [find t id] is either [Some entry] or [None]. *)
-val find : t -> Vmm_core.id -> entry option
 
 (** [find_vm t id] is either [Some vm] or [None]. *)
 val find_vm : t -> Vmm_core.id -> Vmm_core.vm option
 
-(** [iter f entry] applies [f] to each vm of [entry]. *)
-val iter : (Vmm_core.vm -> unit) -> entry -> unit
+(** [find_policy t id] is either [Some policy] or [None]. *)
+val find_policy : t -> Vmm_core.id -> Vmm_core.policy option
 
-(** [fold f entry acc] folds [f] over [entry]. *)
-val fold : ('a -> Vmm_core.vm -> 'a) -> 'a -> entry -> 'a
+(** [check_vm_policy t vm] checks whether [vm] under [id] in [t] would be
+    allowed under the current policies. *)
+val check_vm_policy : t -> Vmm_core.id -> Vmm_core.vm_config -> bool
 
-(** [insert t id vm] inserts [vm] under [id] in [t], and returns the new [t] or
-    an error.  It also updates the resource usages on the path. *)
-val insert : t -> Vmm_core.id -> Vmm_core.vm -> (t, [> `Msg of string]) result
+(** [insert_vm t vm] inserts [vm] under [id] in [t], and returns the new [t] or
+    an error. *)
+val insert_vm : t -> Vmm_core.id -> Vmm_core.vm -> (t, [> `Msg of string]) result
 
-(** [remove t id vm] removes [id] from [t], and returns the new [t] or an
-    error.  This also updates the resources usages on the path. *)
-val remove : t -> Vmm_core.id -> Vmm_core.vm -> (t, [> `Msg of string]) result
+(** [insert_policy t id policy] inserts [policy] under [id] in [t], and returns
+   the new [t] or an error. *)
+val insert_policy : t -> Vmm_core.id -> Vmm_core.policy -> (t, [> `Msg of string]) result
+
+(** [remove_vm t id] removes vm [id] from [t]. *)
+val remove_vm : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
+
+(** [remove_policy t id] removes policy [id] from [t]. *)
+val remove_policy : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
+
+(** [fold t id f g acc] folds [f] and [g] below [id] over [t]. *)
+val fold : t -> Vmm_core.id ->
+  (Vmm_core.id -> Vmm_core.vm -> 'a -> 'a) ->
+  (Vmm_core.id -> Vmm_core.policy -> 'a -> 'a) -> 'a -> 'a
+
+(** [pp] is a pretty printer for [t]. *)
+val pp : t Fmt.t

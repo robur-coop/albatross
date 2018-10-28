@@ -1,7 +1,2 @@
 description = "VM Manager"
 version = "%%VERSION_NUM%%"
-requires = "rresult logs ipaddr x509 tls bos hex ptime ptime.clock.os astring duration asn1-combinators lwt tls.lwt decompress"
-archive(byte) = "vmm.cma"
-archive(native) = "vmm.cmxa"
-plugin(byte) = "vmm.cma"
-plugin(native) = "vmm.cmxs"

@@ -1,9 +1,22 @@
-# Albatross: Managing virtual machines
+# Albatross: orchestrate and manage MirageOS unikernels
 
 [![Build Status](https://travis-ci.org/hannesm/albatross.svg?branch=master)](https://travis-ci.org/hannesm/albatross)
 
-A set of binaries to manage, provision, and deploy virtual machine images.  This
-is very much work in progress, don't expect anything stable.
+A set of binaries to manage, provision, and deploy MirageOS unikernels.
+Some daemons are supposed to run in the host system, communicating via Unix domain sockets:
+- `vmmd`: privileged to create and destroy unikernels (also creates tap devices and attaches these to bridges)
+- `vmmd_console`: reads the console output of unikernels (via a fifo passed from `vmmd`)
+- `vmmd_log`: event log
+- `vmmd_stats`: statistics (`getrusage`, ifstat, BHyve debug counters) gathering
+- `vmmd_tls`: authenticates and proxies commands carried by a client certificate
+- `vmmd_influx`: reports statistics from stats to influx listener
+
+Command-line applications for local and remote management are provided as well
+- `vmmc_local`: executes a command locally via Unix domain sockets
+- `vmmc_remote`: connects to `vmm_tls_endpoint` and executes command
+- `vmmc_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key on host)
+- `vmmp_request`: creates a certificate signing request containing a command
+- `vmmp_ca`: certificate authority operations: sign, generate (and revoke)
 
 Please read [the blog article](https://hannes.nqsb.io/Posts/VMM) for motivation
 and an overview.
@@ -14,13 +27,12 @@ is used on top to (more gracefully) handle multiple connection, and to have a
 watching thread (in `waitpid(2)`) for every virtual machine started by vmmd.
 
 To install Albatross, run `opam pin add albatross
-https://github.com/hannesm/albatross`.  On FreeBSD, `opam pin add
-solo5-kernel-ukvm --dev` is needed as well.
+https://github.com/hannesm/albatross`.
 
 The following elaborates on how to get the software up and running, following by
 provisioning and deploying some unikernels.  There is a *server* (`SRV`)
 component which needs six binaries: vmm_console, vmm_log, vmm_stats_lwt, vmmd,
-ukvm-bin.none, and ukvm-bin.net; a `CA` machine (which should be air-gapped, or
+solo6-hvt.none, and solo5-hvt.net; a `CA` machine (which should be air-gapped, or
 at least use some hardware token) for provisioning which needs vmm_sign, and
 vmm_gen_ca; and a *development* (`DEV`) machine which has a fully featured OCaml
 and MirageOS environment.  Each step is prefixed with the machine it is supposed
@@ -63,15 +75,15 @@ steps to produce the remaining required binaries:
 CA> COPY cacert.pem server.pem server.key SRV:
 DEV> git clone https://github.com/mirage/mirage-skeleton.git
 DEV> cd mirage-skeleton/tutorial/hello
-DEV> mirage configure -t ukvm
+DEV> mirage configure -t hvt
 DEV> mirage build
-DEV> mv ukvm-bin /tmp/ukvm-bin.none
-DEV> cd ../device-usage/network
-DEV> mirage configure -t ukvm
+DEV> mv solo5-hvt /tmp/solo5-hvt.none
+DEV> cd ../../device-usage/network
+DEV> mirage configure -t hvt
 DEV> mirage build
-DEV> mv ukvm-bin /tmp/ukvm-bin.net
+DEV> mv solo5-hvt /tmp/solo5-hvt.net
 DEV> cd ../../..
-DEV> COPY /tmp/ukvm-bin.none /tmp/ukvm-bin.net SRV:/var/db/albatross
+DEV> COPY /tmp/solo5-hvt.none /tmp/solo5-hvt.net SRV:/var/db/albatross
 DEV> COPY vmm_console vmm_log vmm_stats_lwt vmmd SRV:/opt/bin/
 ```
 
@@ -104,7 +116,7 @@ able to collect statistics unless running as a privileged user, the following
 
 ```
 [albatross=10]
-add path 'vmm/ukvm*' mode 0660 group albatross
+add path 'vmm/solo5*' mode 0660 group albatross
 ```
 
 Also need to activate by adding `devfs_system_ruleset="albatross"` to
@@ -140,12 +152,12 @@ This produced in the first step two files, `admin.req` and `admin.key`, and in
 the second step two more files, `dev.db` and `admin.pem`.
 
 ```
-DEV> vmm_req_vm hello mirage-skeleton/tutorial/hello/hello.ukvm 12 1
+DEV> vmm_req_vm hello mirage-skeleton/tutorial/hello/hello.hvt 12 1
 DEV> vmm_sign dev.db dev.pem dev.key hello.req
 ```
 
 This generates a private key `hello.key` and a certificate signing request named
-`hello.req` including the virtual machine image `hello.ukvm`, which gets 12MB
+`hello.req` including the virtual machine image `hello.hvt`, which gets 12MB
 memory and CPU id 1.  The second command used the `dev.key` to sign the signing
 request and output a `hello.pem`.
 

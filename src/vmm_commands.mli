@@ -1,19 +1,80 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
-
-open Rresult
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
 
 open Vmm_core
 
-val prepare : vm_config -> (string list, [> R.msg ]) result
+(** The type of versions of the grammar defined below. *)
+type version = [ `AV2 ]
 
-val shutdown : vm -> (unit, [> R.msg ]) result
+(** [version_eq a b] is true if [a] and [b] are equal. *)
+val version_eq : version -> version -> bool
 
-val exec : vm_config -> string list -> (vm, [> R.msg ]) result
+(** [pp_version ppf version] pretty prints [version] onto [ppf]. *)
+val pp_version : version Fmt.t
 
-val destroy : vm -> unit
+type console_cmd = [
+  | `Console_add
+  | `Console_subscribe of Ptime.t option
+]
 
-val close_no_err : Unix.file_descr -> unit
+type stats_cmd = [
+  | `Stats_add of int * string list
+  | `Stats_remove
+  | `Stats_subscribe
+]
 
-val create_tap : string -> (string, [> R.msg ]) result
+type log_cmd = [
+  | `Log_subscribe of Ptime.t option
+]
 
-val create_bridge : string -> (unit, [> R.msg ]) result
+type vm_cmd = [
+  | `Vm_info
+  | `Vm_create of vm_config
+  | `Vm_force_create of vm_config
+  | `Vm_destroy
+]
+
+type policy_cmd = [
+  | `Policy_info
+  | `Policy_add of policy
+  | `Policy_remove
+]
+
+type t = [
+  | `Console_cmd of console_cmd
+  | `Stats_cmd of stats_cmd
+  | `Log_cmd of log_cmd
+  | `Vm_cmd of vm_cmd
+  | `Policy_cmd of policy_cmd ]
+
+val pp : t Fmt.t
+
+type data = [
+  | `Console_data of Ptime.t * string
+  | `Stats_data of Stats.t
+  | `Log_data of Log.t
+]
+
+val pp_data : data Fmt.t
+
+type header = {
+  version : version ;
+  sequence : int64 ;
+  id : id ;
+}
+
+type success = [
+  | `Empty
+  | `String of string
+  | `Policies of (id * policy) list
+  | `Vms of (id * vm_config) list
+]
+
+type wire = header * [
+    | `Command of t
+    | `Success of success
+    | `Failure of string
+    | `Data of data ]
+
+val pp_wire : wire Fmt.t
+
+val endpoint : t -> service * [ `End | `Read ]
