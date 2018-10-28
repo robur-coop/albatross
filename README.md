@@ -18,6 +18,8 @@ Command-line applications for local and remote management are provided as well
 - `vmmp_request`: creates a certificate signing request containing a command
 - `vmmp_ca`: certificate authority operations: sign, generate (and revoke)
 
+TODO: from here on, this documentation is not up to date.
+
 Please read [the (outdated) blog article](https://hannes.nqsb.io/Posts/VMM) for motivation
 and an overview.
 
@@ -32,7 +34,7 @@ https://github.com/hannesm/albatross`.
 The following elaborates on how to get the software up and running, following by
 provisioning and deploying some unikernels.  There is a *server* (`SRV`)
 component which needs six binaries: vmm_console, vmm_log, vmm_stats_lwt, vmmd,
-solo6-hvt.none, and solo5-hvt.net; a `CA` machine (which should be air-gapped, or
+solo5-hvt.none, and solo5-hvt.net; a `CA` machine (which should be air-gapped, or
 at least use some hardware token) for provisioning which needs vmm_sign, and
 vmm_gen_ca; and a *development* (`DEV`) machine which has a fully featured OCaml
 and MirageOS environment.  Each step is prefixed with the machine it is supposed
