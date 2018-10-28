@@ -119,6 +119,10 @@ let cpu =
   let doc = "CPUid" in
   Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
 
+let vm_mem =
+  let doc = "Memory to assign" in
+  Arg.(value & opt int 32 & info [ "mem" ] ~doc)
+
 let args =
   let doc = "Boot arguments" in
   Arg.(value & opt_all string [] & info [ "arg" ] ~doc)

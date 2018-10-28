@@ -13,7 +13,7 @@ let cert_name cert =
       match Vmm_asn.cert_extension_of_cstruct data with
       | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension")
       | Ok (_, `Policy_cmd (`Policy_add _)) -> Error (`Msg "policy add may not have an empty name")
-      | _ -> Ok (Some name)
+      | _ -> Ok None
     else Ok (Some name)
 
 let name chain =

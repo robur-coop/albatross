@@ -158,7 +158,11 @@ let handle_command t (header, payload) =
         | `Vm_create vm_config ->
           handle_create t header vm_config
         | `Vm_force_create vm_config ->
-          Vmm_resources.remove_vm t.resources id >>= fun resources ->
+          let resources =
+            match Vmm_resources.remove_vm t.resources id with
+            | Error _ -> t.resources
+            | Ok r -> r
+          in
           if Vmm_resources.check_vm_policy resources id vm_config then
             begin match Vmm_resources.find_vm t.resources id with
               | None -> handle_create t header vm_config

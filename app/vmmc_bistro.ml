@@ -197,7 +197,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(ret (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ force $ vm_name $ image $ cpu $ mem $ args $ block $ net $ compress_level)),
+  Term.(ret (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level)),
   Term.info "create" ~doc ~man
 
 let console_cmd =
