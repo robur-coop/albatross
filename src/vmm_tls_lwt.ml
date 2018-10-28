@@ -62,3 +62,8 @@ let write_tls s wire =
       | e ->
         Logs.err (fun m -> m "TLS write exception %s" (Printexc.to_string e)) ;
         Lwt.return (Error `Exception))
+
+let close tls =
+  Lwt.catch
+    (fun () -> Tls_lwt.Unix.close tls)
+    (fun _ -> Lwt.return_unit)
