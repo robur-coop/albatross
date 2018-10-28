@@ -2,10 +2,6 @@
 
 open Lwt.Infix
 
-open Astring
-
-open Vmm_core
-
 let version = `AV2
 
 let process fd =
@@ -62,46 +58,23 @@ let jump opt_socket name cmd =
 
 let info_ _ opt_socket name = jump opt_socket name (`Vm_cmd `Vm_info)
 
-let policy _ opt_socket name = jump opt_socket name (`Policy_cmd `Policy_info)
+let info_policy _ opt_socket name =
+  jump opt_socket name (`Policy_cmd `Policy_info)
 
 let remove_policy _ opt_socket name =
   jump opt_socket name (`Policy_cmd `Policy_remove)
 
 let add_policy _ opt_socket name vms memory cpus block bridges =
-  let bridges = match bridges with
-    | xs ->
-      let add m v =
-        let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
-        String.Map.add n v m
-      in
-      List.fold_left add String.Map.empty xs
-  and cpuids = IS.of_list cpus
-  in
-  let policy = { vms ; cpuids ; memory ; block ; bridges } in
-  jump opt_socket name (`Policy_cmd (`Policy_add policy))
+  let p = Vmm_cli.policy vms memory cpus block bridges in
+  jump opt_socket name (`Policy_cmd (`Policy_add p))
 
 let destroy _ opt_socket name =
   jump opt_socket name (`Vm_cmd `Vm_destroy)
 
-let create _ opt_socket force name image cpuid requested_memory boot_params block_device network =
-  let image' = match Bos.OS.File.read (Fpath.v image) with
-    | Ok data -> data
-    | Error (`Msg s) -> invalid_arg s
-  in
-  let argv = match boot_params with
-    | [] -> None
-    | xs -> Some xs
-  (* TODO we could do the compression btw *)
-  and vmimage = `Hvt_amd64, Cstruct.of_string image'
-  in
-  let vm_config = { cpuid ; requested_memory ; block_device ; network ; vmimage ; argv } in
-  let cmd =
-    if force then
-      `Vm_force_create vm_config
-    else
-      `Vm_create vm_config
-  in
-  jump opt_socket name (`Vm_cmd cmd)
+let create _ opt_socket force name image cpuid requested_memory boot_params block_device network compression =
+  match Vmm_cli.create_vm force image cpuid requested_memory boot_params block_device network compression with
+  | Ok cmd -> jump opt_socket name (`Vm_cmd cmd)
+  | Error (`Msg msg) -> `Error (false, msg)
 
 let console _ opt_socket name since =
   jump opt_socket name (`Console_cmd (`Console_subscribe since))
@@ -123,10 +96,6 @@ open Vmm_cli
 let socket =
   let doc = "Socket to connect to" in
   Arg.(value & opt (some string) None & info [ "socket" ] ~doc)
-
-let force =
-  let doc = "force VM creation." in
-  Arg.(value & flag & info [ "f" ; "force" ] ~doc)
 
 let image =
   let doc = "File of virtual machine image." in
@@ -169,28 +138,8 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(ret (const policy $ setup_log $ socket $ opt_vm_name)),
+  Term.(ret (const info_policy $ setup_log $ socket $ opt_vm_name)),
   Term.info "policy" ~doc ~man
-
-let cpus =
-  let doc = "CPUs to allow" in
-  Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
-
-let vms =
-  let doc = "Number of VMs to allow" in
-  Arg.(required & pos 0 (some int) None & info [] ~doc)
-
-let block =
-  let doc = "Block storage to allow" in
-  Arg.(value & opt (some int) None & info [ "block" ] ~doc)
-
-let mem =
-  let doc = "Memory to allow" in
-  Arg.(value & opt int 512 & info [ "mem" ] ~doc)
-
-let bridge =
-  let doc = "Bridge to allow" in
-  Arg.(value & opt_all bridge [] & info [ "bridge" ] ~doc)
 
 let add_policy_cmd =
   let doc = "Add a policy" in
@@ -198,24 +147,8 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ socket $ opt_vm_name $ vms $ mem $ cpus $ block $ bridge)),
+  Term.(ret (const add_policy $ setup_log $ socket $ opt_vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
   Term.info "add_policy" ~doc ~man
-
-let cpu =
-  let doc = "CPUid" in
-  Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
-
-let args =
-  let doc = "Boot arguments" in
-  Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
-
-let block =
-  let doc = "Block device name" in
-  Arg.(value & opt (some string) None & info [ "block" ] ~doc)
-
-let net =
-  let doc = "Network device" in
-  Arg.(value & opt_all string [] & info [ "net" ] ~doc)
 
 let create_cmd =
   let doc = "creates a virtual machine" in
@@ -223,19 +156,8 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(ret (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ mem $ args $ block $ net)),
+  Term.(ret (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ mem $ args $ block $ net $ compress_level)),
   Term.info "create" ~doc ~man
-
-let timestamp_c =
-  let parse s = match Ptime.of_rfc3339 s with
-    | Ok (t, _, _) -> `Ok t
-    | Error _ -> `Error "couldn't parse timestamp"
-  in
-  (parse, Ptime.pp_rfc3339 ())
-
-let since =
-  let doc = "Since" in
-  Arg.(value & opt (some timestamp_c) None & info [ "since" ] ~doc)
 
 let console_cmd =
   let doc = "console of a VM" in
@@ -272,13 +194,13 @@ let help_cmd =
   let doc = "display help about vmmc" in
   let man =
     [`S "DESCRIPTION";
-     `P "Prints help about conex commands and subcommands"]
+     `P "Prints help about albatross local client commands and subcommands"]
   in
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ topic)),
   Term.info "help" ~doc ~man
 
 let default_cmd =
-  let doc = "VMM client" in
+  let doc = "VMM local client" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) connects to vmmd via a local socket" ]

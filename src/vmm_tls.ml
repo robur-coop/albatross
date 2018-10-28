@@ -42,19 +42,6 @@ let wire_command_of_cert version cert =
       else
         Ok wire
 
-(* let check_policy =
-     (* get names and static resources *)
-     List.fold_left (fun acc ca ->
-         acc >>= fun acc ->
-         Vmm_asn.delegation_of_cert asn_version ca >>= fun res ->
-         let name = id ca in
-         Ok ((name, res) :: acc))
-       (Ok []) chain >>= fun policies ->
-     (* check static policies *)
-     Logs.debug (fun m -> m "now checking static policies") ;
-     check_policies vm_config (List.map snd policies) >>= fun () ->
-*)
-
 let extract_policies version chain =
   List.fold_left (fun acc cert ->
       match acc, wire_command_of_cert version cert with
