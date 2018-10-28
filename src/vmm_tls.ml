@@ -6,21 +6,24 @@ open Rresult.R.Infix
 (* we skip all non-albatross certificates *)
 let cert_name cert =
   match X509.Extension.unsupported cert Vmm_asn.oid with
-  | None -> None
-  | Some _ ->
-    let data = X509.common_name_to_string cert in
-    (* if the common name is empty, skip [useful for vmmc_bistro at least]
-       TODO: document properly and investigate potential security issue with
-       multi-tenant system (likely ca should ensure to never sign a delegation
-       with empty common name) *)
-    if data = "" then None else Some data
+  | None -> Ok None
+  | Some (_, data) ->
+    let name = X509.common_name_to_string cert in
+    if name = "" then
+      match Vmm_asn.cert_extension_of_cstruct data with
+      | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension")
+      | Ok (_, `Policy_cmd (`Policy_add _)) -> Error (`Msg "policy add may not have an empty name")
+      | _ -> Ok (Some name)
+    else Ok (Some name)
 
 let name chain =
   List.fold_left (fun acc cert ->
-      match cert_name cert with
-      | None -> acc
-      | Some data -> data :: acc)
-    [] chain
+      match acc, cert_name cert with
+      | Error e, _ -> Error e
+      | _, Error e -> Error e
+      | Ok acc, Ok None -> Ok acc
+      | Ok acc, Ok Some data -> Ok (data :: acc))
+    (Ok []) chain
 
 (* this separates the leaf and top-level certificate from the chain,
    and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
@@ -53,18 +56,17 @@ let extract_policies version chain =
           Vmm_commands.pp_version received
           Vmm_commands.pp_version version
       | Ok (prefix, acc), Ok (`Policy_cmd (`Policy_add p)) ->
-        let name = match cert_name cert with
+        (cert_name cert >>| function
           | None -> prefix
-          | Some x -> x :: prefix
-        in
-        Ok (name, (name, p) :: acc)
+          | Some x -> x :: prefix) >>| fun name ->
+        (name, (name, p) :: acc)
       | _, Ok wire ->
         R.error_msgf "unexpected wire %a" Vmm_commands.pp wire)
     (Ok ([], [])) chain
 
 let handle _addr version chain =
   separate_chain chain >>= fun (leaf, rest) ->
-  let name = name chain in
+  name chain >>= fun name ->
   Logs.debug (fun m -> m "leaf is %s, chain %a"
                  (X509.common_name_to_string leaf)
                  Fmt.(list ~sep:(unit " -> ") string)
