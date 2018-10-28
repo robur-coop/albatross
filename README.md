@@ -16,7 +16,7 @@ Command-line applications for local and remote management are provided as well
 - `vmmc_remote`: connects to `vmm_tls_endpoint` and executes command
 - `vmmc_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key on host)
 - `vmmp_request`: creates a certificate signing request containing a command
-- `vmmp_sign`: signs a certificate signing request
+- `vmmp_ca`: certificate authority operations: sign, generate (and revoke)
 
 Please read [the blog article](https://hannes.nqsb.io/Posts/VMM) for motivation
 and an overview.

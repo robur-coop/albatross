@@ -16,5 +16,5 @@ let () =
     Pkg.bin "app/vmmc_remote" ;
     Pkg.bin "app/vmmc_bistro" ;
     Pkg.bin "app/vmmp_request" ;
-    Pkg.bin "app/vmmp_sign" ;
+    Pkg.bin "app/vmmp_ca" ;
   ]

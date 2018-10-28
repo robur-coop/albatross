@@ -19,7 +19,7 @@ true : package(rresult logs ipaddr bos hex ptime astring duration cstruct decomp
 <app/vmmc_bistro.{ml,native,byte}>: package(nocrypto tls.lwt nocrypto.lwt)
 
 <app/vmmp_request.{ml,native,byte}>: package(nocrypto.unix ptime.clock.os x509)
-<app/vmmp_sign.{ml,native,byte}>: package(nocrypto.unix ptime.clock.os x509)
+<app/vmmp_ca.{ml,native,byte}>: package(nocrypto.unix ptime.clock.os x509)
 
 <app/vmm_provision.{ml}>: package(nocrypto.unix ptime.clock.os x509)
 
