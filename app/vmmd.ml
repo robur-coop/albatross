@@ -142,6 +142,7 @@ let server_socket sock =
     | true -> Lwt_unix.unlink name
     | false -> Lwt.return_unit) >>= fun () ->
   let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  Lwt_unix.set_close_on_exec s ;
   Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
   Lwt_unix.listen s 1 ;
   s
