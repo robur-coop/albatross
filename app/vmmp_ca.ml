@@ -97,11 +97,11 @@ open Vmm_cli
 
 let csr =
   let doc = "signing request" in
-  Arg.(required & pos 3 (some file) None & info [] ~doc)
+  Arg.(required & pos 3 (some file) None & info [] ~doc ~docv:"CSR")
 
 let key =
   let doc = "Private key" in
-  Arg.(required & pos 2 (some file) None & info [] ~doc)
+  Arg.(required & pos 2 (some file) None & info [] ~doc ~docv:"KEY")
 
 let days =
   let doc = "Number of days" in
@@ -109,7 +109,7 @@ let days =
 
 let db =
   let doc = "Database" in
-  Arg.(required & pos 1 (some string) None & info [] ~doc)
+  Arg.(required & pos 1 (some string) None & info [] ~doc ~docv:"DB")
 
 let sname =
   let doc = "Server name" in

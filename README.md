@@ -18,7 +18,7 @@ Command-line applications for local and remote management are provided as well
 - `vmmp_request`: creates a certificate signing request containing a command
 - `vmmp_ca`: certificate authority operations: sign, generate (and revoke)
 
-Please read [the blog article](https://hannes.nqsb.io/Posts/VMM) for motivation
+Please read [the (outdated) blog article](https://hannes.nqsb.io/Posts/VMM) for motivation
 and an overview.
 
 The implementation uses explicit errors (no exceptions), and make mostly use of

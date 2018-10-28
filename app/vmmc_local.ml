@@ -99,11 +99,11 @@ let socket =
 
 let image =
   let doc = "File of virtual machine image." in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"IMAGE")
 
 let vm_name =
   let doc = "Name virtual machine." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc)
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
 
 let destroy_cmd =
   let doc = "destroys a virtual machine" in

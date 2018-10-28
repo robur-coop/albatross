@@ -81,11 +81,11 @@ open Cmdliner
 
 let nam =
   let doc = "Name to provision" in
-  Arg.(required & pos 0 (some string) None & info [] ~doc)
+  Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VM")
 
 let cacert =
   let doc = "cacert" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"CACERT")
 
 let key =
   let doc = "Private key" in
@@ -93,8 +93,8 @@ let key =
 
 let db =
   let doc = "Database" in
-  Arg.(required & pos 0 (some string) None & info [] ~doc)
+  Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"DB")
 
 let mem =
   let doc = "Memory to provision" in
-  Arg.(required & pos 2 (some int) None & info [] ~doc)
+  Arg.(required & pos 2 (some int) None & info [] ~doc ~docv:"MEM")

@@ -101,7 +101,7 @@ let cpus =
 
 let vms =
   let doc = "Number of VMs to allow" in
-  Arg.(required & pos 0 (some int) None & info [] ~doc)
+  Arg.(required & pos 0 (some int) None & info [] ~doc ~docv:"VMS")
 
 let block_size =
   let doc = "Block storage to allow" in

@@ -287,7 +287,7 @@ let socket =
   Arg.(value & opt string (Vmm_core.socket_path `Stats) & info [ "socket" ] ~doc)
 
 let influx =
-  Arg.(required & pos 0 (some host_port) None & info [] ~docv:"influx"
+  Arg.(required & pos 0 (some host_port) None & info [] ~docv:"INFLUXHOST:INFLUXPORT"
          ~doc:"the influx hostname:port to connect to")
 
 let cmd =

@@ -180,15 +180,15 @@ open Vmm_cli
 
 let cacert =
   let doc = "CA certificate" in
-  Arg.(required & pos 0 (some file) None & info [] ~doc)
+  Arg.(required & pos 0 (some file) None & info [] ~doc ~docv:"CA")
 
 let cert =
   let doc = "Certificate" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"CERT")
 
 let key =
   let doc = "Private key" in
-  Arg.(required & pos 2 (some file) None & info [] ~doc)
+  Arg.(required & pos 2 (some file) None & info [] ~doc ~docv:"KEY")
 
 let port =
   let doc = "TCP listen port" in

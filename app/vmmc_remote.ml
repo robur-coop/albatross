@@ -47,19 +47,19 @@ open Vmm_cli
 
 let cas =
   let doc = "The full path to PEM encoded certificate authorities. Can either be a FILE or a DIRECTORY." in
-  Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE" ~doc)
+  Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"CA")
 
 let client_cert =
   let doc = "Use a client certificate chain" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"CERT")
 
 let client_key =
   let doc = "Use a client key" in
-  Arg.(required & pos 2 (some file) None & info [] ~doc)
+  Arg.(required & pos 2 (some file) None & info [] ~doc ~docv:"KEY")
 
 let destination =
-  Arg.(required & pos 3 (some host_port) None & info [] ~docv:"destination"
-         ~doc:"the destination hostname:port to connect to")
+  let doc = "the destination hostname:port to connect to" in
+  Arg.(required & pos 3 (some host_port) None & info [] ~docv:"HOST:PORT" ~doc)
 
 let cmd =
   let doc = "VMM remote TLS client" in
