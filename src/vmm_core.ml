@@ -61,7 +61,7 @@ let domain id = match List.rev id with
   | [] -> []
 
 let pp_id ppf ids =
-  Fmt.(pf ppf "%a" (list ~sep:(unit ".") string) ids)
+  Fmt.(pf ppf "(%d)%a" (List.length ids) (list ~sep:(unit ".") string) ids)
 
 let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
 

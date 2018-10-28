@@ -27,6 +27,13 @@ type entry =
 
 type t = entry Vmm_trie.t
 
+let pp ppf t =
+  Vmm_trie.fold [] t
+    (fun id ele () -> match ele with
+       | Vm vm -> Fmt.pf ppf "vm %a: %a@." pp_id id pp_vm_config vm.config
+       | Policy p -> Fmt.pf ppf "policy %a: %a@." pp_id id pp_policy p)
+       ()
+
 let empty = Vmm_trie.empty
 
 let remove t name = Vmm_trie.remove name t

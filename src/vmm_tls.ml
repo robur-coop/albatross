@@ -8,7 +8,13 @@ let name chain =
   List.fold_left (fun acc cert ->
       match X509.Extension.unsupported cert Vmm_asn.oid with
       | None -> acc
-      | Some _ -> X509.common_name_to_string cert :: acc)
+      | Some _ ->
+        let data = X509.common_name_to_string cert in
+        (* if the common name is empty, skip [useful for vmmc_bistro at least]
+           TODO: document properly and investigate potential security issue with
+           multi-tenant system (likely ca should ensure to never sign a delegation
+           with empty common name) *)
+        if data = "" then acc else data :: acc)
     [] chain
 
 (* this separates the leaf and top-level certificate from the chain,

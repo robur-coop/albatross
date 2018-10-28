@@ -39,3 +39,6 @@ val remove : t -> Vmm_core.id -> t
 val fold : t -> Vmm_core.id ->
   (Vmm_core.id -> Vmm_core.vm -> 'a -> 'a) ->
   (Vmm_core.id -> Vmm_core.policy -> 'a -> 'a) -> 'a -> 'a
+
+(** [pp] is a pretty printer for [t]. *)
+val pp : t Fmt.t
