@@ -71,6 +71,7 @@ let jump _ db cacert cakey csrname days =
   | Error (`Msg e) -> `Error (false, e)
 
 open Cmdliner
+open Vmm_cli
 
 let csr =
   let doc = "signing request" in

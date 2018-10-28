@@ -2,20 +2,6 @@
 
 let asn_version = `AV2
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
-let l_exts =
-  [ (true, `Key_usage [ `Digital_signature ; `Key_encipherment ])
-  ; (true, `Basic_constraints (false, None))
-  ; (true, `Ext_key_usage [`Client_auth]) ]
-
-let d_exts ?len () =
-  [ (true, (`Basic_constraints (true, len)))
-  ; (true, (`Key_usage [ `Key_cert_sign ; `CRL_sign ; `Digital_signature ; `Content_commitment ])) ]
-
 let timestamps validity =
   let now = Ptime_clock.now () in
   match Ptime.add_span now (Ptime.Span.of_int_s (Duration.to_sec validity)) with
@@ -92,11 +78,6 @@ let priv_key ?(bits = 2048) fn name =
     Ok (X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string s))
 
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
 
 let nam =
   let doc = "Name to provision" in

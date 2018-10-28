@@ -36,43 +36,8 @@ let jump _ name key image mem cpu args block net force compression =
   | Ok () -> `Ok ()
   | Error (`Msg m) -> `Error (false, m)
 
-open Cmdliner
-
-let cpu =
-  let doc = "CPUid" in
-  Arg.(required & pos 3 (some int) None & info [] ~doc)
-
-let image =
-  let doc = "Image file to provision" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc)
-
-let args =
-  let doc = "Boot arguments" in
-  Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
-
-let block =
-  let doc = "Block device name" in
-  Arg.(value & opt (some string) None & info [ "block" ] ~doc)
-
-let net =
-  let doc = "Network device" in
-  Arg.(value & opt_all string [] & info [ "net" ] ~doc)
-
-let force =
-  let doc = "Force creation (destroy VM with same name if it exists)" in
-  Arg.(value & flag & info [ "force" ] ~doc)
-
-let compress_level =
-  let doc = "Compression level (0 for no compression)" in
-  Arg.(value & opt int 4 & info [ "compression-level" ] ~doc)
-
-let cmd =
-  Term.(ret (const jump $ setup_log $ nam $ key $ image $ mem $ cpu $ args $ block $ net $ force $ compress_level)),
-  Term.info "vmmp_csr" ~version:"%%VERSION_NUM%%"
-
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
-
+(*
 open Vmm_provision
 open Vmm_asn
 
@@ -127,6 +92,43 @@ let bridge =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ nam $ key $ vms $ mem $ cpus $ block $ bridge)),
+  Term.info "vmmp_csr" ~version:"%%VERSION_NUM%%"
+
+let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+                                                          *)
+open Cmdliner
+open Vmm_cli
+
+let cpu =
+  let doc = "CPUid" in
+  Arg.(required & pos 3 (some int) None & info [] ~doc)
+
+let image =
+  let doc = "Image file to provision" in
+  Arg.(required & pos 1 (some file) None & info [] ~doc)
+
+let args =
+  let doc = "Boot arguments" in
+  Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
+
+let block =
+  let doc = "Block device name" in
+  Arg.(value & opt (some string) None & info [ "block" ] ~doc)
+
+let net =
+  let doc = "Network device" in
+  Arg.(value & opt_all string [] & info [ "net" ] ~doc)
+
+let force =
+  let doc = "Force creation (destroy VM with same name if it exists)" in
+  Arg.(value & flag & info [ "force" ] ~doc)
+
+let compress_level =
+  let doc = "Compression level (0 for no compression)" in
+  Arg.(value & opt int 4 & info [ "compression-level" ] ~doc)
+
+let cmd =
+  Term.(ret (const jump $ setup_log $ nam $ key $ image $ mem $ cpu $ args $ block $ net $ force $ compress_level)),
   Term.info "vmmp_csr" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

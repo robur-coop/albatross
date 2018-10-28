@@ -3,7 +3,13 @@
 open Rresult
 open Rresult.R.Infix
 
-let name cert = X509.common_name_to_string cert
+(* we skip all non-albatross certificates *)
+let name chain =
+  List.fold_left (fun acc cert ->
+      match X509.Extension.unsupported cert Vmm_asn.oid with
+      | None -> acc
+      | Some _ -> X509.common_name_to_string cert :: acc)
+    [] chain
 
 (* this separates the leaf and top-level certificate from the chain,
    and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
@@ -39,13 +45,12 @@ let wire_command_of_cert version cert =
 *)
 
 let handle _addr version chain =
-  separate_chain chain >>= fun (leaf, chain) ->
-  let prefix = List.map name chain in
-  let name = prefix @ [ name leaf ] in
+  separate_chain chain >>= fun (leaf, rest) ->
+  let name = name chain in
   Logs.debug (fun m -> m "leaf is %s, chain %a"
                  (X509.common_name_to_string leaf)
                  Fmt.(list ~sep:(unit " -> ") string)
-                 (List.map X509.common_name_to_string chain)) ;
+                 (List.map X509.common_name_to_string rest)) ;
   (* TODO: inspect top-level-cert of chain. *)
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   (* TODO: update policies (parse chain for policy, and apply them)! *)

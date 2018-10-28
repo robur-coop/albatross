@@ -30,20 +30,8 @@ let write_complete s cs =
   w 0
 
 let read_from_file file =
-  Lwt_unix.stat file >>= fun stat ->
-  let size = stat.Lwt_unix.st_size in
-  Lwt_unix.openfile file Lwt_unix.[O_RDONLY] 0 >>= fun fd ->
-  let buf = Bytes.create size in
-  let rec read off =
-    Lwt_unix.read fd buf off (size - off) >>= fun bytes ->
-    if bytes + off = size then
-      Lwt.return_unit
-    else
-      read (bytes + off)
-  in
-  read 0 >>= fun () ->
-  let logs = Vmm_asn.logs_of_disk my_version (Cstruct.of_bytes buf) in
-  Vmm_lwt.safe_close fd >|= fun () ->
+  Vmm_lwt.read_from_file file >|= fun data ->
+  let logs = Vmm_asn.logs_of_disk my_version data in
   List.rev logs
 
 let write_to_file file =
