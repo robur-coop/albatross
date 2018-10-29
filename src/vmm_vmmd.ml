@@ -46,10 +46,9 @@ let handle_create t hdr vm_config =
    | Some _ -> Error (`Msg "VM with same name is already running")
    | None -> Ok ()) >>= fun () ->
   Logs.debug (fun m -> m "now checking resource policies") ;
-  (if Vmm_resources.check_vm_policy t.resources name vm_config then
-     Ok ()
-   else
-     Error (`Msg "resource policies don't allow this")) >>= fun () ->
+  (Vmm_resources.check_vm_policy t.resources name vm_config >>= function
+    | false -> Error (`Msg "resource policies don't allow this")
+    | true -> Ok ()) >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
@@ -158,13 +157,15 @@ let handle_command t (header, payload) =
         | `Vm_create vm_config ->
           handle_create t header vm_config
         | `Vm_force_create vm_config ->
-          let resources =
-            match Vmm_resources.remove_vm t.resources id with
-            | Error _ -> t.resources
-            | Ok r -> r
-          in
-          if Vmm_resources.check_vm_policy resources id vm_config then
-            begin match Vmm_resources.find_vm t.resources id with
+          begin
+            let resources =
+              match Vmm_resources.remove_vm t.resources id with
+              | Error _ -> t.resources
+              | Ok r -> r
+            in
+            Vmm_resources.check_vm_policy resources id vm_config >>= function
+            | false -> Error (`Msg "wouldn't match policy")
+            | true -> match Vmm_resources.find_vm t.resources id with
               | None -> handle_create t header vm_config
               | Some vm ->
                 Vmm_unix.destroy vm ;
@@ -176,9 +177,7 @@ let handle_command t (header, payload) =
                   let t = { t with tasks } in
                   Ok (t, [], `Wait_and_create
                         (task, fun t -> msg_to_err @@ handle_create t header vm_config))
-            end
-          else
-            Error (`Msg "wouldn't match policy")
+          end
         | `Vm_destroy ->
           begin match Vmm_resources.find_vm t.resources id with
             | Some vm ->

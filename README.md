@@ -1,4 +1,4 @@
-# Albatross: orchestrate and manage MirageOS unikernels
+# Albatross: orchestrate and manage MirageOS unikernels with Solo5
 
 [![Build Status](https://travis-ci.org/hannesm/albatross.svg?branch=master)](https://travis-ci.org/hannesm/albatross)
 

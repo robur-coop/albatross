@@ -34,7 +34,7 @@ let albatross_extension csr =
   | [ (_, `Unsupported (_, v)) as ext ] -> Ok (ext, v)
   | _ -> Error (`Msg "couldn't find albatross extension in CSR")
 
-let sign dbname cacert key csr days =
+let sign_csr dbname cacert key csr days =
   let ri = X509.CA.info csr in
   Logs.app (fun m -> m "signing certificate with subject %s"
                (X509.distinguished_name_to_string ri.X509.CA.subject)) ;
@@ -66,7 +66,7 @@ let sign _ db cacert cakey csrname days =
     let cakey = X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string pk) in
     Bos.OS.File.read (Fpath.v csrname) >>= fun enc ->
     let csr = X509.Encoding.Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string enc) in
-    sign (Fpath.v db) cacert cakey csr days
+    sign_csr (Fpath.v db) cacert cakey csr days
   with
   | Ok () -> `Ok ()
   | Error (`Msg e) -> `Error (false, e)

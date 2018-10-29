@@ -72,17 +72,21 @@ let check_vm_policy t name vm =
   let dom = domain name in
   let res = resource_usage t dom in
   match Vmm_trie.find dom t with
-  | None -> true
-  | Some (Vm _) -> assert false
-  | Some (Policy p) -> check_resource p vm res
+  | None -> Ok true
+  | Some (Vm vm) ->
+    Logs.err (fun m -> m "id %a, expected policy, got vm %a" pp_id dom pp_vm vm) ;
+    Rresult.R.error_msgf "expected policy, found vm for %a" pp_id dom
+  | Some (Policy p) -> Ok (check_resource p vm res)
 
 let insert_vm t name vm =
-  if check_vm_policy t name vm.config then
-    match Vmm_trie.insert name (Vm vm) t with
-    | t', None -> Ok t'
-    | _, Some _ -> Error (`Msg "vm already exists")
-  else
-    Error (`Msg "resource policy mismatch")
+  let open Rresult.R.Infix in
+  check_vm_policy t name vm.config >>= function
+  | true ->
+    begin match Vmm_trie.insert name (Vm vm) t with
+      | t', None -> Ok t'
+      | _, Some _ -> Error (`Msg "vm already exists")
+    end
+  | false -> Error (`Msg "resource policy mismatch")
 
 let check_policy_above t name p =
   let above = Vmm_trie.collect name t in

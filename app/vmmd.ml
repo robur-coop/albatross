@@ -36,19 +36,12 @@ let create process cont =
         let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
         s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
         state := state' ;
-        (process out' >|= function
-          | Error (`Msg msg) ->
-            Logs.err (fun m -> m "error %s on handling shutdown" msg)
-          | Ok () -> ()) >|= fun () ->
+        (process "handle_shutdown" out' >|= fun _ -> ()) >|= fun () ->
         Lwt.wakeup wakeme ()) ;
-    (process out >|= function
-      | Error (`Msg msg) -> Logs.err (fun m -> m "error %s while setting up stats and logging" msg)
-      | Ok () -> ()) >>= fun () ->
+    (process "setting up console" out >|= fun _ -> ()) >>= fun () ->
     let state', out = Vmm_vmmd.setup_stats !state name vm in
     state := state' ;
-    process [ out ] >|= function
-    | Error (`Msg msg) -> Logs.err (fun m -> m "error %s sending information to stats" msg)
-    | Ok () -> ()
+    process "setting up statistics" [ out ] >|= fun _ -> ()
 
 let handle out fd addr =
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
@@ -64,7 +57,7 @@ let handle out fd addr =
          -- Lwt effects happen (stats, logs, wait_and_clear) --
     (2) goto (1)
   *)
-  let process wires =
+  let process txt wires =
     Lwt_list.fold_left_s (fun r data ->
         match r, data with
         | Ok (), (#Vmm_vmmd.service_out as o) -> out o
@@ -73,7 +66,11 @@ let handle out fd addr =
           Vmm_lwt.write_wire fd wire >|= fun _ ->
           Ok ()
         | Error e, _ -> Lwt.return (Error e))
-      (Ok ()) wires
+      (Ok ()) wires >|= function
+    | Ok () -> Ok ()
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error in process %s: %s" txt msg) ;
+      Error ()
   in
   Logs.debug (fun m -> m "now reading") ;
   (Vmm_lwt.read_wire fd >>= function
@@ -84,19 +81,19 @@ let handle out fd addr =
       Logs.debug (fun m -> m "read sth") ;
       let state', data, next = Vmm_vmmd.handle_command !state wire in
       state := state' ;
-      process data >>= function
-      | Error (`Msg msg) -> Logs.err (fun m -> m "received error %s" msg) ; Lwt.return_unit
+      process "handle_command" data >>= function
+      | Error () -> Lwt.return_unit
       | Ok () -> match next with
         | `End -> Lwt.return_unit
         | `Wait (task, out) ->
           task >>= fun () ->
-          process [ out ] >|= fun _ ->
+          process "wait" [ out ] >|= fun _ ->
           ()
       | `Wait_and_create (task, next) ->
         task >>= fun () ->
         let state', data, n = next !state in
         state := state' ;
-        process data >>= fun _ ->
+        process "wait and create" data >>= fun _ ->
         (match n with
          | `End -> Lwt.return_unit
          | `Create cont -> create process cont)

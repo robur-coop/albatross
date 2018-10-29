@@ -63,7 +63,7 @@ let read_wire s =
   | Error e -> Lwt.return (Error e)
   | Ok () ->
     let len = Cstruct.BE.get_uint32 (Cstruct.of_bytes buf) 0 in
-    if len > 0l then
+    if len > 0l then begin
       let b = Bytes.create (Int32.to_int len) in
       r b 0 (Int32.to_int len) >|= function
       | Error e -> Error e
@@ -76,8 +76,9 @@ let read_wire s =
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s while parsing data" msg) ;
           Error `Exception
-    else
-        Lwt.return (Error `Eof)
+    end else begin
+      Lwt.return (Error `Eof)
+    end
 
 let write_raw s buf =
   let rec w off l =

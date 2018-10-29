@@ -6,8 +6,7 @@ let version = `AV2
 
 let process fd =
   Vmm_tls_lwt.read_tls fd >|= function
-  | Error _ ->
-    Error (`Msg "read or parse error")
+  | Error _ -> Error (`Msg "read or parse error")
   | Ok (header, reply) ->
     if Vmm_commands.version_eq header.Vmm_commands.version version then begin
       Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply)) ;
@@ -16,12 +15,6 @@ let process fd =
       Logs.err (fun m -> m "version not equal") ;
       Error (`Msg "version not equal")
     end
-
-let connect socket_path =
-  let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-  Lwt_unix.set_close_on_exec c ;
-  Lwt_unix.connect c (Lwt_unix.ADDR_UNIX socket_path) >|= fun () ->
-  c
 
 let read fd =
   (* now we busy read and process output *)
@@ -72,9 +65,9 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Lwt_unix.gethostbyname host >>= fun host_entry ->
   let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
   let fd = Lwt_unix.socket host_entry.Lwt_unix.h_addrtype Lwt_unix.SOCK_STREAM 0 in
-  Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun _ ->
+  Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun () ->
   let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-  Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
+  Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
   read t
 
 let jump endp cert key ca name cmd =

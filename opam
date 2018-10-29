@@ -33,4 +33,4 @@ depends: [
 build: [
   [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
 ]
-synopsis: "Albatross - orchestrate and manage MirageOS unikernels"
+synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"

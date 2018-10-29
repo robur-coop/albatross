@@ -25,7 +25,7 @@ val find_policy : t -> Vmm_core.id -> Vmm_core.policy option
 
 (** [check_vm_policy t vm] checks whether [vm] under [id] in [t] would be
     allowed under the current policies. *)
-val check_vm_policy : t -> Vmm_core.id -> Vmm_core.vm_config -> bool
+val check_vm_policy : t -> Vmm_core.id -> Vmm_core.vm_config -> (bool, [> `Msg of string ]) result
 
 (** [insert_vm t vm] inserts [vm] under [id] in [t], and returns the new [t] or
     an error. *)

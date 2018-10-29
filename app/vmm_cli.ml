@@ -10,12 +10,11 @@ let setup_log style_renderer level =
 
 let create_vm force image cpuid requested_memory argv block_device network compression =
   let open Rresult.R.Infix in
-  (Bos.OS.File.read (Fpath.v image) >>= fun s ->
-   Ok (Cstruct.of_string s)) >>| fun image ->
+  Bos.OS.File.read (Fpath.v image) >>| fun image ->
   let vmimage = match compression with
-    | 0 -> `Hvt_amd64, image
+    | 0 -> `Hvt_amd64, Cstruct.of_string image
     | level ->
-      let img = Vmm_compress.compress ~level (Cstruct.to_string image) in
+      let img = Vmm_compress.compress ~level image in
       `Hvt_amd64_compressed, Cstruct.of_string img
   and argv = match argv with [] -> None | xs -> Some xs
   in
@@ -23,13 +22,12 @@ let create_vm force image cpuid requested_memory argv block_device network compr
   if force then `Vm_force_create vm_config else `Vm_create vm_config
 
 let policy vms memory cpus block bridges =
-  let bridges = match bridges with
-    | xs ->
-      let add m v =
-        let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
-        String.Map.add n v m
-      in
-      List.fold_left add String.Map.empty xs
+  let bridges =
+    let add m v =
+      let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
+      String.Map.add n v m
+    in
+    List.fold_left add String.Map.empty bridges
   and cpuids = IS.of_list cpus
   in
   { vms ; cpuids ; memory ; block ; bridges }
@@ -74,7 +72,7 @@ let bridge =
         | _ -> `Error "couldn't parse IP address"
       end
     | [ name ] -> `Ok (`Internal name)
-    | _ -> `Error "couldn't parse bridge (either 'name' or 'name/fstIP/lstIP/gwIP/netmask')"
+    | _ -> `Error "couldn't parse bridge (either specify 'name' or 'name/firstIP/lastIP/gatewayIP/netmask')"
   in
   (parse, pp_bridge)
 
@@ -96,7 +94,7 @@ let force =
   Arg.(value & flag & info [ "f" ; "force" ] ~doc)
 
 let cpus =
-  let doc = "CPUs to allow" in
+  let doc = "CPUids to allow" in
   Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
 
 let vms =
@@ -104,23 +102,23 @@ let vms =
   Arg.(required & pos 0 (some int) None & info [] ~doc ~docv:"VMS")
 
 let block_size =
-  let doc = "Block storage to allow" in
+  let doc = "Block storage to allow in MB" in
   Arg.(value & opt (some int) None & info [ "block" ] ~doc)
 
 let mem =
-  let doc = "Memory to allow" in
+  let doc = "Memory to allow in MB" in
   Arg.(value & opt int 512 & info [ "mem" ] ~doc)
 
 let bridge =
-  let doc = "Bridge to allow" in
+  let doc = "Bridges to allow" in
   Arg.(value & opt_all bridge [] & info [ "bridge" ] ~doc)
 
 let cpu =
-  let doc = "CPUid" in
+  let doc = "CPUid to use" in
   Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
 
 let vm_mem =
-  let doc = "Memory to assign" in
+  let doc = "Assigned memory in MB" in
   Arg.(value & opt int 32 & info [ "mem" ] ~doc)
 
 let args =
@@ -132,7 +130,7 @@ let block =
   Arg.(value & opt (some string) None & info [ "block" ] ~doc)
 
 let net =
-  let doc = "Network device" in
+  let doc = "Network device names" in
   Arg.(value & opt_all string [] & info [ "net" ] ~doc)
 
 let timestamp_c =
@@ -143,5 +141,5 @@ let timestamp_c =
   (parse, Ptime.pp_rfc3339 ())
 
 let since =
-  let doc = "Since" in
+  let doc = "Receive data since a specified timestamp (RFC 3339 encoded)" in
   Arg.(value & opt (some timestamp_c) None & info [ "since" ] ~doc)
