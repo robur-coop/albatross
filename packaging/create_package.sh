@@ -19,6 +19,8 @@ for f in albatross_log \
 	 albatross_stat \
 	 albatross_console \
 	 albatross_daemon \
+	 albatross_influx \
+	 albatross_tls \
 	 albatross_x
 do install -U $basedir/packaging/rc.d/$f $rootdir/usr/local/etc/rc.d/$f; done
 
