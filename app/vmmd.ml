@@ -72,8 +72,9 @@ let handle out fd addr =
       Logs.err (fun m -> m "error in process %s: %s" txt msg) ;
       Error ()
   in
-  Logs.debug (fun m -> m "now reading") ;
-  (Vmm_lwt.read_wire fd >>= function
+  let rec loop () =
+    Logs.debug (fun m -> m "now reading") ;
+    Vmm_lwt.read_wire fd >>= function
     | Error _ ->
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
@@ -84,23 +85,22 @@ let handle out fd addr =
       process "handle_command" data >>= function
       | Error () -> Lwt.return_unit
       | Ok () -> match next with
+        | `Loop -> loop ()
         | `End -> Lwt.return_unit
+        | `Create cont -> create process cont
         | `Wait (task, out) ->
           task >>= fun () ->
-          process "wait" [ out ] >|= fun _ ->
-          ()
-      | `Wait_and_create (task, next) ->
-        task >>= fun () ->
-        let state', data, n = next !state in
-        state := state' ;
-        process "wait and create" data >>= fun _ ->
-        (match n with
-         | `End -> Lwt.return_unit
-         | `Create cont -> create process cont)
-      | `Create cont ->
-        create process cont
-        (* data contained a write to console, we need to wait for its reply first *)
-  ) >>= fun () ->
+          process "wait" [ out ] >|= ignore
+        | `Wait_and_create (task, next) ->
+          task >>= fun () ->
+          let state', data, n = next !state in
+          state := state' ;
+          process "wait and create" data >>= fun _ ->
+          match n with
+          | `End -> Lwt.return_unit
+          | `Create cont -> create process cont >|= ignore
+  in
+  loop () >>= fun () ->
   Vmm_lwt.safe_close fd
 
 let init_sock sock =

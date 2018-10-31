@@ -39,8 +39,7 @@ let sign ?dbname ?certname extensions issuer key csr delta =
    | Some x -> Ok x
    | None ->
      (try Ok (List.find (function `CN _ -> true | _ -> false) (X509.CA.info csr).X509.CA.subject)
-      with Not_found -> Error (`Msg "unable to discover certificate name")) >>= fun nam ->
-     match nam with
+      with Not_found -> Error (`Msg "unable to discover certificate name")) >>= function
      | `CN name -> Ok name
      | _ -> Error (`Msg "cannot happen")) >>= fun certname ->
   timestamps delta >>= fun (valid_from, valid_until) ->

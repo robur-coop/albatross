@@ -119,7 +119,7 @@ let handle_command t (header, payload) =
             Ok (t, [ reply (`String "no modification of policy") ], `End)
           else
             Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
-            Ok ({ t with resources }, [ reply (`String "added policy") ], `End)
+            Ok ({ t with resources }, [ reply (`String "added policy") ], `Loop)
         | `Policy_info ->
           begin
             Logs.debug (fun m -> m "policy %a" pp_id id) ;

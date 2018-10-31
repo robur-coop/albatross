@@ -18,6 +18,7 @@ val handle_shutdown : 'a t -> Vmm_core.id -> Vmm_core.vm ->
 val handle_command : 'a t -> Vmm_commands.wire ->
   'a t * out list *
   [ `Create of 'c t -> 'c -> ('c t * out list * Vmm_core.id * Vmm_core.vm, [> `Msg of string ]) result
+  | `Loop
   | `End
   | `Wait of 'a * out
   | `Wait_and_create of 'a * ('a t -> 'a t * out list *
