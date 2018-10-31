@@ -44,9 +44,9 @@ sed -e "s:%%GITVER%%:${gitver}:" -e "s:%%FLATSIZE%%:${flatsize}:" \
 
 {
     printf '\nfiles {\n'
-    find "$rootdir" -type f -exec sha256 -r {} + |
+    find "$rootdir" -type f -exec sha256 -r {} + | sort |
         awk '{print "    " $2 ": \"" $1 "\"," }'
-    find "$rootdir" -type l |
+    find "$rootdir" -type l | sort |
         awk "{print \"    \"\$1 \": -,\"}"
     printf '}\n'
 } | sed -e "s:${rootdir}::" >> "$manifest"
