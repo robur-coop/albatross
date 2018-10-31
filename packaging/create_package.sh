@@ -51,4 +51,5 @@ sed -e "s:%%GITVER%%:${gitver}:" -e "s:%%FLATSIZE%%:${flatsize}:" \
     printf '}\n'
 } | sed -e "s:${rootdir}::" >> "$manifest"
 
+export SOURCE_DATE_EPOCH=$(git log -1 --pretty=format:%ct)
 pkg create -r "$rootdir" -M "$manifest" -o $basedir/_build/
