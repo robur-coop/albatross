@@ -129,15 +129,7 @@ let ca_key =
 
 let destination =
   let doc = "the destination hostname:port to connect to" in
-  Arg.(required & pos 0 (some host_port) None & info [] ~doc ~docv:"HOST:PORT")
-
-let image =
-  let doc = "File of virtual machine image." in
-  Arg.(required & pos 2 (some file) None & info [] ~doc ~docv:"IMAGE")
-
-let vm_name =
-  let doc = "Name virtual machine." in
-  Arg.(required & pos 1 (some vm_c) None & info [] ~doc ~docv:"VM")
+  Arg.(value & opt host_port ("localhost", 1025) & info [ "d" ; "destination" ] ~doc ~docv:"HOST:PORT")
 
 let destroy_cmd =
   let doc = "destroys a virtual machine" in
@@ -181,7 +173,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
+  Term.(ret (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
   Term.info "add_policy" ~doc ~man
 
 let create_cmd =

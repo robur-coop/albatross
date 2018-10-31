@@ -97,14 +97,6 @@ let socket =
   let doc = "Socket to connect to" in
   Arg.(value & opt (some string) None & info [ "socket" ] ~doc)
 
-let image =
-  let doc = "File of virtual machine image." in
-  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"IMAGE")
-
-let vm_name =
-  let doc = "Name virtual machine." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
-
 let destroy_cmd =
   let doc = "destroys a virtual machine" in
   let man =
@@ -147,7 +139,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ socket $ opt_vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
+  Term.(ret (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
   Term.info "add_policy" ~doc ~man
 
 let create_cmd =

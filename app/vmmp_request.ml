@@ -62,14 +62,6 @@ let help _ man_format cmds = function
 open Cmdliner
 open Vmm_cli
 
-let image =
-  let doc = "File of virtual machine image." in
-  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"IMAGE")
-
-let vm_name =
-  let doc = "Name virtual machine." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
-
 let destroy_cmd =
   let doc = "destroys a virtual machine" in
   let man =
@@ -112,7 +104,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ opt_vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
+  Term.(ret (const add_policy $ setup_log $ vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
   Term.info "add_policy" ~doc ~man
 
 let create_cmd =

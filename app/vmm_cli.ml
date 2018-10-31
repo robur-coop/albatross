@@ -99,7 +99,15 @@ let cpus =
 
 let vms =
   let doc = "Number of VMs to allow" in
-  Arg.(required & pos 0 (some int) None & info [] ~doc ~docv:"VMS")
+  Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"VMS")
+
+let image =
+  let doc = "File of virtual machine image." in
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"IMAGE")
+
+let vm_name =
+  let doc = "Name virtual machine." in
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
 
 let block_size =
   let doc = "Block storage to allow in MB" in
