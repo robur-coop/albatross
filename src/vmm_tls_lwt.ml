@@ -11,7 +11,7 @@ let read_tls t =
       Lwt.catch (fun () ->
           Tls_lwt.Unix.read t (Cstruct.shift buf off) >>= function
           | 0 ->
-            Logs.err (fun m -> m "TLS: end of file") ;
+            Logs.debug (fun m -> m "TLS: end of file") ;
             Lwt.return (Error `Eof)
           | x when x == l -> Lwt.return (Ok ())
           | x when x < l -> r_n buf (off + x) tot

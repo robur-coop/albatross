@@ -47,7 +47,7 @@ let read_wire s =
     Lwt.catch (fun () ->
         Lwt_unix.read s b i l >>= function
         | 0 ->
-          Logs.err (fun m -> m "end of file while reading") ;
+          Logs.debug (fun m -> m "end of file while reading") ;
           Lwt.return (Error `Eof)
         | n when n == l -> Lwt.return (Ok ())
         | n when n < l -> r b (i + n) (l - n)
