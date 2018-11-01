@@ -38,11 +38,10 @@ let handle s addr () =
       | Ok (t', action, out) ->
         t := t' ;
         let pids = match action with
-        | `Add pid -> pid :: pids
-        | `Remove pid -> List.filter (fun m -> m <> pid) pids
-        | `Close _ -> pids
+          | `Add pid -> pid :: pids
+          | `Remove pid -> List.filter (fun m -> m <> pid) pids
+          | `Close _ -> pids
         in
-        t := t' ;
         Vmm_lwt.write_wire s (fst wire, `Success (`String out)) >>= function
         | Ok () ->
           (match action with
@@ -58,8 +57,7 @@ let handle s addr () =
   loop [] >>= fun vmids ->
   Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnect, dropping %d vms!" (List.length vmids)) ;
-  let t' = remove_vmids !t vmids in
-  t := t'
+  t := remove_vmids !t vmids
 
 let rec timer interval () =
   let t', outs = tick !t in
@@ -68,6 +66,7 @@ let rec timer interval () =
       Vmm_lwt.write_wire s stat >>= function
       | Ok () -> Lwt.return_unit
       | Error `Exception ->
+        Logs.debug (fun m -> m "removing entry %a" Vmm_core.pp_id name) ;
         t := remove_entry !t name ;
         Vmm_lwt.safe_close s)
     outs >>= fun () ->
