@@ -4,24 +4,14 @@ open Lwt.Infix
 
 let version = `AV2
 
-let process fd =
-  Vmm_tls_lwt.read_tls fd >|= function
-  | Error _ -> Error (`Msg "read or parse error")
-  | Ok (header, reply) ->
-    if Vmm_commands.version_eq header.Vmm_commands.version version then begin
-      Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply)) ;
-      Ok ()
-    end else begin
-      Logs.err (fun m -> m "version not equal") ;
-      Error (`Msg "version not equal")
-    end
-
 let read fd =
   (* now we busy read and process output *)
   let rec loop () =
-    process fd >>= function
-    | Error e -> Lwt.return (Error e)
-    | Ok () -> loop ()
+    Vmm_tls_lwt.read_tls fd >>= function
+    | Error _ -> Lwt.return ()
+    | Ok wire ->
+      Vmm_cli.print_result version wire ;
+      loop ()
   in
   loop ()
 
@@ -71,11 +61,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   read t
 
 let jump endp cert key ca name cmd =
-  match
-    Lwt_main.run (handle endp cert key ca name cmd)
-  with
-  | Ok () -> `Ok ()
-  | Error (`Msg m) -> `Error (false, m)
+  `Ok (Lwt_main.run (handle endp cert key ca name cmd))
 
 let info_ _ endp cert key ca name =
   jump endp cert key ca name (`Vm_cmd `Vm_info)

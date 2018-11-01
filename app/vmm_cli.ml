@@ -3,6 +3,17 @@
 open Astring
 open Vmm_core
 
+open Lwt.Infix
+
+let print_result version (header, reply) =
+  if not (Vmm_commands.version_eq header.Vmm_commands.version version) then
+    Logs.err (fun m -> m "version not equal")
+  else match reply with
+    | `Success s -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
+    | `Data d -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
+    | `Failure d -> Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
+    | `Command _ -> Logs.err (fun m -> m "unexpected command %a" Vmm_commands.pp_wire (header, reply))
+
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
   Logs.set_level level;

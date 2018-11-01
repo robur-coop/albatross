@@ -4,19 +4,6 @@ open Lwt.Infix
 
 let version = `AV2
 
-let process fd =
-  Vmm_lwt.read_wire fd >|= function
-  | Error _ ->
-    Error (`Msg "read or parse error")
-  | Ok (header, reply) ->
-    if Vmm_commands.version_eq header.Vmm_commands.version version then begin
-      Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply)) ;
-      Ok ()
-    end else begin
-      Logs.err (fun m -> m "version not equal") ;
-      Error (`Msg "version not equal")
-    end
-
 let socket t = function
   | Some x -> x
   | None -> Vmm_core.socket_path t
@@ -27,11 +14,16 @@ let connect socket_path =
   Lwt_unix.connect c (Lwt_unix.ADDR_UNIX socket_path) >|= fun () ->
   c
 
+let process fd =
+  Vmm_lwt.read_wire fd >|= function
+  | Error _ -> Error ()
+  | Ok wire -> Ok (Vmm_cli.print_result version wire)
+
 let read fd =
   (* now we busy read and process output *)
   let rec loop () =
     process fd >>= function
-    | Error e -> Lwt.return (Error e)
+    | Error _ -> Lwt.return ()
     | Ok () -> loop ()
   in
   loop ()
@@ -41,20 +33,15 @@ let handle opt_socket id (cmd : Vmm_commands.t) =
   connect (socket sock opt_socket) >>= fun fd ->
   let header = Vmm_commands.{ version ; sequence = 0L ; id } in
   Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
-  | Error `Exception -> Lwt.return (Error (`Msg "couldn't write"))
+  | Error `Exception -> Lwt.return ()
   | Ok () ->
     (match next with
      | `Read -> read fd
-     | `End -> process fd) >>= fun res ->
-    Vmm_lwt.safe_close fd >|= fun () ->
-    res
+     | `End -> process fd >|= ignore) >>= fun () ->
+    Vmm_lwt.safe_close fd
 
 let jump opt_socket name cmd =
-  match
-    Lwt_main.run (handle opt_socket name cmd)
-  with
-  | Ok () -> `Ok ()
-  | Error (`Msg m) -> `Error (false, m)
+  `Ok (Lwt_main.run (handle opt_socket name cmd))
 
 let info_ _ opt_socket name = jump opt_socket name (`Vm_cmd `Vm_info)
 

@@ -2,11 +2,13 @@
 
 open Lwt.Infix
 
+let version = `AV2
+
 let rec read_tls_write_cons t =
   Vmm_tls_lwt.read_tls t >>= function
-  | Error _ -> Logs.err (fun m -> m "exception while reading") ; Lwt.return_unit
+  | Error _ -> Lwt.return_unit
   | Ok wire ->
-    Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire) ;
+    Vmm_cli.print_result version wire ;
     read_tls_write_cons t
 
 let client cas host port cert priv_key =
