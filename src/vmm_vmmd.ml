@@ -116,7 +116,7 @@ let handle_command t (header, payload) =
             | Some p' -> eq_policy policy p'
           in
           if same_policy then
-            Ok (t, [ reply (`String "no modification of policy") ], `End)
+            Ok (t, [ reply (`String "no modification of policy") ], `Loop)
           else
             Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
             Ok ({ t with resources }, [ reply (`String "added policy") ], `Loop)
