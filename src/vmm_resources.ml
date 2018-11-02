@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Vmm_core
 
@@ -90,8 +90,11 @@ let insert_vm t name vm =
 
 let check_policy_above t name p =
   let above = Vmm_trie.collect name t in
-  List.for_all (fun (_, node) -> match node with
-      | Vm _ -> assert false
+  List.for_all (fun (id, node) -> match node with
+      | Vm vm ->
+        Logs.err (fun m -> m "found vm %a, expecting a policy at %a"
+                     pp_vm vm pp_id id) ;
+        false
       | Policy p' -> is_sub ~super:p' ~sub:p)
     above
 
@@ -101,23 +104,22 @@ let check_policy_below t name p =
       | [] -> res
       | _ ->
         match res, entry with
-        | Ok p, Policy p' -> if is_sub ~super:p ~sub:p then Ok p' else Error ()
-        | Ok p, Vm vm ->
+        | Some p, Policy p' -> if is_sub ~super:p ~sub:p then Some p' else None
+        | Some p, Vm vm ->
           let cfg = vm.config in
           if IS.mem cfg.cpuid p.cpuids && good_bridge cfg.network p.bridges
-          then Ok p
-          else Error ()
+          then Some p
+          else None
         | res, _ -> res)
-    (Ok p)
+    (Some p)
 
 let insert_policy t name p =
-  let dom = domain name in
   match
-    check_policy_above t dom p,
+    check_policy_above t (domain name) p,
     check_policy_below t name p,
-    check_resource_policy p (resource_usage t dom)
+    check_resource_policy p (resource_usage t name)
   with
-  | true, Ok _, true -> Ok (fst (Vmm_trie.insert name (Policy p) t))
+  | true, Some _, true -> Ok (fst (Vmm_trie.insert name (Policy p) t))
   | false, _, _ -> Error (`Msg "policy violates other policies above")
-  | _, Error (), _ -> Error (`Msg "policy violates other policies below")
+  | _, None, _ -> Error (`Msg "policy violates other policies below")
   | _, _, false -> Error (`Msg "more resources used than policy would allow")
