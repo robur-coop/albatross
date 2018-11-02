@@ -78,16 +78,18 @@ let handle ca (tls, addr) =
              | Error `Exception -> Lwt.return (Error (`Msg "failed to write policy"))
              | Ok () ->
                Vmm_lwt.read_wire fd >|= function
-               | Error _ -> Error (`Msg "read error")
+               | Error _ -> Error (`Msg "read error after writing policy")
                | Ok (_, `Success _) -> Ok ()
-               | Ok _ ->
+               | Ok wire ->
                  (* TODO check version *)
-                 Error (`Msg ("expected success, received something else when adding policy")))
+                 Rresult.R.error_msgf
+                   "expected success when adding policy, got: %a"
+                   Vmm_commands.pp_wire wire)
          (Ok ()) policies
      | _ -> Lwt.return (Ok ())) >>= function
     | Error (`Msg msg) ->
       begin
-        Logs.debug (fun m -> m "error while applying policies %s" msg) ;
+        Logs.warn (fun m -> m "error while applying policies %s" msg) ;
         let wire =
           let header = Vmm_commands.{version = my_version ; sequence = 0L ; id = name } in
           header, `Failure msg
