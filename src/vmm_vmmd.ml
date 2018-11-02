@@ -96,7 +96,7 @@ let handle_command t (header, payload) =
   let msg_to_err = function
     | Ok x -> x
     | Error (`Msg msg) ->
-      Logs.debug (fun m -> m "error while processing command: %s" msg) ;
+      Logs.err (fun m -> m "error while processing command: %s" msg) ;
       (t, [ `Data (header, `Failure msg) ], `End)
   in
   let reply x = `Data (header, `Success x) in
