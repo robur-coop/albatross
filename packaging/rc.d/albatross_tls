@@ -4,7 +4,7 @@
 #
 # PROVIDE: albatross_tls
 # REQUIRE: LOGIN albatross_daemon
-# KEYWORD: shutdown nojail
+# KEYWORD: shutdown
 #
 # Define these albatross_tls_* variables in one of these files
 # 	 /etc/rc.conf
@@ -63,7 +63,7 @@ albatross_tls_precmd() {
 
 albatross_tls_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_tls_user}" \
-		     "${procname}" "${albatross_tls_flags}"
+		     "${procname}" ${albatross_tls_flags}
 }
 
 run_rc_command "$1"

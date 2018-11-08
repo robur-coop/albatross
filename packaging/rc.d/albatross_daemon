@@ -4,7 +4,7 @@
 #
 # PROVIDE: albatross_daemon
 # REQUIRE: LOGIN albatross_console albatross_log albatross_stat
-# KEYWORD: shutdown nojail
+# KEYWORD: shutdown
 #
 # Define these albatross_daemon_* variables in one of these files
 # 	 /etc/rc.conf
@@ -68,7 +68,7 @@ albatross_daemon_precmd() {
 
 albatross_daemon_start () {
     /usr/sbin/daemon -S -p "${pidfile}" "${procname}" \
-                     "${albatross_daemon_flags}"
+                     ${albatross_daemon_flags}
 }
 
 run_rc_command "$1"

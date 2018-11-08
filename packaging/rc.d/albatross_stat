@@ -4,7 +4,7 @@
 #
 # PROVIDE: albatross_stat
 # REQUIRE: LOGIN
-# KEYWORD: shutdown nojail
+# KEYWORD: shutdown
 #
 # Define these albatross_stat_* variables in one of these files
 # 	 /etc/rc.conf
@@ -33,7 +33,7 @@ procname="/usr/local/libexec/albatross/vmmd_stats"
 
 albatross_stat_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_stat_user}" \
-		     "${procname}" "${albatross_stat_flags}"
+		     "${procname}" ${albatross_stat_flags}
 }
 
 run_rc_command "$1"
