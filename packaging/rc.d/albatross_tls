@@ -23,6 +23,8 @@ rcvar=${name}_enable
 desc="Albatross tls service"
 load_rc_config $name
 start_cmd="albatross_tls_start"
+start_precmd="albatross_tls_precmd"
+
 
 : ${albatross_tls_enable:="NO"}
 : ${albatross_tls_flags:=""}
