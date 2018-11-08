@@ -40,6 +40,7 @@ albatross_log_precmd () {
 }
 
 albatross_log_start () {
+    echo "Starting ${name}."
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_log_user}" \
 		     "${procname}" ${albatross_log_flags}
 }

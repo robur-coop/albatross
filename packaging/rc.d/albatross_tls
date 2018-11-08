@@ -23,6 +23,8 @@ rcvar=${name}_enable
 desc="Albatross tls service"
 load_rc_config $name
 start_cmd="albatross_tls_start"
+start_precmd="albatross_tls_precmd"
+
 
 : ${albatross_tls_enable:="NO"}
 : ${albatross_tls_flags:=""}
@@ -62,6 +64,7 @@ albatross_tls_precmd() {
 }
 
 albatross_tls_start () {
+    echo "Starting ${name}."
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_tls_user}" \
 		     "${procname}" ${albatross_tls_flags}
 }
