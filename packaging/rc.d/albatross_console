@@ -33,7 +33,7 @@ procname="/usr/local/libexec/albatross/vmmd_console"
 
 albatross_console_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_console_user}" \
-		     "${procname}" "${albatross_console_flags}"
+		     "${procname}" ${albatross_console_flags}
 }
 
 run_rc_command "$1"

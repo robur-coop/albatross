@@ -41,7 +41,7 @@ albatross_log_precmd () {
 
 albatross_log_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_log_user}" \
-		     "${procname}" "${albatross_log_flags}"
+		     "${procname}" ${albatross_log_flags}
 }
 
 run_rc_command "$1"

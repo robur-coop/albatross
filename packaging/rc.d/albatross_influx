@@ -63,7 +63,7 @@ albatross_influx_precmd() {
 
 albatross_influx_start () {
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_influx_user}" \
-		     "${procname}" "${albatross_influx_flags}"
+		     "${procname}" ${albatross_influx_flags}
 }
 
 run_rc_command "$1"

@@ -68,7 +68,7 @@ albatross_daemon_precmd() {
 
 albatross_daemon_start () {
     /usr/sbin/daemon -S -p "${pidfile}" "${procname}" \
-                     "${albatross_daemon_flags}"
+                     ${albatross_daemon_flags}
 }
 
 run_rc_command "$1"
