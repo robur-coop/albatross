@@ -32,6 +32,7 @@ pidfile="/var/run/albatross_stat.pid"
 procname="/usr/local/libexec/albatross/vmmd_stats"
 
 albatross_stat_start () {
+    echo "Starting ${name}."
     /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_stat_user}" \
 		     "${procname}" ${albatross_stat_flags}
 }
