@@ -52,7 +52,7 @@ albatross_x_start () {
 
 albatross_x_stop () {
     case $1 in
-	ALL)
+	_ALL)
 	    for _vm in $albatross_x_vms
 	    do /usr/local/sbin/vmmc_local destroy $_vm; done
 	    return
@@ -62,8 +62,7 @@ albatross_x_stop () {
 }
 
 albatross_x_status () {
-    for _vm in $@
-    do /usr/local/sbin/vmmc_local info $_vm; done
+    /usr/local/sbin/vmmc_local info
 }
 
 case $# in
