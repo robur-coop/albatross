@@ -47,11 +47,11 @@ let id_of_string str = String.cuts ~sep:"." str
 
 let drop_super ~super ~sub =
   let rec go sup sub = match sup, sub with
-    | [], xs -> Some (List.rev xs)
+    | [], xs -> Some xs
     | _, [] -> None
     | x::xs, z::zs -> if String.equal x z then go xs zs else None
   in
-  go (List.rev super) (List.rev sub)
+  go super sub
 
 let is_sub_id ~super ~sub =
   match drop_super ~super ~sub with None -> false | Some _ -> true
