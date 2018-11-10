@@ -39,12 +39,20 @@ type policy_cmd = [
   | `Policy_remove
 ]
 
+type block_cmd = [
+  | `Block_info
+  | `Block_add of int
+  | `Block_remove
+]
+
 type t = [
   | `Console_cmd of console_cmd
   | `Stats_cmd of stats_cmd
   | `Log_cmd of log_cmd
   | `Vm_cmd of vm_cmd
-  | `Policy_cmd of policy_cmd ]
+  | `Policy_cmd of policy_cmd
+  | `Block_cmd of block_cmd
+]
 
 val pp : t Fmt.t
 
@@ -67,6 +75,7 @@ type success = [
   | `String of string
   | `Policies of (id * policy) list
   | `Vms of (id * vm_config) list
+  | `Blocks of (id * int * bool) list
 ]
 
 type wire = header * [

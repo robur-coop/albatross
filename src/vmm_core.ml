@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Astring
 
@@ -6,6 +6,7 @@ open Rresult.R.Infix
 
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
+let blockdir = Fpath.(dbdir / "block")
 
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
@@ -59,6 +60,8 @@ let is_sub_id ~super ~sub =
 let domain id = match List.rev id with
   | _::prefix -> List.rev prefix
   | [] -> []
+
+let block_name vm_name dev = List.rev (dev :: List.rev (domain vm_name))
 
 let pp_id ppf ids =
   Fmt.(pf ppf "(%d)%a" (List.length ids) (list ~sep:(unit ".") string) ids)
@@ -194,8 +197,9 @@ type vm = {
 }
 
 let pp_vm ppf vm =
-  Fmt.pf ppf "pid %d@ taps %a cmdline %a"
+  Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a"
     vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
+    Fmt.(option ~none:(unit "no") string) vm.config.block_device
     Bos.Cmd.pp vm.cmd
 
 let translate_tap vm tap =

@@ -40,11 +40,11 @@ CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
   if (error < 0)
     uerror("sysctl", Nothing);
 
+  ru = p.ki_rusage;
   if (ru.ru_utime.tv_usec < 0 || ru.ru_utime.tv_usec > 999999999 ||
       ru.ru_stime.tv_usec < 0 || ru.ru_stime.tv_usec > 999999999)
     uerror("sysctl", Nothing);
 
-  ru = p.ki_rusage;
   utime = caml_alloc(2, 0);
   Store_field (utime, 0, Val64(ru.ru_utime.tv_sec));
   Store_field (utime, 1, Val_int(ru.ru_utime.tv_usec));

@@ -120,9 +120,21 @@ let vm_name =
   let doc = "Name virtual machine." in
   Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
 
+let block_name =
+  let doc = "Name of block device." in
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK")
+
 let block_size =
+  let doc = "Block size in MB." in
+  Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"SIZE")
+
+let opt_block_name =
+  let doc = "Name of block device." in
+  Arg.(value & opt vm_c [] & info [ "name" ] ~doc)
+
+let opt_block_size =
   let doc = "Block storage to allow in MB" in
-  Arg.(value & opt (some int) None & info [ "block" ] ~doc)
+  Arg.(value & opt (some int) None & info [ "size" ] ~doc)
 
 let mem =
   let doc = "Memory to allow in MB" in

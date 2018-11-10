@@ -2,6 +2,7 @@
 
 val tmpdir : Fpath.t
 val dbdir : Fpath.t
+val blockdir : Fpath.t
 
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
@@ -20,12 +21,13 @@ module IM : sig
 end
 
 type id = string list
-val string_of_id : string list -> string
-val id_of_string : string -> string list
-val drop_super : super:string list -> sub:string list -> string list option
-val is_sub_id : super:string list -> sub:string list -> bool
-val domain : 'a list -> 'a list
+val string_of_id : id -> string
+val id_of_string : string -> id
+val drop_super : super:id -> sub:id -> id option
+val is_sub_id : super:id -> sub:id -> bool
+val domain : id -> id
 val pp_id : id Fmt.t
+val block_name : id -> string -> id
 
 type bridge =
   [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int

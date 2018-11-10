@@ -145,17 +145,24 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec name vm taps =
-  let net = List.map (fun t -> "--net=" ^ t) taps in
-  let argv = match vm.argv with None -> [] | Some xs -> xs in
-  (match taps with
-   | [] -> Ok Fpath.(dbdir / "solo5-hvt.none")
-   | [_] -> Ok Fpath.(dbdir / "solo5-hvt.net")
-   | _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
+let block_device_name name = Fpath.(blockdir / string_of_id name)
+
+let exec name vm taps block =
+  (match taps, block with
+   | [], None -> Ok "none"
+   | [_], None -> Ok "net"
+   | [], Some _ -> Ok "block"
+   | [_], Some _ -> Ok "block-net"
+   | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
+  let net = List.map (fun t -> "--net=" ^ t) taps
+  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_device_name dev) ]
+  and argv = match vm.argv with None -> [] | Some xs -> xs
+  and mem = "--mem=" ^ string_of_int vm.requested_memory
+  in
   cpuset vm.cpuid >>= fun cpuset ->
-  let mem = "--mem=" ^ string_of_int vm.requested_memory in
   let cmd =
-    Bos.Cmd.(of_list cpuset % p bin % mem %% of_list net %
+    Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt" + bin) % mem %%
+             of_list net %% of_list block %
              "--" % p (image_file name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
@@ -178,3 +185,47 @@ let exec name vm taps =
     R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_error e
 
 let destroy vm = Unix.kill vm.pid 15 (* 15 is SIGTERM *)
+
+let bytes_of_mb size =
+  let res = size lsl 20 in
+  if res > size then
+    Ok res
+  else
+    Error (`Msg "overflow while computing bytes")
+
+let create_block name size =
+  let block_name = block_device_name name in
+  Bos.OS.File.exists block_name >>= function
+  | true -> Error (`Msg "file already exists")
+  | false ->
+    bytes_of_mb size >>= fun size' ->
+    Bos.OS.File.truncate block_name size'
+
+let destroy_block name =
+  Bos.OS.File.delete (block_device_name name)
+
+let mb_of_bytes size =
+  if size = 0 || size land 0xFFFFF <> 0 then
+    Error (`Msg "size is either 0 or not MB aligned")
+  else
+    Ok (size lsr 20)
+
+let find_block_devices () =
+  Bos.OS.Dir.contents ~rel:true blockdir >>= fun files ->
+  List.fold_left (fun acc file ->
+      acc >>= fun acc ->
+      let path = Fpath.append blockdir file in
+      Bos.OS.File.exists path >>= function
+      | false ->
+        Logs.warn (fun m -> m "file %a doesn't exist, but was listed" Fpath.pp path) ;
+        Ok acc
+      | true ->
+        Bos.OS.Path.stat path >>= fun stats ->
+        match mb_of_bytes stats.Unix.st_size with
+        | Error (`Msg msg) ->
+          Logs.warn (fun m -> m "file %a error: %s" Fpath.pp path msg) ;
+          Ok acc
+        | Ok size ->
+          let id = id_of_string (Fpath.to_string file) in
+          Ok ((id, size) :: acc))
+    (Ok []) files

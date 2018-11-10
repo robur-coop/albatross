@@ -93,6 +93,15 @@ let stats _ endp cert key ca name =
 let event_log _ endp cert key ca name since =
   jump endp cert key ca name (`Log_cmd (`Log_subscribe since))
 
+let block_info _ endp cert key ca block_name =
+  jump endp cert key ca block_name (`Block_cmd `Block_info)
+
+let block_create _ endp cert key ca block_name block_size =
+  jump endp cert key ca block_name (`Block_cmd (`Block_add block_size))
+
+let block_destroy _ endp cert key ca block_name =
+  jump endp cert key ca block_name (`Block_cmd `Block_remove)
+
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
   | Some t when List.mem t cmds -> `Help (man_format, Some t)
@@ -159,7 +168,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ block_size $ bridge)),
+  Term.(ret (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
   Term.info "add_policy" ~doc ~man
 
 let create_cmd =
@@ -198,6 +207,33 @@ let log_cmd =
   Term.(ret (const event_log $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ since)),
   Term.info "log" ~doc ~man
 
+let block_info_cmd =
+  let doc = "Information about block devices" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Block device information."]
+  in
+  Term.(ret (const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_block_name)),
+  Term.info "block" ~doc ~man
+
+let block_create_cmd =
+  let doc = "Create a block device" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Creation of a block device."]
+  in
+  Term.(ret (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size)),
+  Term.info "create_block" ~doc ~man
+
+let block_destroy_cmd =
+  let doc = "Destroys a block device" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Destroys a block device."]
+  in
+  Term.(ret (const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name)),
+  Term.info "destroy_block" ~doc ~man
+
 let help_cmd =
   let topic =
     let doc = "The topic to get help on. `topics' lists the topics." in
@@ -220,7 +256,11 @@ let default_cmd =
   Term.(ret (const help $ setup_log $ destination $ Term.man_format $ Term.choice_names $ Term.pure None)),
   Term.info "vmmc_bistro" ~version:"%%VERSION_NUM%%" ~doc ~man
 
-let cmds = [ help_cmd ; info_cmd ; policy_cmd ; remove_policy_cmd ; add_policy_cmd ; destroy_cmd ; create_cmd ; console_cmd ; stats_cmd ; log_cmd ]
+let cmds = [ help_cmd ; info_cmd ;
+             policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
+             destroy_cmd ; create_cmd ;
+             block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
+             console_cmd ; stats_cmd ; log_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds

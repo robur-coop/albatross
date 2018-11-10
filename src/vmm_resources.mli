@@ -23,11 +23,14 @@ val find_vm : t -> Vmm_core.id -> Vmm_core.vm option
 (** [find_policy t id] is either [Some policy] or [None]. *)
 val find_policy : t -> Vmm_core.id -> Vmm_core.policy option
 
-(** [check_vm_policy t vm] checks whether [vm] under [id] in [t] would be
+(** [find_block t id] is either [Some (size, active)] or [None]. *)
+val find_block : t -> Vmm_core.id -> (int * bool) option
+
+(** [check_vm_policy t id vm] checks whether [vm] under [id] in [t] would be
     allowed under the current policies. *)
 val check_vm_policy : t -> Vmm_core.id -> Vmm_core.vm_config -> (bool, [> `Msg of string ]) result
 
-(** [insert_vm t vm] inserts [vm] under [id] in [t], and returns the new [t] or
+(** [insert_vm t id vm] inserts [vm] under [id] in [t], and returns the new [t] or
     an error. *)
 val insert_vm : t -> Vmm_core.id -> Vmm_core.vm -> (t, [> `Msg of string]) result
 
@@ -35,16 +38,28 @@ val insert_vm : t -> Vmm_core.id -> Vmm_core.vm -> (t, [> `Msg of string]) resul
    the new [t] or an error. *)
 val insert_policy : t -> Vmm_core.id -> Vmm_core.policy -> (t, [> `Msg of string]) result
 
+(** [check_block_policy t id size] checks whether [size] under [id] in [t] would be
+    allowed under the current policies. *)
+val check_block_policy : t -> Vmm_core.id -> int -> (bool, [> `Msg of string ]) result
+
+(** [insert_block t id size] inserts [size] under [id] in [t], and returns the new [t] or
+    an error. *)
+val insert_block : t -> Vmm_core.id -> int -> (t, [> `Msg of string]) result
+
 (** [remove_vm t id] removes vm [id] from [t]. *)
 val remove_vm : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
 
 (** [remove_policy t id] removes policy [id] from [t]. *)
 val remove_policy : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
 
-(** [fold t id f g acc] folds [f] and [g] below [id] over [t]. *)
+(** [remove_block t id] removes block [id] from [t]. *)
+val remove_block : t -> Vmm_core.id -> (t, [> `Msg of string ]) result
+
+(** [fold t id f_vm f_policy f_block acc] folds [f_vm], [f_policy] and [f_block] below [id] over [t]. *)
 val fold : t -> Vmm_core.id ->
   (Vmm_core.id -> Vmm_core.vm -> 'a -> 'a) ->
-  (Vmm_core.id -> Vmm_core.policy -> 'a -> 'a) -> 'a -> 'a
+  (Vmm_core.id -> Vmm_core.policy -> 'a -> 'a) ->
+  (Vmm_core.id -> int -> bool -> 'a -> 'a) -> 'a -> 'a
 
 (** [pp] is a pretty printer for [t]. *)
 val pp : t Fmt.t

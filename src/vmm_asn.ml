@@ -305,6 +305,22 @@ let policy_cmd =
            (explicit 1 policy)
            (explicit 2 null))
 
+let block_cmd =
+  let f = function
+    | `C1 () -> `Block_info
+    | `C2 size -> `Block_add size
+    | `C3 () -> `Block_remove
+  and g = function
+    | `Block_info -> `C1 ()
+    | `Block_add size -> `C2 size
+    | `Block_remove -> `C3 ()
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice3
+           (explicit 0 null)
+           (explicit 1 int)
+           (explicit 2 null))
+
 let version =
   let f data = match data with
     | 2 -> `AV2
@@ -321,20 +337,23 @@ let wire_command =
     | `C3 log -> `Log_cmd log
     | `C4 vm -> `Vm_cmd vm
     | `C5 policy -> `Policy_cmd policy
+    | `C6 block -> `Block_cmd block
   and g = function
     | `Console_cmd c -> `C1 c
     | `Stats_cmd c -> `C2 c
     | `Log_cmd c -> `C3 c
     | `Vm_cmd c -> `C4 c
     | `Policy_cmd c -> `C5 c
+    | `Block_cmd c -> `C6 c
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
+  Asn.S.(choice6
            (explicit 0 console_cmd)
            (explicit 1 stats_cmd)
            (explicit 2 log_cmd)
            (explicit 3 vm_cmd)
-           (explicit 4 policy_cmd))
+           (explicit 4 policy_cmd)
+           (explicit 5 block_cmd))
 
 let data =
   let f = function
@@ -378,14 +397,16 @@ let success =
     | `C2 str -> `String str
     | `C3 policies -> `Policies policies
     | `C4 vms -> `Vms vms
+    | `C5 blocks -> `Blocks blocks
   and g = function
     | `Empty -> `C1 ()
     | `String s -> `C2 s
     | `Policies ps -> `C3 ps
     | `Vms vms -> `C4 vms
+    | `Blocks blocks -> `C5 blocks
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice5
            (explicit 0 null)
            (explicit 1 utf8_string)
            (explicit 2 (sequence_of
@@ -395,7 +416,12 @@ let success =
            (explicit 3 (sequence_of
                           (sequence2
                              (required ~label:"name" (sequence_of utf8_string))
-                             (required ~label:"vm_config" vm_config)))))
+                             (required ~label:"vm_config" vm_config))))
+           (explicit 4 (sequence_of
+                          (sequence3
+                             (required ~label:"name" (sequence_of utf8_string))
+                             (required ~label:"size" int)
+                             (required ~label:"active" bool)))))
 
 let payload =
   let f = function
