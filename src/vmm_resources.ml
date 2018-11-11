@@ -10,10 +10,10 @@ type res_entry = {
 
 let empty_res = { running_vms = 0 ; used_memory = 0 ; used_blockspace = 0  }
 
-let check_resource (p : Policy.t) (vm : vm_config) (res : res_entry) =
+let check_resource (p : Policy.t) (vm : Vm.config) (res : res_entry) =
   succ res.running_vms <= p.Policy.vms &&
-  res.used_memory + vm.requested_memory <= p.Policy.memory &&
-  vm_matches_res p vm
+  res.used_memory + vm.Vm.requested_memory <= p.Policy.memory &&
+  Vm.vm_matches_res p vm
 
 let check_resource_policy (p : Policy.t) (res : res_entry) =
   res.running_vms <= p.Policy.vms && res.used_memory <= p.Policy.memory &&
@@ -22,12 +22,12 @@ let check_resource_policy (p : Policy.t) (res : res_entry) =
   | Some mb -> res.used_blockspace <= mb
 
 type entry =
-  | Vm of vm
+  | Vm of Vm.t
   | Block of int * bool
   | Policy of Policy.t
 
 let pp_entry id ppf = function
-  | Vm vm -> Fmt.pf ppf "vm %a: %a@." Name.pp id pp_vm_config vm.config
+  | Vm vm -> Fmt.pf ppf "vm %a: %a@." Name.pp id Vm.pp_config vm.Vm.config
   | Policy p -> Fmt.pf ppf "policy %a: %a@." Name.pp id Policy.pp p
   | Block (size, used) -> Fmt.pf ppf "block device %a: %dMB (used %B)@." Name.pp id size used
 
@@ -56,7 +56,7 @@ let resource_usage t name =
       | Block (size, _) -> { res with used_blockspace = res.used_blockspace + size }
       | Vm vm ->
         { res with running_vms = succ res.running_vms ;
-                   used_memory = vm.config.requested_memory + res.used_memory })
+                   used_memory = vm.Vm.config.Vm.requested_memory + res.used_memory })
     empty_res
 
 let find_vm t name = match Vmm_trie.find name t with
@@ -72,7 +72,7 @@ let find_block t name = match Vmm_trie.find name t with
   | _ -> None
 
 let set_block_usage active t name vm =
-  match vm.config.block_device with
+  match vm.Vm.config.Vm.block_device with
   | None -> Ok t
   | Some block ->
     let block_name = Name.block_name name block in
@@ -108,7 +108,7 @@ let check_vm_policy t name vm =
 
 let insert_vm t name vm =
   let open Rresult.R.Infix in
-  check_vm_policy t name vm.config >>= function
+  check_vm_policy t name vm.Vm.config >>= function
   | false -> Error (`Msg "resource policy mismatch")
   | true -> match Vmm_trie.insert name (Vm vm) t with
     | t', None -> set_block_usage true t' name vm
@@ -135,8 +135,8 @@ let check_policy_below t name p =
           then Some p'
           else None
         | Vm vm, Some p ->
-          let cfg = vm.config in
-          if IS.mem cfg.cpuid p.cpuids && good_bridge cfg.network p.bridges
+          let cfg = vm.Vm.config in
+          if IS.mem cfg.Vm.cpuid p.Policy.cpuids && Vm.good_bridge cfg.Vm.network p.Policy.bridges
           then Some p
           else None
         | _, res -> res)

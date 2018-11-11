@@ -28,8 +28,8 @@ type log_cmd = [
 
 type vm_cmd = [
   | `Vm_info
-  | `Vm_create of vm_config
-  | `Vm_force_create of vm_config
+  | `Vm_create of Vm.config
+  | `Vm_force_create of Vm.config
   | `Vm_destroy
 ]
 
@@ -74,7 +74,7 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Vms of (Name.t * vm_config) list
+  | `Vms of (Name.t * Vm.config) list
   | `Blocks of (Name.t * int * bool) list
 ]
 

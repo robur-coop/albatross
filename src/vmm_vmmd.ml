@@ -64,7 +64,7 @@ let handle_create t reply name vm_config =
   (Vmm_resources.check_vm_policy t.resources name vm_config >>= function
     | false -> Error (`Msg "resource policies don't allow creation of this VM")
     | true -> Ok ()) >>= fun () ->
-  (match vm_config.block_device with
+  (match vm_config.Vm.block_device with
    | None -> Ok None
    | Some dev ->
      let block_device_name = Name.block_name name dev in
@@ -89,11 +89,11 @@ let handle_create t reply name vm_config =
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
           let tasks = String.Map.add (Name.to_string name) task t.tasks in
           let t = { t with resources ; tasks } in
-          let t, out = log t name (`Vm_start (name, vm.pid, vm.taps, None)) in
+          let t, out = log t name (`Vm_start (name, vm.Vm.pid, vm.Vm.taps, None)) in
           Ok (t, [ reply (`String "created VM") ; out ], name, vm)))
 
 let setup_stats t name vm =
-  let stat_out = `Stats_add (vm.pid, vm.taps) in
+  let stat_out = `Stats_add (vm.Vm.pid, vm.Vm.taps) in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, `Stat (header, `Command (`Stats_cmd stat_out))
@@ -101,17 +101,17 @@ let setup_stats t name vm =
 let handle_shutdown t name vm r =
   (match Vmm_unix.shutdown name vm with
    | Ok () -> ()
-   | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e pp_vm vm)) ;
+   | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Vm.pp vm)) ;
   let resources = match Vmm_resources.remove_vm t.resources name with
     | Error (`Msg e) ->
-      Logs.warn (fun m -> m "%s while removing vm %a from resources" e pp_vm vm) ;
+      Logs.warn (fun m -> m "%s while removing vm %a from resources" e Vm.pp vm) ;
       t.resources
     | Ok resources -> resources
   in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let tasks = String.Map.remove (Name.to_string name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
-  let t, logout = log t name (`Vm_stop (name, vm.pid, r))
+  let t, logout = log t name (`Vm_stop (name, vm.Vm.pid, r))
   in
   (t, [ `Stat (header, `Command (`Stats_cmd `Stats_remove)) ; logout ])
 
@@ -152,7 +152,7 @@ let handle_vm_cmd t reply id msg_to_err = function
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
       Vmm_resources.fold t.resources id
-        (fun id vm vms -> (id, vm.config) :: vms)
+        (fun id vm vms -> (id, vm.Vm.config) :: vms)
         (fun _ _ vms-> vms)
         (fun _ _ _ vms -> vms)
         []

@@ -27,7 +27,7 @@ let create_vm force image cpuid requested_memory argv block_device network compr
       `Hvt_amd64_compressed, Cstruct.of_string img
   and argv = match argv with [] -> None | xs -> Some xs
   in
-  let vm_config = { cpuid ; requested_memory ; block_device ; network ; argv ; vmimage } in
+  let vm_config = Vm.{ cpuid ; requested_memory ; block_device ; network ; argv ; vmimage } in
   if force then `Vm_force_create vm_config else `Vm_create vm_config
 
 let policy vms memory cpus block bridges =

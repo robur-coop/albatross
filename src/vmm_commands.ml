@@ -48,15 +48,15 @@ let pp_log_cmd ppf = function
 
 type vm_cmd = [
   | `Vm_info
-  | `Vm_create of vm_config
-  | `Vm_force_create of vm_config
+  | `Vm_create of Vm.config
+  | `Vm_force_create of Vm.config
   | `Vm_destroy
 ]
 
 let pp_vm_cmd ppf = function
   | `Vm_info -> Fmt.string ppf "vm info"
-  | `Vm_create vm_config -> Fmt.pf ppf "vm create %a" pp_vm_config vm_config
-  | `Vm_force_create vm_config -> Fmt.pf ppf "vm force create %a" pp_vm_config vm_config
+  | `Vm_create vm_config -> Fmt.pf ppf "vm create %a" Vm.pp_config vm_config
+  | `Vm_force_create vm_config -> Fmt.pf ppf "vm force create %a" Vm.pp_config vm_config
   | `Vm_destroy -> Fmt.string ppf "vm destroy"
 
 type policy_cmd = [
@@ -120,7 +120,7 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Vms of (Name.t * vm_config) list
+  | `Vms of (Name.t * Vm.config) list
   | `Blocks of (Name.t * int * bool) list
 ]
 
@@ -131,7 +131,7 @@ let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
   | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Policy.pp)) ppf ps
-  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp pp_vm_config)) ppf vms
+  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Vm.pp_config)) ppf vms
   | `Blocks blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
 
 type wire = header * [

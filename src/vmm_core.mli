@@ -62,38 +62,39 @@ module Policy : sig
   val is_sub : super:t -> sub:t -> bool
 end
 
-type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
-val pp_vmtype : vmtype Fmt.t
+module Vm : sig
+  type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
+  val pp_vmtype : vmtype Fmt.t
 
-type vm_config = {
-  cpuid : int;
-  requested_memory : int;
-  block_device : string option;
-  network : string list;
-  vmimage : vmtype * Cstruct.t;
-  argv : string list option;
-}
+  type config = {
+    cpuid : int;
+    requested_memory : int;
+    block_device : string option;
+    network : string list;
+    vmimage : vmtype * Cstruct.t;
+    argv : string list option;
+  }
 
-val pp_image : (vmtype * Cstruct.t) Fmt.t
+  val pp_image : (vmtype * Cstruct.t) Fmt.t
 
-val pp_vm_config : vm_config Fmt.t
-val good_bridge : string list -> 'a Astring.String.map -> bool
+  val pp_config : config Fmt.t
+  val good_bridge : string list -> 'a Astring.String.map -> bool
 
-val vm_matches_res : Policy.t -> vm_config -> bool
+  val vm_matches_res : Policy.t -> config -> bool
 
-val check_policies :
-  vm_config -> Policy.t list -> (unit, [> `Msg of string ]) Result.result
+  val check_policies :
+    config -> Policy.t list -> (unit, [> `Msg of string ]) Result.result
 
-type vm = {
-  config : vm_config;
-  cmd : Bos.Cmd.t;
-  pid : int;
-  taps : string list;
-  stdout : Unix.file_descr;
-}
+  type t = {
+    config : config;
+    cmd : Bos.Cmd.t;
+    pid : int;
+    taps : string list;
+    stdout : Unix.file_descr;
+  }
 
-val pp_vm : vm Fmt.t
-val translate_tap : vm -> string -> string option
+  val pp : t Fmt.t
+end
 
 module Stats : sig
   type rusage = {

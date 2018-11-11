@@ -265,10 +265,10 @@ let log_cmd =
 let vm_config =
   let f (cpuid, requested_memory, block_device, network, vmimage, argv) =
     let network = match network with None -> [] | Some xs -> xs in
-    { cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
+    Vm.{ cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
   and g vm =
-    let network = match vm.network with [] -> None | xs -> Some xs in
-    (vm.cpuid, vm.requested_memory, vm.block_device, network, vm.vmimage, vm.argv)
+    let network = match vm.Vm.network with [] -> None | xs -> Some xs in
+    (vm.Vm.cpuid, vm.Vm.requested_memory, vm.Vm.block_device, network, vm.Vm.vmimage, vm.Vm.argv)
   in
   Asn.S.map f g @@
   Asn.S.(sequence6

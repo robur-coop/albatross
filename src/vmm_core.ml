@@ -30,13 +30,6 @@ end
 module IS = Set.Make(I)
 module IM = Map.Make(I)
 
-type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
-
-let pp_vmtype ppf = function
-  | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
-  | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
-  | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
-
 module Name = struct
   type t = string list
 
@@ -201,65 +194,69 @@ module Policy = struct
     sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
 end
 
-type vm_config = {
-  cpuid : int ;
-  requested_memory : int ;
-  block_device : string option ;
-  network : string list ;
-  vmimage : vmtype * Cstruct.t ;
-  argv : string list option ;
-}
+module Vm = struct
+  type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
 
-let pp_image ppf (typ, blob) =
-  let l = Cstruct.len blob in
-  Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
+  let pp_vmtype ppf = function
+    | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
+    | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
+    | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
 
-let pp_vm_config ppf (vm : vm_config) =
-  Fmt.pf ppf "cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
-    vm.cpuid vm.requested_memory
-    Fmt.(option ~none:(unit "no") string) vm.block_device
-    Fmt.(list ~sep:(unit ", ") string) vm.network
-    pp_image vm.vmimage
-    Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
+  type config = {
+    cpuid : int ;
+    requested_memory : int ;
+    block_device : string option ;
+    network : string list ;
+    vmimage : vmtype * Cstruct.t ;
+    argv : string list option ;
+  }
 
-let good_bridge idxs nets =
-  (* TODO: uniqueness of n -- it should be an ordered set? *)
-  List.for_all (fun n -> String.Map.mem n nets) idxs
+  let pp_image ppf (typ, blob) =
+    let l = Cstruct.len blob in
+    Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
 
-let vm_matches_res (res : Policy.t) (vm : vm_config)  =
-  res.Policy.vms >= 1 && IS.mem vm.cpuid res.Policy.cpuids &&
-  vm.requested_memory <= res.memory &&
-  good_bridge vm.network res.bridges
+  let pp_config ppf (vm : config) =
+    Fmt.pf ppf "cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
+      vm.cpuid vm.requested_memory
+      Fmt.(option ~none:(unit "no") string) vm.block_device
+      Fmt.(list ~sep:(unit ", ") string) vm.network
+      pp_image vm.vmimage
+      Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
-let check_policies vm res =
-  let rec climb = function
-    | super :: sub :: xs ->
-      if Policy.is_sub ~super ~sub then climb (sub :: xs)
-      else Error (`Msg "policy violation")
-    | [x] -> Ok x
-    | [] -> Error (`Msg "empty resource list")
-  in
-  climb res >>= fun res ->
-  if vm_matches_res res vm then Ok () else Error (`Msg "VM does not match policy")
+  let good_bridge idxs nets =
+    (* TODO: uniqueness of n -- it should be an ordered set? *)
+    List.for_all (fun n -> String.Map.mem n nets) idxs
 
-type vm = {
-  config : vm_config ;
-  cmd : Bos.Cmd.t ;
-  pid : int ;
-  taps : string list ;
-  stdout : Unix.file_descr (* ringbuffer thingy *)
-}
+  let vm_matches_res (res : Policy.t) (vm : config)  =
+    res.Policy.vms >= 1 && IS.mem vm.cpuid res.Policy.cpuids &&
+    vm.requested_memory <= res.Policy.memory &&
+    good_bridge vm.network res.Policy.bridges
 
-let pp_vm ppf vm =
-  Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a"
-    vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
-    Fmt.(option ~none:(unit "no") string) vm.config.block_device
-    Bos.Cmd.pp vm.cmd
+  let check_policies vm res =
+    let rec climb = function
+      | super :: sub :: xs ->
+        if Policy.is_sub ~super ~sub then climb (sub :: xs)
+        else Error (`Msg "policy violation")
+      | [x] -> Ok x
+      | [] -> Error (`Msg "empty resource list")
+    in
+    climb res >>= fun res ->
+    if vm_matches_res res vm then Ok () else Error (`Msg "VM does not match policy")
 
-let translate_tap vm tap =
-  match List.filter (fun (t, _) -> tap = t) (List.combine vm.taps vm.config.network) with
-  | [ (_, b) ] -> Some b
-  | _ -> None
+  type t = {
+    config : config ;
+    cmd : Bos.Cmd.t ;
+    pid : int ;
+    taps : string list ;
+    stdout : Unix.file_descr (* ringbuffer thingy *)
+  }
+
+  let pp ppf vm =
+    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a"
+      vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
+      Fmt.(option ~none:(unit "no") string) vm.config.block_device
+      Bos.Cmd.pp vm.cmd
+end
 
 module Stats = struct
   type rusage = {

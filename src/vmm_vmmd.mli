@@ -12,17 +12,17 @@ type service_out = [
 
 type out = [ service_out | `Data of Vmm_commands.wire ]
 
-val handle_shutdown : 'a t -> Vmm_core.Name.t -> Vmm_core.vm ->
+val handle_shutdown : 'a t -> Vmm_core.Name.t -> Vmm_core.Vm.t ->
   [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * out list
 
 val handle_command : 'a t -> Vmm_commands.wire ->
   'a t * out list *
-  [ `Create of 'c t -> 'c -> ('c t * out list * Vmm_core.Name.t * Vmm_core.vm, [> `Msg of string ]) result
+  [ `Create of 'c t -> 'c -> ('c t * out list * Vmm_core.Name.t * Vmm_core.Vm.t, [> `Msg of string ]) result
   | `Loop
   | `End
   | `Wait of 'a * out
   | `Wait_and_create of 'a * ('a t -> 'a t * out list *
-                                      [ `Create of 'd t -> 'd -> ('d t * out list * Vmm_core.Name.t * Vmm_core.vm, [> Rresult.R.msg ]) result
+                                      [ `Create of 'd t -> 'd -> ('d t * out list * Vmm_core.Name.t * Vmm_core.Vm.t, [> Rresult.R.msg ]) result
                                       | `End ]) ]
 
-val setup_stats : 'a t -> Vmm_core.Name.t -> Vmm_core.vm -> 'a t * out
+val setup_stats : 'a t -> Vmm_core.Name.t -> Vmm_core.Vm.t -> 'a t * out

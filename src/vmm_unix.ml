@@ -107,7 +107,7 @@ let destroy_tap tapname =
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let prepare name vm =
-  (match vm.vmimage with
+  (match vm.Vm.vmimage with
    | `Hvt_amd64, blob -> Ok blob
    | `Hvt_amd64_compressed, blob ->
      begin match Vmm_compress.uncompress (Cstruct.to_string blob) with
@@ -128,7 +128,7 @@ let prepare name vm =
       acc >>= fun acc ->
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
-    (Ok []) vm.network >>= fun taps ->
+    (Ok []) vm.Vm.network >>= fun taps ->
   Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
@@ -136,7 +136,7 @@ let shutdown name vm =
   (* same order as prepare! *)
   Bos.OS.File.delete (Name.image_file name) >>= fun () ->
   Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
-  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.taps
+  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.Vm.taps
 
 let cpuset cpu =
   Lazy.force (uname ()) >>= fun (sys, _) ->
@@ -157,10 +157,10 @@ let exec name vm taps block =
    | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   let net = List.map (fun t -> "--net=" ^ t) taps
   and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_file dev) ]
-  and argv = match vm.argv with None -> [] | Some xs -> xs
-  and mem = "--mem=" ^ string_of_int vm.requested_memory
+  and argv = match vm.Vm.argv with None -> [] | Some xs -> xs
+  and mem = "--mem=" ^ string_of_int vm.Vm.requested_memory
   in
-  cpuset vm.cpuid >>= fun cpuset ->
+  cpuset vm.Vm.cpuid >>= fun cpuset ->
   let cmd =
     Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt" + bin) % mem %%
              of_list net %% of_list block %
@@ -178,14 +178,14 @@ let exec name vm taps block =
     let pid = create_process prog line stdout stdout in
     Logs.debug (fun m -> m "created process %d: %a" pid Bos.Cmd.pp cmd) ;
     (* this should get rid of the vmimage from vmmd's memory! *)
-    let config = { vm with vmimage = (fst vm.vmimage, Cstruct.create 0) } in
-    Ok { config ; cmd ; pid ; taps ; stdout }
+    let config = Vm.{ vm with vmimage = (fst vm.vmimage, Cstruct.create 0) } in
+    Ok Vm.{ config ; cmd ; pid ; taps ; stdout }
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
     R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_error e
 
-let destroy vm = Unix.kill vm.pid 15 (* 15 is SIGTERM *)
+let destroy vm = Unix.kill vm.Vm.pid 15 (* 15 is SIGTERM *)
 
 let bytes_of_mb size =
   let res = size lsl 20 in

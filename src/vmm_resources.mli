@@ -18,7 +18,7 @@ type t
 val empty : t
 
 (** [find_vm t id] is either [Some vm] or [None]. *)
-val find_vm : t -> Vmm_core.Name.t -> Vmm_core.vm option
+val find_vm : t -> Vmm_core.Name.t -> Vmm_core.Vm.t option
 
 (** [find_policy t Name.t] is either [Some policy] or [None]. *)
 val find_policy : t -> Vmm_core.Name.t -> Vmm_core.Policy.t option
@@ -28,11 +28,11 @@ val find_block : t -> Vmm_core.Name.t -> (int * bool) option
 
 (** [check_vm_policy t Name.t vm] checks whether [vm] under [Name.t] in [t] would be
     allowed under the current policies. *)
-val check_vm_policy : t -> Vmm_core.Name.t -> Vmm_core.vm_config -> (bool, [> `Msg of string ]) result
+val check_vm_policy : t -> Vmm_core.Name.t -> Vmm_core.Vm.config -> (bool, [> `Msg of string ]) result
 
 (** [insert_vm t Name.t vm] inserts [vm] under [Name.t] in [t], and returns the new [t] or
     an error. *)
-val insert_vm : t -> Vmm_core.Name.t -> Vmm_core.vm -> (t, [> `Msg of string]) result
+val insert_vm : t -> Vmm_core.Name.t -> Vmm_core.Vm.t -> (t, [> `Msg of string]) result
 
 (** [insert_policy t Name.t policy] inserts [policy] under [Name.t] in [t], and returns
    the new [t] or an error. *)
@@ -57,7 +57,7 @@ val remove_block : t -> Vmm_core.Name.t -> (t, [> `Msg of string ]) result
 
 (** [fold t Name.t f_vm f_policy f_block acc] folds [f_vm], [f_policy] and [f_block] below [Name.t] over [t]. *)
 val fold : t -> Vmm_core.Name.t ->
-  (Vmm_core.Name.t -> Vmm_core.vm -> 'a -> 'a) ->
+  (Vmm_core.Name.t -> Vmm_core.Vm.t -> 'a -> 'a) ->
   (Vmm_core.Name.t -> Vmm_core.Policy.t -> 'a -> 'a) ->
   (Vmm_core.Name.t -> int -> bool -> 'a -> 'a) -> 'a -> 'a
 
