@@ -71,8 +71,8 @@ let handle ca (tls, addr) =
            match r with
            | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
            | Ok () ->
-             Logs.debug (fun m -> m "adding policy for %a: %a" Vmm_core.pp_id id Vmm_core.pp_policy policy) ;
-             let header = Vmm_commands.{version = my_version ; sequence = !command ; id } in
+             Logs.debug (fun m -> m "adding policy for %a: %a" Vmm_core.Name.pp id Vmm_core.pp_policy policy) ;
+             let header = Vmm_commands.{version = my_version ; sequence = !command ; name = id } in
              command := Int64.succ !command ;
              Vmm_lwt.write_wire fd (header, `Command (`Policy_cmd (`Policy_add policy))) >>= function
              | Error `Exception -> Lwt.return (Error (`Msg "failed to write policy"))
@@ -91,7 +91,7 @@ let handle ca (tls, addr) =
       begin
         Logs.warn (fun m -> m "error while applying policies %s" msg) ;
         let wire =
-          let header = Vmm_commands.{version = my_version ; sequence = 0L ; id = name } in
+          let header = Vmm_commands.{version = my_version ; sequence = 0L ; name } in
           header, `Failure msg
         in
         Vmm_tls_lwt.write_tls tls wire >>= fun _ ->
@@ -100,7 +100,7 @@ let handle ca (tls, addr) =
       end
     | Ok () ->
       let wire =
-        let header = Vmm_commands.{version = my_version ; sequence = !command ; id = name } in
+        let header = Vmm_commands.{version = my_version ; sequence = !command ; name } in
         command := Int64.succ !command ;
         (header, `Command cmd)
       in

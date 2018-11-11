@@ -57,10 +57,6 @@ let rec mkfifo name =
   try Unix.mkfifo (Fpath.to_string name) 0o640 with
   | Unix.Unix_error (Unix.EINTR, _, _) -> mkfifo name
 
-let image_file, fifo_file =
-  ((fun name -> Fpath.(tmpdir / (string_of_id name) + "img")),
-   (fun name -> Fpath.(tmpdir / "fifo" / (string_of_id name))))
-
 let rec fifo_exists file =
   try Ok (Unix.((stat @@ Fpath.to_string file).st_kind = S_FIFO)) with
   | Unix.Unix_error (Unix.ENOENT, _, _) -> Error (`Msg "noent")
@@ -112,7 +108,7 @@ let prepare name vm =
        | Error () -> Error (`Msg "failed to uncompress")
      end
    | `Hvt_arm64, _ -> Error (`Msg "no amd64 hvt image found")) >>= fun image ->
-  let fifo = fifo_file name in
+  let fifo = Name.fifo_file name in
   (match fifo_exists fifo with
    | Ok true -> Ok ()
    | Ok false -> Error (`Msg ("file " ^ Fpath.to_string fifo ^ " exists and is not a fifo"))
@@ -126,13 +122,13 @@ let prepare name vm =
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
     (Ok []) vm.network >>= fun taps ->
-  Bos.OS.File.write (image_file name) (Cstruct.to_string image) >>= fun () ->
+  Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
 let shutdown name vm =
   (* same order as prepare! *)
-  Bos.OS.File.delete (image_file name) >>= fun () ->
-  Bos.OS.File.delete (fifo_file name) >>= fun () ->
+  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
+  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
   List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.taps
 
 let cpuset cpu =
@@ -145,8 +141,6 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let block_device_name name = Fpath.(blockdir / string_of_id name)
-
 let exec name vm taps block =
   (match taps, block with
    | [], None -> Ok "none"
@@ -155,7 +149,7 @@ let exec name vm taps block =
    | [_], Some _ -> Ok "block-net"
    | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   let net = List.map (fun t -> "--net=" ^ t) taps
-  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_device_name dev) ]
+  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (Name.block_file dev) ]
   and argv = match vm.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int vm.requested_memory
   in
@@ -163,12 +157,12 @@ let exec name vm taps block =
   let cmd =
     Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt" + bin) % mem %%
              of_list net %% of_list block %
-             "--" % p (image_file name) %% of_list argv)
+             "--" % p (Name.image_file name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
   let line = Array.of_list line in
-  let fifo = fifo_file name in
+  let fifo = Name.fifo_file name in
   Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
   write_fd_for_file fifo >>= fun stdout ->
   Logs.debug (fun m -> m "opened file descriptor!");
@@ -194,7 +188,7 @@ let bytes_of_mb size =
     Error (`Msg "overflow while computing bytes")
 
 let create_block name size =
-  let block_name = block_device_name name in
+  let block_name = Name.block_file name in
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
   | false ->
@@ -202,7 +196,7 @@ let create_block name size =
     Bos.OS.File.truncate block_name size'
 
 let destroy_block name =
-  Bos.OS.File.delete (block_device_name name)
+  Bos.OS.File.delete (Name.block_file name)
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then
@@ -221,11 +215,13 @@ let find_block_devices () =
         Ok acc
       | true ->
         Bos.OS.Path.stat path >>= fun stats ->
-        match mb_of_bytes stats.Unix.st_size with
-        | Error (`Msg msg) ->
-          Logs.warn (fun m -> m "file %a error: %s" Fpath.pp path msg) ;
+        match mb_of_bytes stats.Unix.st_size, Name.of_string (Fpath.to_string file) with
+        | Error (`Msg msg), _ ->
+          Logs.warn (fun m -> m "file %a size error: %s" Fpath.pp path msg) ;
           Ok acc
-        | Ok size ->
-          let id = id_of_string (Fpath.to_string file) in
+        | _, Error (`Msg msg) ->
+          Logs.warn (fun m -> m "file %a name error: %s" Fpath.pp path msg) ;
+          Ok acc
+        | Ok size, Ok id ->
           Ok ((id, size) :: acc))
     (Ok []) files

@@ -27,14 +27,14 @@ type entry =
   | Policy of policy
 
 let pp_entry id ppf = function
-  | Vm vm -> Fmt.pf ppf "vm %a: %a@." pp_id id pp_vm_config vm.config
-  | Policy p -> Fmt.pf ppf "policy %a: %a@." pp_id id pp_policy p
-  | Block (size, used) -> Fmt.pf ppf "block device %a: %dMB (used %B)@." pp_id id size used
+  | Vm vm -> Fmt.pf ppf "vm %a: %a@." Name.pp id pp_vm_config vm.config
+  | Policy p -> Fmt.pf ppf "policy %a: %a@." Name.pp id pp_policy p
+  | Block (size, used) -> Fmt.pf ppf "block device %a: %dMB (used %B)@." Name.pp id size used
 
 type t = entry Vmm_trie.t
 
 let pp ppf t =
-  Vmm_trie.fold [] t
+  Vmm_trie.fold Name.root t
     (fun id ele () -> pp_entry id ppf ele) ()
 
 let empty = Vmm_trie.empty
@@ -75,7 +75,7 @@ let set_block_usage active t name vm =
   match vm.config.block_device with
   | None -> Ok t
   | Some block ->
-    let block_name = block_name name block in
+    let block_name = Name.block_name name block in
     match find_block t block_name with
     | None -> Error (`Msg "unknown block device")
     | Some (size, curr) ->
@@ -97,14 +97,14 @@ let remove_block t name = match find_block t name with
   | Some _ -> Ok (Vmm_trie.remove name t)
 
 let check_vm_policy t name vm =
-  let dom = domain name in
+  let dom = Name.domain name in
   let res = resource_usage t dom in
   match Vmm_trie.find dom t with
   | None -> Ok true
   | Some (Policy p) -> Ok (check_resource p vm res)
   | Some x ->
-    Logs.err (fun m -> m "id %a, expected policy, got %a" pp_id dom (pp_entry dom) x) ;
-    Rresult.R.error_msgf "expected policy for %a" pp_id dom
+    Logs.err (fun m -> m "id %a, expected policy, got %a" Name.pp dom (pp_entry dom) x) ;
+    Rresult.R.error_msgf "expected policy for %a" Name.pp dom
 
 let insert_vm t name vm =
   let open Rresult.R.Infix in
@@ -126,9 +126,9 @@ let check_policy_above t name p =
 
 let check_policy_below t name p =
   Vmm_trie.fold name t (fun name entry res ->
-      match name with
-      | [] -> res
-      | _ ->
+      if Name.is_root name then
+        res
+      else
         match res, entry with
         | Some p, Policy p' -> if is_sub ~super:p ~sub:p then Some p' else None
         | Some p, Vm vm ->
@@ -141,7 +141,7 @@ let check_policy_below t name p =
 
 let insert_policy t name p =
   match
-    check_policy_above t (domain name) p,
+    check_policy_above t (Name.domain name) p,
     check_policy_below t name p,
     check_resource_policy p (resource_usage t name)
   with
@@ -154,15 +154,15 @@ let check_block_policy t name size =
   match find_block t name with
   | Some _ -> Error (`Msg "block device with same name already exists")
   | None ->
-    let dom = domain name in
+    let dom = Name.domain name in
     let res = resource_usage t dom in
     let res' = { res with used_blockspace = res.used_blockspace + size } in
     match Vmm_trie.find dom t with
     | None -> Ok true
     | Some (Policy p) -> Ok (check_resource_policy p res')
     | Some x ->
-      Logs.err (fun m -> m "id %a, expected policy, got %a" pp_id dom (pp_entry dom) x) ;
-      Rresult.R.error_msgf "expected policy for %a" pp_id dom
+      Logs.err (fun m -> m "id %a, expected policy, got %a" Name.pp dom (pp_entry dom) x) ;
+      Rresult.R.error_msgf "expected policy for %a" Name.pp dom
 
 let insert_block t name size =
   let open Rresult.R.Infix in

@@ -67,15 +67,15 @@ val pp_data : data Fmt.t
 type header = {
   version : version ;
   sequence : int64 ;
-  id : id ;
+  name : Name.t ;
 }
 
 type success = [
   | `Empty
   | `String of string
-  | `Policies of (id * policy) list
-  | `Vms of (id * vm_config) list
-  | `Blocks of (id * int * bool) list
+  | `Policies of (Name.t * policy) list
+  | `Vms of (Name.t * vm_config) list
+  | `Blocks of (Name.t * int * bool) list
 ]
 
 type wire = header * [

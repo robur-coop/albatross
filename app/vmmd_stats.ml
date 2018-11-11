@@ -66,7 +66,7 @@ let rec timer interval () =
       Vmm_lwt.write_wire s stat >>= function
       | Ok () -> Lwt.return_unit
       | Error `Exception ->
-        Logs.debug (fun m -> m "removing entry %a" Vmm_core.pp_id name) ;
+        Logs.debug (fun m -> m "removing entry %a" Vmm_core.Name.pp name) ;
         t := remove_entry !t name ;
         Vmm_lwt.safe_close s)
     outs >>= fun () ->

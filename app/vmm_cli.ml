@@ -3,15 +3,13 @@
 open Astring
 open Vmm_core
 
-open Lwt.Infix
-
 let print_result version (header, reply) =
   if not (Vmm_commands.version_eq header.Vmm_commands.version version) then
     Logs.err (fun m -> m "version not equal")
   else match reply with
-    | `Success s -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
-    | `Data d -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
-    | `Failure d -> Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
+    | `Success _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
+    | `Data _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
+    | `Failure _ -> Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
     | `Command _ -> Logs.err (fun m -> m "unexpected command %a" Vmm_commands.pp_wire (header, reply))
 
 let setup_log style_renderer level =
@@ -88,13 +86,15 @@ let bridge =
   (parse, pp_bridge)
 
 let vm_c =
-  let parse s = `Ok (id_of_string s)
+  let parse s = match Name.of_string s with
+    | Error (`Msg msg) -> `Error msg
+    | Ok name -> `Ok name
   in
-  (parse, pp_id)
+  (parse, Name.pp)
 
 let opt_vm_name =
   let doc = "name of virtual machine." in
-  Arg.(value & opt vm_c [] & info [ "n" ; "name"] ~doc)
+  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
 
 let compress_level =
   let doc = "Compression level (0 for no compression)" in
@@ -130,7 +130,7 @@ let block_size =
 
 let opt_block_name =
   let doc = "Name of block device." in
-  Arg.(value & opt vm_c [] & info [ "name" ] ~doc)
+  Arg.(value & opt vm_c Name.root & info [ "name" ] ~doc)
 
 let opt_block_size =
   let doc = "Block storage to allow in MB" in

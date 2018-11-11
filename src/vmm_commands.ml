@@ -113,25 +113,25 @@ let pp_data ppf = function
 type header = {
   version : version ;
   sequence : int64 ;
-  id : id ;
+  name : Name.t ;
 }
 
 type success = [
   | `Empty
   | `String of string
-  | `Policies of (id * policy) list
-  | `Vms of (id * vm_config) list
-  | `Blocks of (id * int * bool) list
+  | `Policies of (Name.t * policy) list
+  | `Vms of (Name.t * vm_config) list
+  | `Blocks of (Name.t * int * bool) list
 ]
 
 let pp_block ppf (id, size, active) =
-  Fmt.pf ppf "block %a size %d MB active %B" pp_id id size active
+  Fmt.pf ppf "block %a size %d MB active %B" Name.pp id size active
 
 let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
-  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") pp_id pp_policy)) ppf ps
-  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") pp_id pp_vm_config)) ppf vms
+  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp pp_policy)) ppf ps
+  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp pp_vm_config)) ppf vms
   | `Blocks blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
 
 type wire = header * [
@@ -141,11 +141,11 @@ type wire = header * [
     | `Data of data ]
 
 let pp_wire ppf (header, data) =
-  let id = header.id in
+  let name = header.name in
   match data with
-  | `Command c -> Fmt.pf ppf "host %a: %a" pp_id id pp c
-  | `Failure f -> Fmt.pf ppf "host %a: command failed %s" pp_id id f
-  | `Success s -> Fmt.pf ppf "host %a: %a" pp_id id pp_success s
+  | `Command c -> Fmt.pf ppf "host %a: %a" Name.pp name pp c
+  | `Failure f -> Fmt.pf ppf "host %a: command failed %s" Name.pp name f
+  | `Success s -> Fmt.pf ppf "host %a: %a" Name.pp name pp_success s
   | `Data d -> pp_data ppf d
 
 let endpoint = function

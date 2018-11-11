@@ -138,7 +138,7 @@ module P = struct
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
     Printf.sprintf "interface,vm=%s,ifname=%s %s"
-      vm ifd.name (String.concat ~sep:"," fields)
+      vm ifd.ifname (String.concat ~sep:"," fields)
 end
 
 let my_version = `AV2
@@ -198,7 +198,7 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
           safe_close c >|= fun () ->
           false
         end else
-          let name = string_of_id hdr.Vmm_commands.id in
+          let name = Name.to_string hdr.Vmm_commands.name in
           let ru = P.encode_ru name ru in
           let vmm = match vmm with None -> [] | Some xs -> [ P.encode_vmm name xs ] in
           let taps = List.map (P.encode_if name) ifs in
@@ -220,9 +220,9 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
       read_sock_write_tcp c ?fd addr addrtype
 
 let query_sock vm c =
-  let header = Vmm_commands.{ version = my_version ; sequence = !command ; id = vm } in
+  let header = Vmm_commands.{ version = my_version ; sequence = !command ; name = vm } in
   command := Int64.succ !command  ;
-  Logs.debug (fun m -> m "%Lu requesting %a via socket" !command pp_id vm) ;
+  Logs.debug (fun m -> m "%Lu requesting %a via socket" !command Name.pp vm) ;
   Vmm_lwt.write_wire c (header, `Command (`Stats_cmd `Stats_subscribe))
 
 let rec maybe_connect stat_socket =

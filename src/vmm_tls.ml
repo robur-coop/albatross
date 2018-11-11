@@ -12,7 +12,18 @@ let cert_name cert =
     if name = "" then
       match Vmm_asn.cert_extension_of_cstruct data with
       | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension")
-      | Ok (_, `Policy_cmd (`Policy_add _)) -> Error (`Msg "policy add may not have an empty name")
+      | Ok (_, `Policy_cmd pc) ->
+        begin match pc with
+          | `Policy_add _ -> Error (`Msg "policy add may not have an empty name")
+          | `Policy_remove -> Error (`Msg "policy remove may not have an empty name")
+          | `Policy_info -> Ok None
+        end
+      | Ok (_, `Block_cmd bc) ->
+        begin match bc with
+          | `Block_add _ -> Error (`Msg "block add may not have an empty name")
+          | `Block_remove -> Error (`Msg "block remove may not have an empty name")
+          | `Block_info -> Ok None
+        end
       | _ -> Ok None
     else Ok (Some name)
 
@@ -22,8 +33,12 @@ let name chain =
       | Error e, _ -> Error e
       | _, Error e -> Error e
       | Ok acc, Ok None -> Ok acc
-      | Ok acc, Ok Some data -> Ok (data :: acc))
-    (Ok []) chain
+      | Ok acc, Ok (Some data) -> Vmm_core.Name.prepend data acc)
+    (Ok Vmm_core.Name.root) chain >>= fun lbl ->
+  if List.length (Vmm_core.Name.to_list lbl) < 10 then
+    Ok lbl
+  else
+    Error (`Msg "too deep")
 
 (* this separates the leaf and top-level certificate from the chain,
    and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
@@ -56,13 +71,13 @@ let extract_policies version chain =
           Vmm_commands.pp_version received
           Vmm_commands.pp_version version
       | Ok (prefix, acc), Ok (`Policy_cmd (`Policy_add p)) ->
-        (cert_name cert >>| function
-          | None -> prefix
-          | Some x -> x :: prefix) >>| fun name ->
+        (cert_name cert >>= function
+          | None -> Ok prefix
+          | Some x -> Vmm_core.Name.prepend x prefix) >>| fun name ->
         (name, (name, p) :: acc)
       | _, Ok wire ->
         R.error_msgf "unexpected wire %a" Vmm_commands.pp wire)
-    (Ok ([], [])) chain
+    (Ok (Vmm_core.Name.root, [])) chain
 
 let handle _addr version chain =
   separate_chain chain >>= fun (leaf, rest) ->

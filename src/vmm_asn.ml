@@ -150,14 +150,14 @@ let int32 =
 
 let ifdata =
   let open Stats in
-  let f (name, (flags, (send_length, (max_send_length, (send_drops, (mtu, (baudrate, (input_packets, (input_errors, (output_packets, (output_errors, (collisions, (input_bytes, (output_bytes, (input_mcast, (output_mcast, (input_dropped, output_dropped))))))))))))))))) =
-    { name; flags; send_length; max_send_length; send_drops; mtu; baudrate; input_packets; input_errors; output_packets; output_errors; collisions; input_bytes; output_bytes; input_mcast; output_mcast; input_dropped; output_dropped }
+  let f (ifname, (flags, (send_length, (max_send_length, (send_drops, (mtu, (baudrate, (input_packets, (input_errors, (output_packets, (output_errors, (collisions, (input_bytes, (output_bytes, (input_mcast, (output_mcast, (input_dropped, output_dropped))))))))))))))))) =
+    { ifname; flags; send_length; max_send_length; send_drops; mtu; baudrate; input_packets; input_errors; output_packets; output_errors; collisions; input_bytes; output_bytes; input_mcast; output_mcast; input_dropped; output_dropped }
   and g i =
-    (i.name, (i.flags, (i.send_length, (i.max_send_length, (i.send_drops, (i.mtu, (i.baudrate, (i.input_packets, (i.input_errors, (i.output_packets, (i.output_errors, (i.collisions, (i.input_bytes, (i.output_bytes, (i.input_mcast, (i.output_mcast, (i.input_dropped, i.output_dropped)))))))))))))))))
+    (i.ifname, (i.flags, (i.send_length, (i.max_send_length, (i.send_drops, (i.mtu, (i.baudrate, (i.input_packets, (i.input_errors, (i.output_packets, (i.output_errors, (i.collisions, (i.input_bytes, (i.output_bytes, (i.input_mcast, (i.output_mcast, (i.input_dropped, i.output_dropped)))))))))))))))))
   in
   Asn.S.map f g @@
   Asn.S.(sequence @@
-         (required ~label:"name" utf8_string)
+         (required ~label:"ifname" utf8_string)
        @ (required ~label:"flags" int32)
        @ (required ~label:"send_length" int32)
        @ (required ~label:"max_send_length" int32)
@@ -194,31 +194,37 @@ let stats_cmd =
            (explicit 1 null)
            (explicit 2 null))
 
+let of_name, to_name =
+  Name.to_list,
+  fun list -> match Name.of_list list with
+    | Error (`Msg msg) -> Asn.S.error (`Parse msg)
+    | Ok name -> name
+
 let log_event =
   let f = function
     | `C1 () -> `Startup
-    | `C2 (name, ip, port) -> `Login (name, ip, port)
-    | `C3 (name, ip, port) -> `Logout (name, ip, port)
-    | `C4 (name, pid, taps, block) -> `Vm_start (name, pid, taps, block)
+    | `C2 (name, ip, port) -> `Login (to_name name, ip, port)
+    | `C3 (name, ip, port) -> `Logout (to_name name, ip, port)
+    | `C4 (name, pid, taps, block) -> `Vm_start (to_name name, pid, taps, block)
     | `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
         | `C2 n -> `Signal n
         | `C3 n -> `Stop n
       in
-      `Vm_stop (name, pid, status')
+      `Vm_stop (to_name name, pid, status')
   and g = function
     | `Startup -> `C1 ()
-    | `Login (name, ip, port) -> `C2 (name, ip, port)
-    | `Logout (name, ip, port) -> `C3 (name, ip, port)
-    | `Vm_start (name, pid, taps, block) -> `C4 (name, pid, taps, block)
+    | `Login (name, ip, port) -> `C2 (of_name name, ip, port)
+    | `Logout (name, ip, port) -> `C3 (of_name name, ip, port)
+    | `Vm_start (name, pid, taps, block) -> `C4 (of_name name, pid, taps, block)
     | `Vm_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
         | `Signal n -> `C2 n
         | `Stop n -> `C3 n
       in
-      `C5 (name, pid, status')
+      `C5 (of_name name, pid, status')
   in
   let endp =
     Asn.S.(sequence3
@@ -382,28 +388,28 @@ let data =
                           (required ~label:"event" log_event))))
 
 let header =
-  let f (version, sequence, id) = { version ; sequence ; id }
-  and g h = h.version, h.sequence, h.id
+  let f (version, sequence, name) = { version ; sequence ; name = to_name name }
+  and g h = h.version, h.sequence, of_name h.name
   in
   Asn.S.map f g @@
   Asn.S.(sequence3
            (required ~label:"version" version)
            (required ~label:"sequence" int64)
-           (required ~label:"id" (sequence_of utf8_string)))
+           (required ~label:"name" (sequence_of utf8_string)))
 
 let success =
   let f = function
     | `C1 () -> `Empty
     | `C2 str -> `String str
-    | `C3 policies -> `Policies policies
-    | `C4 vms -> `Vms vms
-    | `C5 blocks -> `Blocks blocks
+    | `C3 policies -> `Policies (List.map (fun (name, p) -> to_name name, p) policies)
+    | `C4 vms -> `Vms (List.map (fun (name, vm) -> to_name name, vm) vms)
+    | `C5 blocks -> `Blocks (List.map (fun (name, s, a) -> to_name name, s, a) blocks)
   and g = function
     | `Empty -> `C1 ()
     | `String s -> `C2 s
-    | `Policies ps -> `C3 ps
-    | `Vms vms -> `C4 vms
-    | `Blocks blocks -> `C5 blocks
+    | `Policies ps -> `C3 (List.map (fun (name, p) -> of_name name, p) ps)
+    | `Vms vms -> `C4 (List.map (fun (name, v) -> of_name name, v) vms)
+    | `Blocks blocks -> `C5 (List.map (fun (name, s, a) -> of_name name, s, a) blocks)
   in
   Asn.S.map f g @@
   Asn.S.(choice5

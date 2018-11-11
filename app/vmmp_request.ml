@@ -15,7 +15,7 @@ let csr priv name cmd =
 
 let jump id cmd =
   Nocrypto_entropy_unix.initialize () ;
-  let name = Vmm_core.string_of_id id in
+  let name = Vmm_core.Name.to_string id in
   match
     priv_key None name >>= fun priv ->
     let csr = csr priv name cmd in

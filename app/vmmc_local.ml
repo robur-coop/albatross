@@ -28,10 +28,10 @@ let read fd =
   in
   loop ()
 
-let handle opt_socket id (cmd : Vmm_commands.t) =
+let handle opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
   connect (socket sock opt_socket) >>= fun fd ->
-  let header = Vmm_commands.{ version ; sequence = 0L ; id } in
+  let header = Vmm_commands.{ version ; sequence = 0L ; name } in
   Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
   | Error `Exception -> Lwt.return ()
   | Ok () ->

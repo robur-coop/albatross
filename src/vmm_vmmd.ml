@@ -34,7 +34,7 @@ let init wire_version =
       List.fold_left (fun r (id, size) ->
           match Vmm_resources.insert_block r id size with
           | Error (`Msg msg) ->
-            Logs.err (fun m -> m "couldn't insert block device %a (%dM): %s" pp_id id size msg) ;
+            Logs.err (fun m -> m "couldn't insert block device %a (%dM): %s" Name.pp id size msg) ;
             r
           | Ok r -> r)
         t.resources devs
@@ -49,9 +49,9 @@ type service_out = [
 
 type out = [ service_out | `Data of Vmm_commands.wire ]
 
-let log t id event =
+let log t name event =
   let data = (Ptime_clock.now (), event) in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.log_counter ; id } in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.log_counter ; name } in
   let log_counter = Int64.succ t.log_counter in
   Logs.debug (fun m -> m "log %a" Log.pp data) ;
   ({ t with log_counter }, `Log (header, `Data (`Log_data data)))
@@ -67,8 +67,8 @@ let handle_create t reply name vm_config =
   (match vm_config.block_device with
    | None -> Ok None
    | Some dev ->
-     let block_device_name = block_name name dev in
-     Logs.debug (fun m -> m "looking for block device %a" pp_id block_device_name) ;
+     let block_device_name = Name.block_name name dev in
+     Logs.debug (fun m -> m "looking for block device %a" Name.pp block_device_name) ;
      match Vmm_resources.find_block t.resources block_device_name with
      | Some (_, false) -> Ok (Some block_device_name)
      | Some (_, true) -> Error (`Msg "block device is busy")
@@ -77,7 +77,7 @@ let handle_create t reply name vm_config =
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   let cons_out =
-    let header = Vmm_commands.{ version = t.wire_version ; sequence = t.console_counter ; id = name } in
+    let header = Vmm_commands.{ version = t.wire_version ; sequence = t.console_counter ; name } in
     (header, `Command (`Console_cmd `Console_add))
   in
   Ok ({ t with console_counter = Int64.succ t.console_counter },
@@ -87,14 +87,14 @@ let handle_create t reply name vm_config =
           Vmm_unix.exec name vm_config taps block_device >>= fun vm ->
           Logs.debug (fun m -> m "exec()ed vm") ;
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
-          let tasks = String.Map.add (string_of_id name) task t.tasks in
+          let tasks = String.Map.add (Name.to_string name) task t.tasks in
           let t = { t with resources ; tasks } in
           let t, out = log t name (`Vm_start (name, vm.pid, vm.taps, None)) in
           Ok (t, [ reply (`String "created VM") ; out ], name, vm)))
 
 let setup_stats t name vm =
   let stat_out = `Stats_add (vm.pid, vm.taps) in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, `Stat (header, `Command (`Stats_cmd stat_out))
 
@@ -108,8 +108,8 @@ let handle_shutdown t name vm r =
       t.resources
     | Ok resources -> resources
   in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; id = name } in
-  let tasks = String.Map.remove (string_of_id name) t.tasks in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
+  let tasks = String.Map.remove (Name.to_string name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
   let t, logout = log t name (`Vm_stop (name, vm.pid, r))
   in
@@ -117,11 +117,11 @@ let handle_shutdown t name vm r =
 
 let handle_policy_cmd t reply id = function
   | `Policy_remove ->
-    Logs.debug (fun m -> m "remove policy %a" pp_id id) ;
+    Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;
     Vmm_resources.remove_policy t.resources id >>= fun resources ->
     Ok ({ t with resources }, [ reply (`String "removed policy") ], `End)
   | `Policy_add policy ->
-    Logs.debug (fun m -> m "insert policy %a" pp_id id) ;
+    Logs.debug (fun m -> m "insert policy %a" Name.pp id) ;
     let same_policy = match Vmm_resources.find_policy t.resources id with
       | None -> false
       | Some p' -> eq_policy policy p'
@@ -132,7 +132,7 @@ let handle_policy_cmd t reply id = function
       Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
       Ok ({ t with resources }, [ reply (`String "added policy") ], `Loop)
   | `Policy_info ->
-    Logs.debug (fun m -> m "policy %a" pp_id id) ;
+    Logs.debug (fun m -> m "policy %a" Name.pp id) ;
     let policies =
       Vmm_resources.fold t.resources id
         (fun _ _ policies -> policies)
@@ -142,14 +142,14 @@ let handle_policy_cmd t reply id = function
     in
     match policies with
     | [] ->
-      Logs.debug (fun m -> m "policies: couldn't find %a" pp_id id) ;
+      Logs.debug (fun m -> m "policies: couldn't find %a" Name.pp id) ;
       Error (`Msg "policy: not found")
     | _ ->
       Ok (t, [ reply (`Policies policies) ], `End)
 
 let handle_vm_cmd t reply id msg_to_err = function
   | `Vm_info ->
-    Logs.debug (fun m -> m "info %a" pp_id id) ;
+    Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
       Vmm_resources.fold t.resources id
         (fun id vm vms -> (id, vm.config) :: vms)
@@ -159,7 +159,7 @@ let handle_vm_cmd t reply id msg_to_err = function
     in
     begin match vms with
       | [] ->
-        Logs.debug (fun m -> m "info: couldn't find %a" pp_id id) ;
+        Logs.debug (fun m -> m "info: couldn't find %a" Name.pp id) ;
         Error (`Msg "info: not found")
       | _ ->
         Ok (t, [ reply (`Vms vms) ], `End)
@@ -178,7 +178,7 @@ let handle_vm_cmd t reply id msg_to_err = function
         | None -> handle_create t reply id vm_config
         | Some vm ->
           Vmm_unix.destroy vm ;
-          let id_str = string_of_id id in
+          let id_str = Name.to_string id in
           match String.Map.find_opt id_str t.tasks with
           | None -> handle_create t reply id vm_config
           | Some task ->
@@ -191,7 +191,7 @@ let handle_vm_cmd t reply id msg_to_err = function
     match Vmm_resources.find_vm t.resources id with
     | Some vm ->
       Vmm_unix.destroy vm ;
-      let id_str = string_of_id id in
+      let id_str = Name.to_string id in
       let out, next =
         let s = reply (`String "destroyed vm") in
         match String.Map.find_opt id_str t.tasks with
@@ -204,7 +204,7 @@ let handle_vm_cmd t reply id msg_to_err = function
 
 let handle_block_cmd t reply id = function
   | `Block_remove ->
-    Logs.debug (fun m -> m "removing block %a" pp_id id) ;
+    Logs.debug (fun m -> m "removing block %a" Name.pp id) ;
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "remove block: not found")
       | Some (_, true) -> Error (`Msg "remove block: is in use")
@@ -215,7 +215,7 @@ let handle_block_cmd t reply id = function
     end
   | `Block_add size ->
     begin
-      Logs.debug (fun m -> m "insert block %a: %dMB" pp_id id size) ;
+      Logs.debug (fun m -> m "insert block %a: %dMB" Name.pp id size) ;
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
@@ -227,7 +227,7 @@ let handle_block_cmd t reply id = function
           Ok ({ t with resources }, [ reply (`String "added block device") ], `Loop)
     end
   | `Block_info ->
-    Logs.debug (fun m -> m "block %a" pp_id id) ;
+    Logs.debug (fun m -> m "block %a" Name.pp id) ;
     let blocks =
       Vmm_resources.fold t.resources id
         (fun _ _ blocks -> blocks)
@@ -237,7 +237,7 @@ let handle_block_cmd t reply id = function
     in
     match blocks with
     | [] ->
-      Logs.debug (fun m -> m "block: couldn't find %a" pp_id id) ;
+      Logs.debug (fun m -> m "block: couldn't find %a" Name.pp id) ;
       Error (`Msg "block: not found")
     | _ ->
       Ok (t, [ reply (`Blocks blocks) ], `End)
@@ -249,7 +249,7 @@ let handle_command t (header, payload) =
       Logs.err (fun m -> m "error while processing command: %s" msg) ;
       (t, [ `Data (header, `Failure msg) ], `End)
   and reply x = `Data (header, `Success x)
-  and id = header.Vmm_commands.id
+  and id = header.Vmm_commands.name
   in
   msg_to_err (
     match payload with

@@ -68,7 +68,7 @@ let send_history s ring id ts =
   let res =
     List.fold_left (fun acc (ts, event) ->
         let sub = Vmm_core.Log.name event in
-        if Vmm_core.is_sub_id ~super:id ~sub
+        if Vmm_core.Name.is_sub ~super:id ~sub
         then (ts, event) :: acc
         else acc)
       [] elements
@@ -77,7 +77,7 @@ let send_history s ring id ts =
   Lwt_list.fold_left_s (fun r (ts, event) ->
       match r with
       | Ok () ->
-        let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
+        let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
         Vmm_lwt.write_wire s (header, `Data (`Log_data (ts, event)))
       | Error e -> Lwt.return (Error e))
     (Ok ()) (List.rev res)
@@ -93,7 +93,7 @@ let handle_data s mvar ring hdr entry =
     Vmm_ring.write ring entry ;
     Lwt_mvar.put mvar entry >>= fun () ->
     let data' = (hdr, `Data (`Log_data entry)) in
-    broadcast hdr.Vmm_commands.id data' !tree >|= fun tree' ->
+    broadcast hdr.Vmm_commands.name data' !tree >|= fun tree' ->
     tree := tree'
   end
 
@@ -128,7 +128,7 @@ let handle mvar ring s addr () =
       end else begin
         match lc with
         | `Log_subscribe ts ->
-          let tree', ret = Vmm_trie.insert hdr.Vmm_commands.id s !tree in
+          let tree', ret = Vmm_trie.insert hdr.Vmm_commands.name s !tree in
           tree := tree' ;
           (match ret with
            | None -> Lwt.return_unit
@@ -138,7 +138,7 @@ let handle mvar ring s addr () =
           | Error _ -> Logs.err (fun m -> m "error while sending reply for subscribe") ;
             Lwt.return_unit
           | Ok () ->
-            send_history s ring hdr.Vmm_commands.id ts >>= function
+            send_history s ring hdr.Vmm_commands.name ts >>= function
             | Error _ -> Logs.err (fun m -> m "error while sending history") ; Lwt.return_unit
             | Ok () ->
               (* command processing is finished, but we leave the socket open

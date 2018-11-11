@@ -31,7 +31,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Vmm_lwt.read_from_file key >>= fun key_cs ->
   let key = X509.Encoding.Pem.Private_key.of_pem_cstruct1 key_cs in
   let tmpkey = Nocrypto.Rsa.generate 4096 in
-  let name = Vmm_core.string_of_id id in
+  let name = Vmm_core.Name.to_string id in
   let extensions =
     [ (true, `Key_usage [ `Digital_signature ; `Key_encipherment ])
     ; (true, `Basic_constraints (false, None))

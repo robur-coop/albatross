@@ -20,14 +20,31 @@ module IM : sig
   include Map.S with type key = I.t
 end
 
-type id = string list
-val string_of_id : id -> string
-val id_of_string : string -> id
-val drop_super : super:id -> sub:id -> id option
-val is_sub_id : super:id -> sub:id -> bool
-val domain : id -> id
-val pp_id : id Fmt.t
-val block_name : id -> string -> id
+module Name : sig
+  type t
+
+  val is_root : t -> bool
+
+  val image_file : t -> Fpath.t
+  val fifo_file : t -> Fpath.t
+  val block_file : t -> Fpath.t
+
+  val of_list : string list -> (t, [> `Msg of string ]) result
+  val to_list : t -> string list
+  val append : string -> t -> (t, [> `Msg of string ]) result
+  val prepend : string -> t -> (t, [> `Msg of string ]) result
+  val append_exn : string -> t -> t
+
+  val root : t
+  val valid_label : string -> bool
+  val to_string : t -> string
+  val of_string : string -> (t, [> `Msg of string ]) result
+  val drop_super : super:t -> sub:t -> t option
+  val is_sub : super:t -> sub:t -> bool
+  val domain : t -> t
+  val pp : t Fmt.t
+  val block_name : t -> string -> t
+end
 
 type bridge =
   [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
@@ -70,7 +87,7 @@ type vm_config = {
 val pp_image : (vmtype * Cstruct.t) Fmt.t
 
 val pp_vm_config : vm_config Fmt.t
-val good_bridge : id -> 'a Astring.String.map -> bool
+val good_bridge : string list -> 'a Astring.String.map -> bool
 
 val vm_matches_res : policy -> vm_config -> bool
 
@@ -113,7 +130,7 @@ module Stats : sig
   val pp_vmm : vmm Fmt.t
 
   type ifdata = {
-    name : string;
+    ifname : string;
     flags : int32;
     send_length : int32;
     max_send_length : int32;
@@ -144,13 +161,13 @@ val pp_process_exit : process_exit Fmt.t
 
 module Log : sig
   type log_event = [
-    | `Login of id * Ipaddr.V4.t * int
-    | `Logout of id * Ipaddr.V4.t * int
+    | `Login of Name.t * Ipaddr.V4.t * int
+    | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Vm_start of id * int * string list * string option
-    | `Vm_stop of id * int * process_exit ]
+    | `Vm_start of Name.t * int * string list * string option
+    | `Vm_stop of Name.t * int * process_exit ]
 
-  val name : log_event -> id
+  val name : log_event -> Name.t
 
   val pp_log_event : log_event Fmt.t
 

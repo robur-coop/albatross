@@ -114,10 +114,10 @@ let tick t =
                 ru', vmm', ifd
               in
               List.fold_left (fun out (id, socket) ->
-                  match Vmm_core.drop_super ~super:id ~sub:vmid with
-                  | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.pp_id id Vmm_core.pp_id vmid) ; out
+                  match Vmm_core.Name.drop_super ~super:id ~sub:vmid with
+                  | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.Name.pp id Vmm_core.Name.pp vmid) ; out
                   | Some real_id ->
-                    let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id = real_id } in
+                    let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = real_id } in
                     ((socket, vmid, (header, `Data (`Stats_data stats))) :: out))
                 out xs)
           [] (Vmm_trie.all t'.vmid_pid)
@@ -133,8 +133,8 @@ let add_pid t vmid pid nics =
     let rec go cnt acc id =
       if id > 0 && cnt > 0 then
         match wrap sysctl_ifdata id with
-        | Some ifd when List.mem ifd.Vmm_core.Stats.name nics ->
-          go (pred cnt) ((id, ifd.Vmm_core.Stats.name) :: acc) (pred id)
+        | Some ifd when List.mem ifd.Vmm_core.Stats.ifname nics ->
+          go (pred cnt) ((id, ifd.Vmm_core.Stats.ifname) :: acc) (pred id)
         | _ -> go cnt acc (pred id)
       else
         List.rev acc
@@ -150,9 +150,9 @@ let add_pid t vmid pid nics =
     Ok { t with pid_nic ; vmid_pid }
 
 let remove_vmid t vmid =
-  Logs.info (fun m -> m "removing vmid %a" Vmm_core.pp_id vmid) ;
+  Logs.info (fun m -> m "removing vmid %a" Vmm_core.Name.pp vmid) ;
   match Vmm_trie.find vmid t.vmid_pid with
-  | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.pp_id vmid) ; t
+  | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.Name.pp vmid) ; t
   | Some pid ->
     Logs.info (fun m -> m "removing pid %d" pid) ;
     (try
@@ -179,7 +179,7 @@ let handle t socket (header, wire) =
     match wire with
     | `Command (`Stats_cmd cmd) ->
       begin
-        let id = header.Vmm_commands.id in
+        let id = header.Vmm_commands.name in
         match cmd with
         | `Stats_add (pid, taps) ->
           add_pid t id pid taps >>= fun t ->

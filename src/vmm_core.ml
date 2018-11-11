@@ -40,31 +40,90 @@ let pp_vmtype ppf = function
   | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
   | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
 
-type id = string list
+module Name = struct
+  type t = string list
 
-let string_of_id ids = String.concat ~sep:"." ids
+  let root = []
 
-let id_of_string str = String.cuts ~sep:"." str
+  let is_root x = x = []
 
-let drop_super ~super ~sub =
-  let rec go sup sub = match sup, sub with
-    | [], xs -> Some xs
-    | _, [] -> None
-    | x::xs, z::zs -> if String.equal x z then go xs zs else None
-  in
-  go super sub
+  let [@inline always] valid_label s =
+    String.length s < 20 &&
+    String.length s > 0 &&
+    String.get s 0 <> '-' && (* leading may not be '-' *)
+    String.for_all (function
+        | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' -> true
+        | _ -> false)
+      s (* only LDH (letters, digits, hyphen)! *)
 
-let is_sub_id ~super ~sub =
-  match drop_super ~super ~sub with None -> false | Some _ -> true
+  let to_string ids = String.concat ~sep:"." ids
 
-let domain id = match List.rev id with
-  | _::prefix -> List.rev prefix
-  | [] -> []
+  let to_list x = x
 
-let block_name vm_name dev = List.rev (dev :: List.rev (domain vm_name))
+  let append_exn lbl x =
+    if valid_label lbl then
+      x @ [ lbl ]
+    else
+      invalid_arg "label not valid"
 
-let pp_id ppf ids =
-  Fmt.(pf ppf "(%d)%a" (List.length ids) (list ~sep:(unit ".") string) ids)
+  let append lbl x =
+    if valid_label lbl then
+      Ok (x @ [ lbl ])
+    else
+      Error (`Msg "label not valid")
+
+  let prepend lbl x =
+    if valid_label lbl then
+      Ok (lbl :: x)
+    else
+      Error (`Msg "label not valid")
+
+  let domain id = match List.rev id with
+    | _::prefix -> List.rev prefix
+    | [] -> []
+
+  let image_file name =
+    let file = to_string name in
+    Fpath.(tmpdir / file + "img")
+
+  let fifo_file name =
+    let file = to_string name in
+    Fpath.(tmpdir / "fifo" / file)
+
+  let block_file name =
+    let file = to_string name in
+    Fpath.(blockdir / file)
+
+  let block_name vm_name dev =
+    List.rev (dev :: List.rev (domain vm_name))
+
+  let of_string str =
+    let id = String.cuts ~sep:"." str in
+    if List.for_all valid_label id then
+      Ok id
+    else
+      Error (`Msg "invalid name")
+
+  let of_list labels =
+    if List.for_all valid_label labels then
+      Ok labels
+    else
+      Error (`Msg "invalid name")
+
+  let drop_super ~super ~sub =
+    let rec go sup sub = match sup, sub with
+      | [], xs -> Some xs
+      | _, [] -> None
+      | x::xs, z::zs -> if String.equal x z then go xs zs else None
+    in
+    go super sub
+
+  let is_sub ~super ~sub =
+    match drop_super ~super ~sub with None -> false | Some _ -> true
+
+  let pp ppf ids =
+    Fmt.(pf ppf "(%d)%a" (List.length ids) (list ~sep:(unit ".") string) ids)
+end
 
 let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
 
@@ -237,7 +296,7 @@ module Stats = struct
     Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) ppf vmm
 
   type ifdata = {
-    name : string ;
+    ifname : string ;
     flags : int32 ;
     send_length : int32 ;
     max_send_length : int32 ;
@@ -258,8 +317,8 @@ module Stats = struct
   }
 
   let pp_ifdata ppf i =
-    Fmt.pf ppf "name %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
-      i.name i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
+    Fmt.pf ppf "ifname %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
+      i.ifname i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
   type t = rusage * vmm option * ifdata list
   let pp ppf (ru, vmm, ifs) =
@@ -278,11 +337,11 @@ let pp_process_exit ppf = function
 
 module Log = struct
   type log_event = [
-    | `Login of id * Ipaddr.V4.t * int
-    | `Logout of id * Ipaddr.V4.t * int
+    | `Login of Name.t * Ipaddr.V4.t * int
+    | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Vm_start of id * int * string list * string option
-    | `Vm_stop of id * int * process_exit
+    | `Vm_start of Name.t * int * string list * string option
+    | `Vm_stop of Name.t * int * process_exit
   ]
 
   let name = function
@@ -294,14 +353,14 @@ module Log = struct
 
   let pp_log_event ppf = function
     | `Startup -> Fmt.(pf ppf "startup")
-    | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" pp_id name Ipaddr.V4.pp_hum ip port
-    | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" pp_id name Ipaddr.V4.pp_hum ip port
+    | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp_hum ip port
+    | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp_hum ip port
     | `Vm_start (name, pid, taps, block) ->
       Fmt.pf ppf "%a started %d (tap %a, block %a)"
-        pp_id name pid Fmt.(list ~sep:(unit "; ") string) taps
+        Name.pp name pid Fmt.(list ~sep:(unit "; ") string) taps
         Fmt.(option ~none:(unit "no") string) block
     | `Vm_stop (name, pid, code) ->
-      Fmt.pf ppf "%a stopped %d with %a" pp_id name pid pp_process_exit code
+      Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code
 
   type t = Ptime.t * log_event
 

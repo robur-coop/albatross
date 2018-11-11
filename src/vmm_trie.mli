@@ -6,14 +6,14 @@ type 'a t
 
 val empty : 'a t
 
-val insert : id -> 'a -> 'a t -> 'a t * 'a option
+val insert : Name.t -> 'a -> 'a t -> 'a t * 'a option
 
-val remove : id -> 'a t -> 'a t
+val remove : Name.t -> 'a t -> 'a t
 
-val find : id -> 'a t -> 'a option
+val find : Name.t -> 'a t -> 'a option
 
-val collect : id -> 'a t -> (id * 'a) list
+val collect : Name.t -> 'a t -> (Name.t * 'a) list
 
-val all : 'a t -> (id * 'a) list
+val all : 'a t -> (Name.t * 'a) list
 
-val fold : id -> 'a t -> (id -> 'a -> 'b -> 'b) -> 'b -> 'b
+val fold : Name.t -> 'a t -> (Name.t -> 'a -> 'b -> 'b) -> 'b -> 'b

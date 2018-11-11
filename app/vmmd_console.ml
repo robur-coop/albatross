@@ -20,8 +20,7 @@ let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
 let active = ref String.Map.empty
 
-let read_console name ring channel () =
-  let id = Vmm_core.id_of_string name in
+let read_console id name ring channel () =
   Lwt.catch (fun () ->
       let rec loop () =
         Lwt_io.read_line channel >>= fun line ->
@@ -31,7 +30,7 @@ let read_console name ring channel () =
         (match String.Map.find name !active with
          | None -> Lwt.return_unit
          | Some fd ->
-           let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
+           let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
            Vmm_lwt.write_wire fd (header, `Data (`Console_data (t, line))) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
@@ -68,21 +67,21 @@ let open_fifo name =
 let t = ref String.Map.empty
 
 let add_fifo id =
-  let name = Vmm_core.string_of_id id in
+  let name = Vmm_core.Name.to_string id in
   open_fifo name >|= function
   | Some f ->
     let ring = Vmm_ring.create "" () in
     Logs.debug (fun m -> m "inserting fifo %s" name) ;
     let map = String.Map.add name ring !t in
     t := map ;
-    Lwt.async (read_console name ring f) ;
+    Lwt.async (read_console id name ring f) ;
     Ok ()
   | None ->
     Error (`Msg "opening")
 
 let subscribe s id =
-  let name = Vmm_core.string_of_id id in
-  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.pp_id id) ;
+  let name = Vmm_core.Name.to_string id in
+  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp id) ;
   match String.Map.find name !t with
   | None ->
     active := String.Map.add name s !active ;
@@ -100,9 +99,9 @@ let send_history s r id since =
     | None -> Vmm_ring.read r
     | Some ts -> Vmm_ring.read_history r ts
   in
-  Logs.debug (fun m -> m "%a found %d history" Vmm_core.pp_id id (List.length entries)) ;
+  Logs.debug (fun m -> m "%a found %d history" Vmm_core.Name.pp id (List.length entries)) ;
   Lwt_list.iter_s (fun (i, v) ->
-      let header = Vmm_commands.{ version = my_version ; sequence = 0L ; id } in
+      let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
       Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >>= function
       | Ok () -> Lwt.return_unit
       | Error _ -> Vmm_lwt.safe_close s)
@@ -120,7 +119,7 @@ let handle s addr () =
         Logs.err (fun m -> m "ignoring data with bad version") ;
         Lwt.return_unit
       end else begin
-        let name = header.Vmm_commands.id in
+        let name = header.Vmm_commands.name in
         match cmd with
         | `Console_add ->
           begin

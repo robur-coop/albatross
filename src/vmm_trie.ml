@@ -21,7 +21,7 @@ let insert id e t =
       let entry, ret = go n xs in
       N (es, String.Map.add x entry m), ret
   in
-  go t id
+  go t (Vmm_core.Name.to_list id)
 
 let remove id t =
   let rec go (N (es, m)) = function
@@ -37,7 +37,7 @@ let remove id t =
       in
       if String.Map.is_empty m' && es = None then None else Some (N (es, m'))
   in
-  match go t id with
+  match go t (Vmm_core.Name.to_list id) with
   | None -> empty
   | Some n -> n
 
@@ -49,7 +49,7 @@ let find id t =
       | None -> None
       | Some n -> go n xs
   in
-  go t id
+  go t (Vmm_core.Name.to_list id)
 
 let collect id t =
   let rec go acc prefix (N (es, m)) =
@@ -63,9 +63,9 @@ let collect id t =
     | x::xs ->
       match String.Map.find_opt x m with
       | None -> acc'
-      | Some n -> go acc' (prefix @ [ x ]) n xs
+      | Some n -> go acc' (Vmm_core.Name.append_exn x prefix) n xs
   in
-  go [] [] t id
+  go [] Vmm_core.Name.root t (Vmm_core.Name.to_list id)
 
 let all t =
   let rec go acc prefix (N (es, m)) =
@@ -75,15 +75,15 @@ let all t =
       | Some e -> (prefix, e) :: acc
     in
     List.fold_left (fun acc (name, node) ->
-        go acc (prefix@[name]) node)
+        go acc (Vmm_core.Name.append_exn name prefix) node)
       acc' (String.Map.bindings m)
   in
-  go [] [] t
+  go [] Vmm_core.Name.root t
 
 let fold id t f acc =
   let rec explore (N (es, m)) prefix acc =
     let acc' =
-      String.Map.fold (fun name node acc -> explore node (prefix@[name]) acc)
+      String.Map.fold (fun name node acc -> explore node (Vmm_core.Name.append_exn name prefix) acc)
         m acc
     in
     match es with
@@ -91,9 +91,9 @@ let fold id t f acc =
     | Some e -> f prefix e acc'
   and down prefix (N (es, m)) =
     match prefix with
-    | [] -> explore (N (es, m)) [] acc
+    | [] -> explore (N (es, m)) Vmm_core.Name.root acc
     | x :: xs -> match String.Map.find_opt x m with
       | None -> acc
       | Some n -> down xs n
   in
-  down id t
+  down (Vmm_core.Name.to_list id) t
