@@ -53,6 +53,13 @@ let close_no_err fd = try close fd with _ -> ()
 
 open Vmm_core
 
+let dbdir = Fpath.(v "/var" / "db" / "albatross")
+let blockdir = Fpath.(dbdir / "block")
+
+let block_file name =
+  let file = Name.to_string name in
+  Fpath.(blockdir / file)
+
 let rec mkfifo name =
   try Unix.mkfifo (Fpath.to_string name) 0o640 with
   | Unix.Unix_error (Unix.EINTR, _, _) -> mkfifo name
@@ -149,7 +156,7 @@ let exec name vm taps block =
    | [_], Some _ -> Ok "block-net"
    | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   let net = List.map (fun t -> "--net=" ^ t) taps
-  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (Name.block_file dev) ]
+  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_file dev) ]
   and argv = match vm.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int vm.requested_memory
   in
@@ -188,7 +195,7 @@ let bytes_of_mb size =
     Error (`Msg "overflow while computing bytes")
 
 let create_block name size =
-  let block_name = Name.block_file name in
+  let block_name = block_file name in
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
   | false ->
@@ -196,7 +203,7 @@ let create_block name size =
     Bos.OS.File.truncate block_name size'
 
 let destroy_block name =
-  Bos.OS.File.delete (Name.block_file name)
+  Bos.OS.File.delete (block_file name)
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then

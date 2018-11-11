@@ -5,18 +5,16 @@ open Astring
 open Rresult.R.Infix
 
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
-let dbdir = Fpath.(v "/var" / "db" / "albatross")
-let blockdir = Fpath.(dbdir / "block")
+let sockdir = Fpath.(tmpdir / "util")
 
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
 let socket_path t =
-  let path name = Fpath.(tmpdir / "util" / name + "sock") in
   let path = match t with
-    | `Console -> path "console"
+    | `Console -> Fpath.(sockdir / "console" + "sock")
     | `Vmmd -> Fpath.(tmpdir / "vmmd" + "sock")
-    | `Stats -> path "stat"
-    | `Log -> path "log"
+    | `Stats -> Fpath.(sockdir / "stat" + "sock")
+    | `Log -> Fpath.(sockdir / "log" + "sock")
   in
   Fpath.to_string path
 
@@ -90,10 +88,6 @@ module Name = struct
     let file = to_string name in
     Fpath.(tmpdir / "fifo" / file)
 
-  let block_file name =
-    let file = to_string name in
-    Fpath.(blockdir / file)
-
   let block_name vm_name dev =
     List.rev (dev :: List.rev (domain vm_name))
 
@@ -122,7 +116,7 @@ module Name = struct
     match drop_super ~super ~sub with None -> false | Some _ -> true
 
   let pp ppf ids =
-    Fmt.(pf ppf "(%d)%a" (List.length ids) (list ~sep:(unit ".") string) ids)
+    Fmt.(pf ppf "[name %a]" (list ~sep:(unit ".") string) ids)
 end
 
 let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)

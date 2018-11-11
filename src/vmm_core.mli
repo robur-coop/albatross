@@ -1,9 +1,5 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-val tmpdir : Fpath.t
-val dbdir : Fpath.t
-val blockdir : Fpath.t
-
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
 val socket_path : service -> string
@@ -27,7 +23,6 @@ module Name : sig
 
   val image_file : t -> Fpath.t
   val fifo_file : t -> Fpath.t
-  val block_file : t -> Fpath.t
 
   val of_list : string list -> (t, [> `Msg of string ]) result
   val to_list : t -> string list

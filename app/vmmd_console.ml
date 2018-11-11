@@ -51,7 +51,7 @@ let read_console id name ring channel () =
        Lwt_io.close channel)
 
 let open_fifo name =
-  let fifo = Fpath.(Vmm_core.tmpdir / "fifo" / name) in
+  let fifo = Vmm_core.Name.fifo_file name in
   Lwt.catch (fun () ->
       Logs.debug (fun m -> m "opening %a for reading" Fpath.pp fifo) ;
       Lwt_io.open_file ~mode:Lwt_io.Input (Fpath.to_string fifo) >>= fun channel ->
@@ -68,7 +68,7 @@ let t = ref String.Map.empty
 
 let add_fifo id =
   let name = Vmm_core.Name.to_string id in
-  open_fifo name >|= function
+  open_fifo id >|= function
   | Some f ->
     let ring = Vmm_ring.create "" () in
     Logs.debug (fun m -> m "inserting fifo %s" name) ;
