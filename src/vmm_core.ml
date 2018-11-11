@@ -22,7 +22,6 @@ let pp_socket ppf t =
   let name = socket_path t in
   Fmt.pf ppf "socket: %s" name
 
-
 module I = struct
   type t = int
   let compare : int -> int -> int = compare
@@ -119,86 +118,88 @@ module Name = struct
     Fmt.(pf ppf "[name %a]" (list ~sep:(unit ".") string) ids)
 end
 
-let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
+module Policy = struct
+  let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
 
-type bridge = [
-  | `Internal of string
-  | `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
-]
+  type bridge = [
+    | `Internal of string
+    | `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
+  ]
 
-let eq_int (a : int) (b : int) = a = b
+  let eq_int (a : int) (b : int) = a = b
 
-let eq_bridge b1 b2 = match b1, b2 with
-  | `Internal a, `Internal a' -> String.equal a a'
-  | `External (name, ip_start, ip_end, ip_gw, netmask),
-    `External (name', ip_start', ip_end', ip_gw', netmask') ->
-    let eq_ip a b = Ipaddr.V4.compare a b = 0 in
-    String.equal name name' &&
-    eq_ip ip_start ip_start' &&
-    eq_ip ip_end ip_end' &&
-    eq_ip ip_gw ip_gw' &&
-    eq_int netmask netmask'
-  | _ -> false
-
-let pp_bridge ppf = function
-  | `Internal name -> Fmt.pf ppf "%s (internal)" name
-  | `External (name, l, h, gw, nm) ->
-    Fmt.pf ppf "%s: %a - %a, GW: %a/%d"
-      name Ipaddr.V4.pp_hum l Ipaddr.V4.pp_hum h Ipaddr.V4.pp_hum gw nm
-
-type policy = {
-  vms : int ;
-  cpuids : IS.t ;
-  memory : int ;
-  block : int option ;
-  bridges : bridge String.Map.t ;
-}
-
-let eq_policy p1 p2 =
-  let eq_opt a b = match a, b with
-    | None, None -> true
-    | Some a, Some b -> eq_int a b
+  let equal_bridge b1 b2 = match b1, b2 with
+    | `Internal a, `Internal a' -> String.equal a a'
+    | `External (name, ip_start, ip_end, ip_gw, netmask),
+      `External (name', ip_start', ip_end', ip_gw', netmask') ->
+      let eq_ip a b = Ipaddr.V4.compare a b = 0 in
+      String.equal name name' &&
+      eq_ip ip_start ip_start' &&
+      eq_ip ip_end ip_end' &&
+      eq_ip ip_gw ip_gw' &&
+      eq_int netmask netmask'
     | _ -> false
-  in
-  eq_int p1.vms p2.vms &&
-  IS.equal p1.cpuids p2.cpuids &&
-  eq_int p1.memory p2.memory &&
-  eq_opt p1.block p2.block &&
-  String.Map.equal eq_bridge p1.bridges p2.bridges
 
-let pp_policy ppf res =
-  Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
-    res.vms pp_is res.cpuids res.memory
-    Fmt.(option ~none:(unit "no") int) res.block
-    Fmt.(list ~sep:(unit ", ") pp_bridge)
-    (List.map snd (String.Map.bindings res.bridges))
+  let pp_bridge ppf = function
+    | `Internal name -> Fmt.pf ppf "%s (internal)" name
+    | `External (name, l, h, gw, nm) ->
+      Fmt.pf ppf "%s: %a - %a, GW: %a/%d"
+        name Ipaddr.V4.pp_hum l Ipaddr.V4.pp_hum h Ipaddr.V4.pp_hum gw nm
 
-let sub_bridges super sub =
-  String.Map.for_all (fun idx v ->
-      match String.Map.find idx super, v with
-      | None, _ -> false
-      | Some (`Internal nam), `Internal nam' -> String.compare nam nam' = 0
-      | Some (`External (nam, supf, supl, gw, nm)),
-        `External (nam', subf, subl, gw', nm') ->
-        String.compare nam nam' = 0 && nm = nm' &&
-        Ipaddr.V4.compare supf subf <= 0 && Ipaddr.V4.compare supl subl >= 0 &&
-        Ipaddr.V4.compare gw gw' = 0
-      | _ -> false)
-    sub
+  type t = {
+    vms : int ;
+    cpuids : IS.t ;
+    memory : int ;
+    block : int option ;
+    bridges : bridge String.Map.t ;
+  }
 
-let sub_block super sub =
-  match super, sub with
-   | None, None -> true
-   | Some _, None -> true
-   | Some x, Some y -> x >= y
-   | None, Some _ -> false
+  let equal p1 p2 =
+    let eq_opt a b = match a, b with
+      | None, None -> true
+      | Some a, Some b -> eq_int a b
+      | _ -> false
+    in
+    eq_int p1.vms p2.vms &&
+    IS.equal p1.cpuids p2.cpuids &&
+    eq_int p1.memory p2.memory &&
+    eq_opt p1.block p2.block &&
+    String.Map.equal equal_bridge p1.bridges p2.bridges
 
-let sub_cpu super sub = IS.subset sub super
+  let pp ppf res =
+    Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
+      res.vms pp_is res.cpuids res.memory
+      Fmt.(option ~none:(unit "no") int) res.block
+      Fmt.(list ~sep:(unit ", ") pp_bridge)
+      (List.map snd (String.Map.bindings res.bridges))
 
-let is_sub ~super ~sub =
-  sub.vms <= super.vms && sub_cpu super.cpuids sub.cpuids &&
-  sub.memory <= super.memory &&
-  sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
+  let sub_bridges super sub =
+    String.Map.for_all (fun idx v ->
+        match String.Map.find idx super, v with
+        | None, _ -> false
+        | Some (`Internal nam), `Internal nam' -> String.compare nam nam' = 0
+        | Some (`External (nam, supf, supl, gw, nm)),
+          `External (nam', subf, subl, gw', nm') ->
+          String.compare nam nam' = 0 && nm = nm' &&
+          Ipaddr.V4.compare supf subf <= 0 && Ipaddr.V4.compare supl subl >= 0 &&
+          Ipaddr.V4.compare gw gw' = 0
+        | _ -> false)
+      sub
+
+  let sub_block super sub =
+    match super, sub with
+    | None, None -> true
+    | Some _, None -> true
+    | Some x, Some y -> x >= y
+    | None, Some _ -> false
+
+  let sub_cpu super sub = IS.subset sub super
+
+  let is_sub ~super ~sub =
+    sub.vms <= super.vms && sub_cpu super.cpuids sub.cpuids &&
+    sub.memory <= super.memory &&
+    sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
+end
 
 type vm_config = {
   cpuid : int ;
@@ -225,15 +226,15 @@ let good_bridge idxs nets =
   (* TODO: uniqueness of n -- it should be an ordered set? *)
   List.for_all (fun n -> String.Map.mem n nets) idxs
 
-let vm_matches_res (res : policy) (vm : vm_config)  =
-  res.vms >= 1 && IS.mem vm.cpuid res.cpuids &&
+let vm_matches_res (res : Policy.t) (vm : vm_config)  =
+  res.Policy.vms >= 1 && IS.mem vm.cpuid res.Policy.cpuids &&
   vm.requested_memory <= res.memory &&
   good_bridge vm.network res.bridges
 
 let check_policies vm res =
   let rec climb = function
     | super :: sub :: xs ->
-      if is_sub ~super ~sub then climb (sub :: xs)
+      if Policy.is_sub ~super ~sub then climb (sub :: xs)
       else Error (`Msg "policy violation")
     | [x] -> Ok x
     | [] -> Error (`Msg "empty resource list")

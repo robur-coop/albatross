@@ -61,13 +61,13 @@ let pp_vm_cmd ppf = function
 
 type policy_cmd = [
   | `Policy_info
-  | `Policy_add of policy
+  | `Policy_add of Policy.t
   | `Policy_remove
 ]
 
 let pp_policy_cmd ppf = function
   | `Policy_info -> Fmt.string ppf "policy info"
-  | `Policy_add policy -> Fmt.pf ppf "policy add %a" pp_policy policy
+  | `Policy_add policy -> Fmt.pf ppf "policy add %a" Policy.pp policy
   | `Policy_remove -> Fmt.string ppf "policy remove"
 
 type block_cmd = [
@@ -119,7 +119,7 @@ type header = {
 type success = [
   | `Empty
   | `String of string
-  | `Policies of (Name.t * policy) list
+  | `Policies of (Name.t * Policy.t) list
   | `Vms of (Name.t * vm_config) list
   | `Blocks of (Name.t * int * bool) list
 ]
@@ -130,7 +130,7 @@ let pp_block ppf (id, size, active) =
 let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
-  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp pp_policy)) ppf ps
+  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Policy.pp)) ppf ps
   | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp pp_vm_config)) ppf vms
   | `Blocks blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
 

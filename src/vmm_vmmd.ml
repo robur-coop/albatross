@@ -124,7 +124,7 @@ let handle_policy_cmd t reply id = function
     Logs.debug (fun m -> m "insert policy %a" Name.pp id) ;
     let same_policy = match Vmm_resources.find_policy t.resources id with
       | None -> false
-      | Some p' -> eq_policy policy p'
+      | Some p' -> Policy.equal policy p'
     in
     if same_policy then
       Ok (t, [ reply (`String "no modification of policy") ], `Loop)

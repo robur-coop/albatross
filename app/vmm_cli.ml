@@ -39,8 +39,7 @@ let policy vms memory cpus block bridges =
     List.fold_left add String.Map.empty bridges
   and cpuids = IS.of_list cpus
   in
-  { vms ; cpuids ; memory ; block ; bridges }
-
+  Policy.{ vms ; cpuids ; memory ; block ; bridges }
 
 open Cmdliner
 
@@ -83,7 +82,7 @@ let bridge =
     | [ name ] -> `Ok (`Internal name)
     | _ -> `Error "couldn't parse bridge (either specify 'name' or 'name/firstIP/lastIP/gatewayIP/netmask')"
   in
-  (parse, pp_bridge)
+  (parse, Policy.pp_bridge)
 
 let vm_c =
   let parse s = match Name.of_string s with

@@ -10,25 +10,25 @@ type res_entry = {
 
 let empty_res = { running_vms = 0 ; used_memory = 0 ; used_blockspace = 0  }
 
-let check_resource (policy : policy) (vm : vm_config) (res : res_entry) =
-  succ res.running_vms <= policy.vms &&
-  res.used_memory + vm.requested_memory <= policy.memory &&
-  vm_matches_res policy vm
+let check_resource (p : Policy.t) (vm : vm_config) (res : res_entry) =
+  succ res.running_vms <= p.Policy.vms &&
+  res.used_memory + vm.requested_memory <= p.Policy.memory &&
+  vm_matches_res p vm
 
-let check_resource_policy (policy : policy) (res : res_entry) =
-  res.running_vms <= policy.vms && res.used_memory <= policy.memory &&
-  match policy.block with
+let check_resource_policy (p : Policy.t) (res : res_entry) =
+  res.running_vms <= p.Policy.vms && res.used_memory <= p.Policy.memory &&
+  match p.Policy.block with
   | None -> res.used_blockspace = 0
   | Some mb -> res.used_blockspace <= mb
 
 type entry =
   | Vm of vm
   | Block of int * bool
-  | Policy of policy
+  | Policy of Policy.t
 
 let pp_entry id ppf = function
   | Vm vm -> Fmt.pf ppf "vm %a: %a@." Name.pp id pp_vm_config vm.config
-  | Policy p -> Fmt.pf ppf "policy %a: %a@." Name.pp id pp_policy p
+  | Policy p -> Fmt.pf ppf "policy %a: %a@." Name.pp id Policy.pp p
   | Block (size, used) -> Fmt.pf ppf "block device %a: %dMB (used %B)@." Name.pp id size used
 
 type t = entry Vmm_trie.t
@@ -117,7 +117,7 @@ let insert_vm t name vm =
 let check_policy_above t name p =
   let above = Vmm_trie.collect name t in
   List.for_all (fun (id, node) -> match node with
-      | Policy p' -> is_sub ~super:p' ~sub:p
+      | Policy p' -> Policy.is_sub ~super:p' ~sub:p
       | x ->
         Logs.err (fun m -> m "expected policy, found %a"
                      (pp_entry id) x) ;
@@ -129,14 +129,17 @@ let check_policy_below t name p =
       if Name.is_root name then
         res
       else
-        match res, entry with
-        | Some p, Policy p' -> if is_sub ~super:p ~sub:p then Some p' else None
-        | Some p, Vm vm ->
+        match entry, res with
+        | Policy p', Some p ->
+          if Policy.is_sub ~super:p ~sub:p'
+          then Some p'
+          else None
+        | Vm vm, Some p ->
           let cfg = vm.config in
           if IS.mem cfg.cpuid p.cpuids && good_bridge cfg.network p.bridges
           then Some p
           else None
-        | res, _ -> res)
+        | _, res -> res)
     (Some p)
 
 let insert_policy t name p =

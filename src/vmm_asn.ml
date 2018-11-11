@@ -58,10 +58,13 @@ let policy =
         List.fold_left add String.Map.empty xs
     and cpuids = IS.of_list cpuids
     in
-    { vms ; cpuids ; memory ; block ; bridges }
+    Policy.{ vms ; cpuids ; memory ; block ; bridges }
   and g policy =
-    (IS.elements policy.cpuids, policy.vms, policy.memory, policy.block,
-     snd @@ List.split @@ String.Map.bindings policy.bridges)
+    (IS.elements policy.Policy.cpuids,
+     policy.Policy.vms,
+     policy.Policy.memory,
+     policy.Policy.block,
+     snd @@ List.split @@ String.Map.bindings policy.Policy.bridges)
   in
   Asn.S.map f g @@
   Asn.S.(sequence5

@@ -35,7 +35,7 @@ type vm_cmd = [
 
 type policy_cmd = [
   | `Policy_info
-  | `Policy_add of policy
+  | `Policy_add of Policy.t
   | `Policy_remove
 ]
 
@@ -73,7 +73,7 @@ type header = {
 type success = [
   | `Empty
   | `String of string
-  | `Policies of (Name.t * policy) list
+  | `Policies of (Name.t * Policy.t) list
   | `Vms of (Name.t * vm_config) list
   | `Blocks of (Name.t * int * bool) list
 ]

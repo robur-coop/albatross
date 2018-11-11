@@ -5,15 +5,12 @@ type service = [ `Console | `Log | `Stats | `Vmmd ]
 val socket_path : service -> string
 val pp_socket : service Fmt.t
 
-module I : sig type t = int val compare : int -> int -> int end
-
 module IS : sig
-  include Set.S with type elt = I.t
+  include Set.S with type elt = int
 end
-val pp_is : IS.t Fmt.t
 
 module IM : sig
-  include Map.S with type key = I.t
+  include Map.S with type key = int
 end
 
 module Name : sig
@@ -41,31 +38,29 @@ module Name : sig
   val block_name : t -> string -> t
 end
 
-type bridge =
-  [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
-  | `Internal of string ]
+module Policy : sig
+  type bridge =
+    [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
+    | `Internal of string ]
 
-val eq_bridge : bridge -> bridge -> bool
+  val equal_bridge : bridge -> bridge -> bool
 
-val pp_bridge : bridge Fmt.t
+  val pp_bridge : bridge Fmt.t
 
-type policy = {
-  vms : int;
-  cpuids : IS.t;
-  memory : int;
-  block : int option;
-  bridges : bridge Astring.String.Map.t;
-}
+  type t = {
+    vms : int;
+    cpuids : IS.t;
+    memory : int;
+    block : int option;
+    bridges : bridge Astring.String.Map.t;
+  }
 
-val eq_policy : policy -> policy -> bool
+  val equal : t -> t -> bool
 
-val pp_policy : policy Fmt.t
+  val pp : t Fmt.t
 
-val sub_bridges : bridge Astring.String.map -> bridge Astring.String.map -> bool
-
-val sub_block : 'a option -> 'a option -> bool
-val sub_cpu : IS.t -> IS.t -> bool
-val is_sub : super:policy -> sub:policy -> bool
+  val is_sub : super:t -> sub:t -> bool
+end
 
 type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
 val pp_vmtype : vmtype Fmt.t
@@ -84,10 +79,10 @@ val pp_image : (vmtype * Cstruct.t) Fmt.t
 val pp_vm_config : vm_config Fmt.t
 val good_bridge : string list -> 'a Astring.String.map -> bool
 
-val vm_matches_res : policy -> vm_config -> bool
+val vm_matches_res : Policy.t -> vm_config -> bool
 
 val check_policies :
-  vm_config -> policy list -> (unit, [> `Msg of string ]) Result.result
+  vm_config -> Policy.t list -> (unit, [> `Msg of string ]) Result.result
 
 type vm = {
   config : vm_config;

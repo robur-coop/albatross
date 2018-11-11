@@ -21,7 +21,7 @@ val empty : t
 val find_vm : t -> Vmm_core.Name.t -> Vmm_core.vm option
 
 (** [find_policy t Name.t] is either [Some policy] or [None]. *)
-val find_policy : t -> Vmm_core.Name.t -> Vmm_core.policy option
+val find_policy : t -> Vmm_core.Name.t -> Vmm_core.Policy.t option
 
 (** [find_block t Name.t] is either [Some (size, active)] or [None]. *)
 val find_block : t -> Vmm_core.Name.t -> (int * bool) option
@@ -36,7 +36,7 @@ val insert_vm : t -> Vmm_core.Name.t -> Vmm_core.vm -> (t, [> `Msg of string]) r
 
 (** [insert_policy t Name.t policy] inserts [policy] under [Name.t] in [t], and returns
    the new [t] or an error. *)
-val insert_policy : t -> Vmm_core.Name.t -> Vmm_core.policy -> (t, [> `Msg of string]) result
+val insert_policy : t -> Vmm_core.Name.t -> Vmm_core.Policy.t -> (t, [> `Msg of string]) result
 
 (** [check_block_policy t Name.t size] checks whether [size] under [Name.t] in [t] would be
     allowed under the current policies. *)
@@ -58,7 +58,7 @@ val remove_block : t -> Vmm_core.Name.t -> (t, [> `Msg of string ]) result
 (** [fold t Name.t f_vm f_policy f_block acc] folds [f_vm], [f_policy] and [f_block] below [Name.t] over [t]. *)
 val fold : t -> Vmm_core.Name.t ->
   (Vmm_core.Name.t -> Vmm_core.vm -> 'a -> 'a) ->
-  (Vmm_core.Name.t -> Vmm_core.policy -> 'a -> 'a) ->
+  (Vmm_core.Name.t -> Vmm_core.Policy.t -> 'a -> 'a) ->
   (Vmm_core.Name.t -> int -> bool -> 'a -> 'a) -> 'a -> 'a
 
 (** [pp] is a pretty printer for [t]. *)
