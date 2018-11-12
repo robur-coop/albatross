@@ -31,12 +31,7 @@ let create_vm force image cpuid requested_memory argv block_device network compr
   if force then `Vm_force_create vm_config else `Vm_create vm_config
 
 let policy vms memory cpus block bridges =
-  let bridges =
-    let add m v =
-      let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
-      String.Map.add n v m
-    in
-    List.fold_left add String.Map.empty bridges
+  let bridges = String.Set.of_list bridges
   and cpuids = IS.of_list cpus
   in
   Policy.{ vms ; cpuids ; memory ; block ; bridges }
@@ -59,30 +54,6 @@ let host_port : (string * int) Arg.converter =
         Not_found -> `Error "failed to parse port"
   in
   parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
-
-let bridge =
-  let parse s =
-    match Astring.String.cuts ~sep:"/" s with
-    | [ name ; fst ; lst ; gw ; nm ] ->
-      begin match Ipaddr.V4.(of_string fst, of_string lst, of_string gw) with
-        | Some fst, Some lst, Some gw ->
-          (try
-             let nm = int_of_string nm in
-             if nm > 0 && nm <= 32 then
-               let net = Ipaddr.V4.Prefix.make nm gw in
-               if Ipaddr.V4.Prefix.mem fst net && Ipaddr.V4.Prefix.mem lst net then
-                 `Ok (`External (name, fst, lst, gw, nm))
-               else
-                 `Error "first or last IP are not in subnet"
-             else
-               `Error "netmask must be > 0 and <= 32"
-           with Failure _ -> `Error "couldn't parse netmask")
-        | _ -> `Error "couldn't parse IP address"
-      end
-    | [ name ] -> `Ok (`Internal name)
-    | _ -> `Error "couldn't parse bridge (either specify 'name' or 'name/firstIP/lastIP/gatewayIP/netmask')"
-  in
-  (parse, Policy.pp_bridge)
 
 let vm_c =
   let parse s = match Name.of_string s with
@@ -141,7 +112,7 @@ let mem =
 
 let bridge =
   let doc = "Bridges to allow" in
-  Arg.(value & opt_all bridge [] & info [ "bridge" ] ~doc)
+  Arg.(value & opt_all string [] & info [ "bridge" ] ~doc)
 
 let cpu =
   let doc = "CPUid to use" in

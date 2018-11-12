@@ -39,20 +39,12 @@ module Name : sig
 end
 
 module Policy : sig
-  type bridge =
-    [ `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
-    | `Internal of string ]
-
-  val equal_bridge : bridge -> bridge -> bool
-
-  val pp_bridge : bridge Fmt.t
-
   type t = {
     vms : int;
     cpuids : IS.t;
     memory : int;
     block : int option;
-    bridges : bridge Astring.String.Map.t;
+    bridges : Astring.String.Set.t;
   }
 
   val equal : t -> t -> bool
@@ -78,7 +70,6 @@ module Vm : sig
   val pp_image : (vmtype * Cstruct.t) Fmt.t
 
   val pp_config : config Fmt.t
-  val good_bridge : string list -> 'a Astring.String.map -> bool
 
   val vm_matches_res : Policy.t -> config -> bool
 

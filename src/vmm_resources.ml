@@ -1,5 +1,7 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+open Astring
+
 open Vmm_core
 
 type res_entry = {
@@ -136,7 +138,9 @@ let check_policy_below t name p =
           else None
         | Vm vm, Some p ->
           let cfg = vm.Vm.config in
-          if IS.mem cfg.Vm.cpuid p.Policy.cpuids && Vm.good_bridge cfg.Vm.network p.Policy.bridges
+          if
+            IS.mem cfg.Vm.cpuid p.Policy.cpuids &&
+            List.for_all (fun net -> String.Set.mem net p.Policy.bridges) cfg.Vm.network
           then Some p
           else None
         | _, res -> res)

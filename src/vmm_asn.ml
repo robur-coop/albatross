@@ -29,33 +29,9 @@ let ipv4 =
   in
   Asn.S.map f g Asn.S.octet_string
 
-let bridge =
-  let f = function
-    | `C1 nam -> `Internal nam
-    | `C2 (nam, s, e, r, n) -> `External (nam, s, e, r, n)
-  and g = function
-    | `Internal nam -> `C1 nam
-    | `External (nam, s, e, r, n) -> `C2 (nam, s, e, r, n)
-  in
-  Asn.S.map f g @@
-  Asn.S.(choice2
-           (explicit 0 utf8_string)
-           (explicit 1 (sequence5
-                          (required ~label:"name" utf8_string)
-                          (required ~label:"start" ipv4)
-                          (required ~label:"end" ipv4)
-                          (required ~label:"router" ipv4)
-                          (required ~label:"netmask" int))))
-
 let policy =
   let f (cpuids, vms, memory, block, bridges) =
-    let bridges = match bridges with
-      | xs ->
-        let add m v =
-          let n = match v with `Internal n -> n | `External (n, _, _, _, _) -> n in
-          String.Map.add n v m
-        in
-        List.fold_left add String.Map.empty xs
+    let bridges = String.Set.of_list bridges
     and cpuids = IS.of_list cpuids
     in
     Policy.{ vms ; cpuids ; memory ; block ; bridges }
@@ -64,7 +40,7 @@ let policy =
      policy.Policy.vms,
      policy.Policy.memory,
      policy.Policy.block,
-     snd @@ List.split @@ String.Map.bindings policy.Policy.bridges)
+     String.Set.elements policy.Policy.bridges)
   in
   Asn.S.map f g @@
   Asn.S.(sequence5
@@ -72,7 +48,7 @@ let policy =
            (required ~label:"vms" int)
            (required ~label:"memory" int)
            (optional ~label:"block" int)
-           (required ~label:"bridges" Asn.S.(sequence_of bridge)))
+           (required ~label:"bridges" Asn.S.(sequence_of utf8_string)))
 
 let image =
   let f = function

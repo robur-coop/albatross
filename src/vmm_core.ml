@@ -144,7 +144,7 @@ module Policy = struct
     cpuids : IS.t ;
     memory : int ;
     block : int option ;
-    bridges : bridge String.Map.t ;
+    bridges : String.Set.t ;
   }
 
   let equal p1 p2 =
@@ -157,41 +157,27 @@ module Policy = struct
     IS.equal p1.cpuids p2.cpuids &&
     eq_int p1.memory p2.memory &&
     eq_opt p1.block p2.block &&
-    String.Map.equal equal_bridge p1.bridges p2.bridges
+    String.Set.equal p1.bridges p2.bridges
 
   let pp ppf res =
     Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
       res.vms pp_is res.cpuids res.memory
       Fmt.(option ~none:(unit "no") int) res.block
-      Fmt.(list ~sep:(unit ", ") pp_bridge)
-      (List.map snd (String.Map.bindings res.bridges))
+      (String.Set.pp ~sep:Fmt.(unit ", ") Fmt.string) res.bridges
 
-  let sub_bridges super sub =
-    String.Map.for_all (fun idx v ->
-        match String.Map.find idx super, v with
-        | None, _ -> false
-        | Some (`Internal nam), `Internal nam' -> String.compare nam nam' = 0
-        | Some (`External (nam, supf, supl, gw, nm)),
-          `External (nam', subf, subl, gw', nm') ->
-          String.compare nam nam' = 0 && nm = nm' &&
-          Ipaddr.V4.compare supf subf <= 0 && Ipaddr.V4.compare supl subl >= 0 &&
-          Ipaddr.V4.compare gw gw' = 0
-        | _ -> false)
-      sub
-
-  let sub_block super sub =
+  let sub_block sub super =
     match super, sub with
     | None, None -> true
     | Some _, None -> true
     | Some x, Some y -> x >= y
     | None, Some _ -> false
 
-  let sub_cpu super sub = IS.subset sub super
-
   let is_sub ~super ~sub =
-    sub.vms <= super.vms && sub_cpu super.cpuids sub.cpuids &&
+    sub.vms <= super.vms &&
     sub.memory <= super.memory &&
-    sub_bridges super.bridges sub.bridges && sub_block super.block sub.block
+    IS.subset sub.cpuids super.cpuids &&
+    String.Set.subset sub.bridges super.bridges &&
+    sub_block sub.block super.block
 end
 
 module Vm = struct
@@ -223,14 +209,10 @@ module Vm = struct
       pp_image vm.vmimage
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
-  let good_bridge idxs nets =
-    (* TODO: uniqueness of n -- it should be an ordered set? *)
-    List.for_all (fun n -> String.Map.mem n nets) idxs
-
   let vm_matches_res (res : Policy.t) (vm : config)  =
     res.Policy.vms >= 1 && IS.mem vm.cpuid res.Policy.cpuids &&
     vm.requested_memory <= res.Policy.memory &&
-    good_bridge vm.network res.Policy.bridges
+    List.for_all (fun nw -> String.Set.mem nw res.Policy.bridges) vm.network
 
   let check_policies vm res =
     let rec climb = function
