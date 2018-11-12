@@ -5,7 +5,7 @@ open Vmm_asn
 
 open Rresult.R.Infix
 
-let version = `AV2
+let version = `AV3
 
 let csr priv name cmd =
   let exts = [ (false, `Unsupported (oid, cert_extension_to_cstruct (version, cmd))) ]

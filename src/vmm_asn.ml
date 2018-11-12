@@ -308,10 +308,10 @@ let block_cmd =
 
 let version =
   let f data = match data with
-    | 2 -> `AV2
+    | 3 -> `AV3
     | _ -> Asn.S.error (`Parse "unknown version number")
   and g = function
-    | `AV2 -> 2
+    | `AV3 -> 3
   in
   Asn.S.map f g Asn.S.int
 

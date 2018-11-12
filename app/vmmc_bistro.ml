@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-let version = `AV2
+let version = `AV3
 
 let read fd =
   (* now we busy read and process output *)

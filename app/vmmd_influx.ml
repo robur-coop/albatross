@@ -141,7 +141,7 @@ module P = struct
       vm ifd.ifname (String.concat ~sep:"," fields)
 end
 
-let my_version = `AV2
+let my_version = `AV3
 
 let command = ref 1L
 

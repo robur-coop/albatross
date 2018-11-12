@@ -18,7 +18,7 @@ let pp_stats ppf s =
 
 open Lwt.Infix
 
-let version = `AV2
+let version = `AV3
 
 let state = ref (Vmm_vmmd.init version)
 

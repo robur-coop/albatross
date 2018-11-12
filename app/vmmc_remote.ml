@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-let version = `AV2
+let version = `AV3
 
 let rec read_tls_write_cons t =
   Vmm_tls_lwt.read_tls t >>= function

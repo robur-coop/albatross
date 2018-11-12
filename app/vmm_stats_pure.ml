@@ -16,7 +16,7 @@ external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
 external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
 external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
 
-let my_version = `AV2
+let my_version = `AV3
 
 let descr = ref []
 

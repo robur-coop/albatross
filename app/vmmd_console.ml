@@ -14,7 +14,7 @@ open Lwt.Infix
 
 open Astring
 
-let my_version = `AV2
+let my_version = `AV3
 
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
