@@ -2,8 +2,6 @@
 
 open Astring
 
-open Rresult.R.Infix
-
 let tmpdir = Fpath.(v "/var" / "run" / "albatross")
 let sockdir = Fpath.(tmpdir / "util")
 
@@ -114,30 +112,7 @@ end
 module Policy = struct
   let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
 
-  type bridge = [
-    | `Internal of string
-    | `External of string * Ipaddr.V4.t * Ipaddr.V4.t * Ipaddr.V4.t * int
-  ]
-
   let eq_int (a : int) (b : int) = a = b
-
-  let equal_bridge b1 b2 = match b1, b2 with
-    | `Internal a, `Internal a' -> String.equal a a'
-    | `External (name, ip_start, ip_end, ip_gw, netmask),
-      `External (name', ip_start', ip_end', ip_gw', netmask') ->
-      let eq_ip a b = Ipaddr.V4.compare a b = 0 in
-      String.equal name name' &&
-      eq_ip ip_start ip_start' &&
-      eq_ip ip_end ip_end' &&
-      eq_ip ip_gw ip_gw' &&
-      eq_int netmask netmask'
-    | _ -> false
-
-  let pp_bridge ppf = function
-    | `Internal name -> Fmt.pf ppf "%s (internal)" name
-    | `External (name, l, h, gw, nm) ->
-      Fmt.pf ppf "%s: %a - %a, GW: %a/%d"
-        name Ipaddr.V4.pp_hum l Ipaddr.V4.pp_hum h Ipaddr.V4.pp_hum gw nm
 
   type t = {
     vms : int ;
@@ -208,22 +183,6 @@ module Vm = struct
       Fmt.(list ~sep:(unit ", ") string) vm.network
       pp_image vm.vmimage
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
-
-  let vm_matches_res (res : Policy.t) (vm : config)  =
-    res.Policy.vms >= 1 && IS.mem vm.cpuid res.Policy.cpuids &&
-    vm.requested_memory <= res.Policy.memory &&
-    List.for_all (fun nw -> String.Set.mem nw res.Policy.bridges) vm.network
-
-  let check_policies vm res =
-    let rec climb = function
-      | super :: sub :: xs ->
-        if Policy.is_sub ~super ~sub then climb (sub :: xs)
-        else Error (`Msg "policy violation")
-      | [x] -> Ok x
-      | [] -> Error (`Msg "empty resource list")
-    in
-    climb res >>= fun res ->
-    if vm_matches_res res vm then Ok () else Error (`Msg "VM does not match policy")
 
   type t = {
     config : config ;

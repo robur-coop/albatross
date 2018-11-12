@@ -12,10 +12,15 @@ type res_entry = {
 
 let empty_res = { running_vms = 0 ; used_memory = 0 ; used_blockspace = 0  }
 
+let vm_matches_res (res : Policy.t) (vm : Vm.config)  =
+  res.Policy.vms >= 1 && IS.mem vm.Vm.cpuid res.Policy.cpuids &&
+  vm.Vm.requested_memory <= res.Policy.memory &&
+  List.for_all (fun nw -> String.Set.mem nw res.Policy.bridges) vm.Vm.network
+
 let check_resource (p : Policy.t) (vm : Vm.config) (res : res_entry) =
   succ res.running_vms <= p.Policy.vms &&
   res.used_memory + vm.Vm.requested_memory <= p.Policy.memory &&
-  Vm.vm_matches_res p vm
+  vm_matches_res p vm
 
 let check_resource_policy (p : Policy.t) (res : res_entry) =
   res.running_vms <= p.Policy.vms && res.used_memory <= p.Policy.memory &&

@@ -71,11 +71,6 @@ module Vm : sig
 
   val pp_config : config Fmt.t
 
-  val vm_matches_res : Policy.t -> config -> bool
-
-  val check_policies :
-    config -> Policy.t list -> (unit, [> `Msg of string ]) Result.result
-
   type t = {
     config : config;
     cmd : Bos.Cmd.t;
