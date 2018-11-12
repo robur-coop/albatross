@@ -61,18 +61,7 @@ let handle_create t reply name vm_config =
    | Some _ -> Error (`Msg "VM with same name is already running")
    | None -> Ok ()) >>= fun () ->
   Logs.debug (fun m -> m "now checking resource policies") ;
-  (Vmm_resources.check_vm_policy t.resources name vm_config >>= function
-    | false -> Error (`Msg "resource policies don't allow creation of this VM")
-    | true -> Ok ()) >>= fun () ->
-  (match vm_config.Vm.block_device with
-   | None -> Ok None
-   | Some dev ->
-     let block_device_name = Name.block_name name dev in
-     Logs.debug (fun m -> m "looking for block device %a" Name.pp block_device_name) ;
-     match Vmm_resources.find_block t.resources block_device_name with
-     | Some (_, false) -> Ok (Some block_device_name)
-     | Some (_, true) -> Error (`Msg "block device is busy")
-     | None -> Error (`Msg "cannot find block device") ) >>= fun block_device ->
+  Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
@@ -84,6 +73,10 @@ let handle_create t reply name vm_config =
       [ `Cons cons_out ],
       `Create (fun t task ->
           (* actually execute the vm *)
+          let block_device = match vm_config.Vm.block_device with
+            | None -> None
+            | Some block -> Some (Name.block_name name block)
+          in
           Vmm_unix.exec name vm_config taps block_device >>= fun vm ->
           Logs.debug (fun m -> m "exec()ed vm") ;
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
@@ -134,10 +127,8 @@ let handle_policy_cmd t reply id = function
   | `Policy_info ->
     Logs.debug (fun m -> m "policy %a" Name.pp id) ;
     let policies =
-      Vmm_resources.fold t.resources id
-        (fun _ _ policies -> policies)
+      Vmm_trie.fold id t.resources.Vmm_resources.policies
         (fun prefix policy policies-> (prefix, policy) :: policies)
-        (fun _ _ _ policies -> policies)
         []
     in
     match policies with
@@ -151,10 +142,8 @@ let handle_vm_cmd t reply id msg_to_err = function
   | `Vm_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
-      Vmm_resources.fold t.resources id
+      Vmm_trie.fold id t.resources.Vmm_resources.unikernels
         (fun id vm vms -> (id, vm.Vm.config) :: vms)
-        (fun _ _ vms-> vms)
-        (fun _ _ _ vms -> vms)
         []
     in
     begin match vms with
@@ -172,20 +161,19 @@ let handle_vm_cmd t reply id msg_to_err = function
         | Error _ -> t.resources
         | Ok r -> r
       in
-      Vmm_resources.check_vm_policy resources id vm_config >>= function
-      | false -> Error (`Msg "wouldn't match policy")
-      | true -> match Vmm_resources.find_vm t.resources id with
+      Vmm_resources.check_vm resources id vm_config >>= fun () ->
+      match Vmm_resources.find_vm t.resources id with
+      | None -> handle_create t reply id vm_config
+      | Some vm ->
+        Vmm_unix.destroy vm ;
+        let id_str = Name.to_string id in
+        match String.Map.find_opt id_str t.tasks with
         | None -> handle_create t reply id vm_config
-        | Some vm ->
-          Vmm_unix.destroy vm ;
-          let id_str = Name.to_string id in
-          match String.Map.find_opt id_str t.tasks with
-          | None -> handle_create t reply id vm_config
-          | Some task ->
-            let tasks = String.Map.remove id_str t.tasks in
-            let t = { t with tasks } in
-            Ok (t, [], `Wait_and_create
-                  (task, fun t -> msg_to_err @@ handle_create t reply id vm_config))
+        | Some task ->
+          let tasks = String.Map.remove id_str t.tasks in
+          let t = { t with tasks } in
+          Ok (t, [], `Wait_and_create
+                (task, fun t -> msg_to_err @@ handle_create t reply id vm_config))
     end
   | `Vm_destroy ->
     match Vmm_resources.find_vm t.resources id with
@@ -219,20 +207,16 @@ let handle_block_cmd t reply id = function
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
-        Vmm_resources.check_block_policy t.resources id size >>= function
-        | false -> Error (`Msg "adding block device would violate policy")
-        | true ->
-          Vmm_unix.create_block id size >>= fun () ->
-          Vmm_resources.insert_block t.resources id size >>= fun resources ->
-          Ok ({ t with resources }, [ reply (`String "added block device") ], `Loop)
+        Vmm_resources.check_block t.resources id size >>= fun () ->
+        Vmm_unix.create_block id size >>= fun () ->
+        Vmm_resources.insert_block t.resources id size >>= fun resources ->
+        Ok ({ t with resources }, [ reply (`String "added block device") ], `Loop)
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;
     let blocks =
-      Vmm_resources.fold t.resources id
-        (fun _ _ blocks -> blocks)
-        (fun _ _ blocks-> blocks)
-        (fun prefix size active blocks -> (prefix, size, active) :: blocks)
+      Vmm_trie.fold id t.resources.Vmm_resources.block_devices
+        (fun prefix (size, active) blocks -> (prefix, size, active) :: blocks)
         []
     in
     match blocks with

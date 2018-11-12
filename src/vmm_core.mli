@@ -17,6 +17,7 @@ module Name : sig
   type t
 
   val is_root : t -> bool
+  val equal : t -> t -> bool
 
   val image_file : t -> Fpath.t
   val fifo_file : t -> Fpath.t
@@ -50,8 +51,6 @@ module Policy : sig
   val equal : t -> t -> bool
 
   val pp : t Fmt.t
-
-  val is_sub : super:t -> sub:t -> bool
 end
 
 module Vm : sig

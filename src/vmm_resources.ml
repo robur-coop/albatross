@@ -2,182 +2,234 @@
 
 open Astring
 
+open Rresult.R.Infix
+
 open Vmm_core
 
-type res_entry = {
-  running_vms : int ;
-  used_memory : int ;
-  used_blockspace : int ;
+let flipped_set_mem set s = String.Set.mem s set
+
+type t = {
+  policies : Policy.t Vmm_trie.t ;
+  block_devices : (int * bool) Vmm_trie.t ;
+  unikernels : Vm.t Vmm_trie.t ;
 }
 
-let empty_res = { running_vms = 0 ; used_memory = 0 ; used_blockspace = 0  }
-
-let vm_matches_res (res : Policy.t) (vm : Vm.config)  =
-  res.Policy.vms >= 1 && IS.mem vm.Vm.cpuid res.Policy.cpuids &&
-  vm.Vm.requested_memory <= res.Policy.memory &&
-  List.for_all (fun nw -> String.Set.mem nw res.Policy.bridges) vm.Vm.network
-
-let check_resource (p : Policy.t) (vm : Vm.config) (res : res_entry) =
-  succ res.running_vms <= p.Policy.vms &&
-  res.used_memory + vm.Vm.requested_memory <= p.Policy.memory &&
-  vm_matches_res p vm
-
-let check_resource_policy (p : Policy.t) (res : res_entry) =
-  res.running_vms <= p.Policy.vms && res.used_memory <= p.Policy.memory &&
-  match p.Policy.block with
-  | None -> res.used_blockspace = 0
-  | Some mb -> res.used_blockspace <= mb
-
-type entry =
-  | Vm of Vm.t
-  | Block of int * bool
-  | Policy of Policy.t
-
-let pp_entry id ppf = function
-  | Vm vm -> Fmt.pf ppf "vm %a: %a@." Name.pp id Vm.pp_config vm.Vm.config
-  | Policy p -> Fmt.pf ppf "policy %a: %a@." Name.pp id Policy.pp p
-  | Block (size, used) -> Fmt.pf ppf "block device %a: %dMB (used %B)@." Name.pp id size used
-
-type t = entry Vmm_trie.t
-
 let pp ppf t =
-  Vmm_trie.fold Name.root t
-    (fun id ele () -> pp_entry id ppf ele) ()
+  Vmm_trie.fold Name.root t.policies
+    (fun id p () ->
+       Fmt.pf ppf "policy %a: %a@." Name.pp id Policy.pp p) () ;
+  Vmm_trie.fold Name.root t.block_devices
+    (fun id (size, used) () ->
+       Fmt.pf ppf "block device %a: %dMB (used %B)@." Name.pp id size used) () ;
+  Vmm_trie.fold Name.root t.unikernels
+    (fun id vm () ->
+       Fmt.pf ppf "vm %a: %a@." Name.pp id Vm.pp_config vm.Vm.config) ()
 
-let empty = Vmm_trie.empty
+let empty = {
+  policies = Vmm_trie.empty ;
+  block_devices = Vmm_trie.empty ;
+  unikernels = Vmm_trie.empty
+}
 
-let fold t name f g h acc =
-  Vmm_trie.fold name t (fun prefix entry acc ->
-      match entry with
-      | Vm vm -> f prefix vm acc
-      | Policy p -> g prefix p acc
-      | Block (size, used) -> h prefix size used acc) acc
+(* we should confirm the following invariant: Vm or Block have no siblings *)
 
-(* we should hide this type and confirm the following invariant:
-   - in case Vm, there are no siblings *)
+let block_usage t name =
+  Vmm_trie.fold name t.block_devices
+    (fun _ (size, _) blockspace -> blockspace + size)
+    0
 
-let resource_usage t name =
-  Vmm_trie.fold name t (fun _ entry res ->
-      match entry with
-      | Policy _ -> res
-      | Block (size, _) -> { res with used_blockspace = res.used_blockspace + size }
-      | Vm vm ->
-        { res with running_vms = succ res.running_vms ;
-                   used_memory = vm.Vm.config.Vm.requested_memory + res.used_memory })
-    empty_res
+let vm_usage t name =
+  Vmm_trie.fold name t.unikernels
+    (fun _ vm (vms, memory) -> (succ vms, memory + vm.Vm.config.Vm.requested_memory))
+    (0, 0)
 
-let find_vm t name = match Vmm_trie.find name t with
-  | Some (Vm vm) -> Some vm
-  | _ -> None
+let find_vm t name = Vmm_trie.find name t.unikernels
 
-let find_policy t name = match Vmm_trie.find name t with
-  | Some (Policy p) -> Some p
-  | _ -> None
+let find_policy t name = Vmm_trie.find name t.policies
 
-let find_block t name = match Vmm_trie.find name t with
-  | Some (Block (size, active)) -> Some (size, active)
-  | _ -> None
+let find_block t name = Vmm_trie.find name t.block_devices
 
-let set_block_usage active t name vm =
+let set_block_usage t name active =
+  match Vmm_trie.find name t with
+  | None -> Error (`Msg "unknown block device")
+  | Some (size, curr) ->
+    if curr = active then
+      Error (`Msg "failed because the requested block usage was already set")
+    else
+      Ok (fst (Vmm_trie.insert name (size, active) t))
+
+let maybe_use_block t name vm active =
   match vm.Vm.config.Vm.block_device with
   | None -> Ok t
   | Some block ->
     let block_name = Name.block_name name block in
-    match find_block t block_name with
-    | None -> Error (`Msg "unknown block device")
-    | Some (size, curr) ->
-      if curr = active then
-        Error (`Msg "failed because the requested block usage was already set")
-      else
-        Ok (fst (Vmm_trie.insert block_name (Block (size, active)) t))
+    set_block_usage t block_name active
 
-let remove_vm t name =  match find_vm t name with
+let remove_vm t name = match find_vm t name with
   | None -> Error (`Msg "unknown vm")
-  | Some vm -> set_block_usage false (Vmm_trie.remove name t) name vm
+  | Some vm ->
+    maybe_use_block t.block_devices name vm false >>| fun block_devices ->
+    let unikernels = Vmm_trie.remove name t.unikernels in
+    { t with block_devices ; unikernels }
 
 let remove_policy t name = match find_policy t name with
   | None -> Error (`Msg "unknown policy")
-  | Some _ -> Ok (Vmm_trie.remove name t)
+  | Some _ ->
+    let policies = Vmm_trie.remove name t.policies in
+    Ok { t with policies }
 
 let remove_block t name = match find_block t name with
   | None -> Error (`Msg "unknown block")
-  | Some _ -> Ok (Vmm_trie.remove name t)
+  | Some (_, active) ->
+    if active then
+      Error (`Msg "block device in use")
+    else
+      let block_devices = Vmm_trie.remove name t.block_devices in
+      Ok { t with block_devices }
 
-let check_vm_policy t name vm =
-  let dom = Name.domain name in
-  let res = resource_usage t dom in
-  match Vmm_trie.find dom t with
-  | None -> Ok true
-  | Some (Policy p) -> Ok (check_resource p vm res)
-  | Some x ->
-    Logs.err (fun m -> m "id %a, expected policy, got %a" Name.pp dom (pp_entry dom) x) ;
-    Rresult.R.error_msgf "expected policy for %a" Name.pp dom
+let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Vm.config) =
+  if succ running_vms > p.Policy.vms then
+    Error (`Msg "maximum amount of unikernels reached")
+  else if vm.Vm.requested_memory > p.Policy.memory - used_memory then
+    Error (`Msg "maximum allowed memory reached")
+  else if not (IS.mem vm.Vm.cpuid p.Policy.cpuids) then
+    Error (`Msg "CPUid is not allowed by policy")
+  else if not (List.for_all (flipped_set_mem p.Policy.bridges) vm.Vm.network) then
+    Error (`Msg "network not allowed by policy")
+  else Ok ()
+
+let check_vm t name vm =
+  let policy_ok =
+    let dom = Name.domain name in
+    match find_policy t dom with
+    | None -> Ok ()
+    | Some p ->
+      let used = vm_usage t dom in
+      check_policy p used vm
+  and block_ok = match vm.Vm.block_device with
+    | None -> Ok ()
+    | Some block ->
+       let block_name = Name.block_name name block in
+       match find_block t block_name with
+       | None -> Error (`Msg "block device not found")
+       | Some (_, active) ->
+         if active then
+           Error (`Msg "block device already in use")
+         else
+           Ok ()
+  and vm_ok = match find_vm t name with
+    | None -> Ok ()
+    | Some _ -> Error (`Msg "vm with same name already exists")
+  in
+  policy_ok >>= fun () ->
+  block_ok >>= fun () ->
+  vm_ok
 
 let insert_vm t name vm =
-  let open Rresult.R.Infix in
-  check_vm_policy t name vm.Vm.config >>= function
-  | false -> Error (`Msg "resource policy mismatch")
-  | true -> match Vmm_trie.insert name (Vm vm) t with
-    | t', None -> set_block_usage true t' name vm
-    | _, Some _ -> Error (`Msg "vm already exists")
+  check_vm t name vm.Vm.config >>= fun () ->
+  match Vmm_trie.insert name vm t.unikernels with
+  | unikernels, None ->
+    maybe_use_block t.block_devices name vm true >>| fun block_devices ->
+    { t with unikernels ; block_devices }
+  | _, Some _ -> Error (`Msg "vm already exists")
 
-let check_policy_above t name p =
-  let above = Vmm_trie.collect name t in
-  List.for_all (fun (id, node) -> match node with
-      | Policy p' -> Policy.is_sub ~super:p' ~sub:p
-      | x ->
-        Logs.err (fun m -> m "expected policy, found %a"
-                     (pp_entry id) x) ;
-        false)
-    above
-
-let check_policy_below t name p =
-  Vmm_trie.fold name t (fun name entry res ->
-      if Name.is_root name then
-        res
-      else
-        match entry, res with
-        | Policy p', Some p ->
-          if Policy.is_sub ~super:p ~sub:p'
-          then Some p'
-          else None
-        | Vm vm, Some p ->
-          let cfg = vm.Vm.config in
-          if
-            IS.mem cfg.Vm.cpuid p.Policy.cpuids &&
-            List.for_all (fun net -> String.Set.mem net p.Policy.bridges) cfg.Vm.network
-          then Some p
-          else None
-        | _, res -> res)
-    (Some p)
-
-let insert_policy t name p =
-  match
-    check_policy_above t (Name.domain name) p,
-    check_policy_below t name p,
-    check_resource_policy p (resource_usage t name)
-  with
-  | true, Some _, true -> Ok (fst (Vmm_trie.insert name (Policy p) t))
-  | false, _, _ -> Error (`Msg "policy violates other policies above")
-  | _, None, _ -> Error (`Msg "policy violates other policies below")
-  | _, _, false -> Error (`Msg "more resources used than policy would allow")
-
-let check_block_policy t name size =
-  match find_block t name with
-  | Some _ -> Error (`Msg "block device with same name already exists")
-  | None ->
+let check_block t name size =
+  let block_ok = match find_block t name with
+    | Some _ -> Error (`Msg "block device with same name already exists")
+    | None -> Ok ()
+  and policy_ok =
     let dom = Name.domain name in
-    let res = resource_usage t dom in
-    let res' = { res with used_blockspace = res.used_blockspace + size } in
-    match Vmm_trie.find dom t with
-    | None -> Ok true
-    | Some (Policy p) -> Ok (check_resource_policy p res')
-    | Some x ->
-      Logs.err (fun m -> m "id %a, expected policy, got %a" Name.pp dom (pp_entry dom) x) ;
-      Rresult.R.error_msgf "expected policy for %a" Name.pp dom
+    match find_policy t dom with
+    | None -> Ok ()
+    | Some p ->
+      let used = block_usage t dom in
+      match p.Policy.block with
+      | None -> Error (`Msg "no block devices are allowed by policy")
+      | Some limit ->
+        if size <= limit - used then
+          Ok ()
+        else
+          Error (`Msg "block device policy limit reached")
+  in
+  block_ok >>= fun () ->
+  policy_ok
 
 let insert_block t name size =
-  let open Rresult.R.Infix in
-  check_block_policy t name size >>= function
-  | false -> Error (`Msg "resource policy mismatch")
-  | true -> Ok (fst (Vmm_trie.insert name (Block (size, false)) t))
+  check_block t name size >>= fun () ->
+  let block_devices = fst (Vmm_trie.insert name (size, false) t.block_devices) in
+  Ok { t with block_devices }
+
+let sub_policy ~super ~sub =
+  let sub_block sub super =
+    match super, sub with
+    | None, None -> true
+    | Some _, None -> true
+    | Some x, Some y -> x >= y
+    | None, Some _ -> false
+  in
+  if super.Policy.vms < sub.Policy.vms then
+    Error (`Msg "policy above allows fewer unikernels")
+  else if super.Policy.memory < sub.Policy.memory then
+    Error (`Msg "policy above allows fewer memory")
+  else if not (IS.subset sub.Policy.cpuids super.Policy.cpuids) then
+    Error (`Msg "policy above allows fewer cpuids")
+  else if not (String.Set.subset sub.Policy.bridges super.Policy.bridges) then
+    Error (`Msg "policy above allows fewer bridges")
+  else if not (sub_block sub.Policy.block super.Policy.block) then
+    Error (`Msg "policy above allows fewer block storage")
+  else
+    Ok ()
+
+let check_policies_above t name sub =
+  let rec go prefix =
+    if Name.is_root prefix then
+      Ok ()
+    else
+      match find_policy t prefix with
+      | None -> go (Name.domain prefix)
+      | Some super ->
+        sub_policy ~super ~sub >>= fun () ->
+        go (Name.domain prefix)
+  in
+  go (Name.domain name)
+
+let check_policies_below t curname super =
+  Vmm_trie.fold curname t.policies (fun name policy res ->
+      res >>= fun () ->
+      if Name.equal curname name then
+        res
+      else
+        sub_policy ~super ~sub:policy)
+    (Ok ())
+
+let check_vms t name p =
+  let (vms, used_memory) = vm_usage t name
+  and block = block_usage t name
+  in
+  let bridges, cpuids =
+    Vmm_trie.fold name t.unikernels
+      (fun _ vm (bridges, cpuids) ->
+         let config = vm.Vm.config in
+         (String.Set.(union (of_list config.Vm.network) bridges), IS.add config.Vm.cpuid cpuids))
+      (String.Set.empty, IS.empty)
+  in
+  let policy_block = match p.Policy.block with None -> 0 | Some x -> x in
+  if not (IS.subset cpuids p.Policy.cpuids) then
+    Error (`Msg "used CPUid is not allowed by policy")
+  else if not (String.Set.subset bridges p.Policy.bridges) then
+    Error (`Msg "used network not allowed by policy")
+  else if vms > p.Policy.vms then
+    Error (`Msg "policy would not allow amount of running unikernels")
+  else if used_memory > p.Policy.memory then
+    Error (`Msg "policy would not allow used memory")
+  else if block > policy_block then
+    Error (`Msg "policy would not allow used block storage")
+  else
+    Ok ()
+
+let insert_policy t name p =
+  check_policies_above t name p >>= fun () ->
+  check_policies_below t name p >>= fun () ->
+  check_vms t name p >>= fun () ->
+  let policies = fst (Vmm_trie.insert name p t.policies) in
+  Ok { t with policies }

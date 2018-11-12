@@ -35,6 +35,11 @@ module Name = struct
 
   let is_root x = x = []
 
+  let rec equal x y = match x, y with
+    | [], [] -> true
+    | x::xs, y::ys -> x = y && equal xs ys
+    | _ -> false
+
   let [@inline always] valid_label s =
     String.length s < 20 &&
     String.length s > 0 &&
@@ -139,20 +144,6 @@ module Policy = struct
       res.vms pp_is res.cpuids res.memory
       Fmt.(option ~none:(unit "no") int) res.block
       (String.Set.pp ~sep:Fmt.(unit ", ") Fmt.string) res.bridges
-
-  let sub_block sub super =
-    match super, sub with
-    | None, None -> true
-    | Some _, None -> true
-    | Some x, Some y -> x >= y
-    | None, Some _ -> false
-
-  let is_sub ~super ~sub =
-    sub.vms <= super.vms &&
-    sub.memory <= super.memory &&
-    IS.subset sub.cpuids super.cpuids &&
-    String.Set.subset sub.bridges super.bridges &&
-    sub_block sub.block super.block
 end
 
 module Vm = struct
