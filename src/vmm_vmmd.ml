@@ -34,7 +34,7 @@ let init wire_version =
       List.fold_left (fun r (id, size) ->
           match Vmm_resources.insert_block r id size with
           | Error (`Msg msg) ->
-            Logs.err (fun m -> m "couldn't insert block device %a (%dM): %s" Name.pp id size msg) ;
+            Logs.err (fun m -> m "couldn't insert block device %a (%dMB): %s" Name.pp id size msg) ;
             r
           | Ok r -> r)
         t.resources devs
@@ -73,7 +73,7 @@ let handle_create t reply name vm_config =
       [ `Cons cons_out ],
       `Create (fun t task ->
           (* actually execute the vm *)
-          let block_device = match vm_config.Vm.block_device with
+          let block_device = match vm_config.Unikernel.block_device with
             | None -> None
             | Some block -> Some (Name.block_name name block)
           in
@@ -82,11 +82,11 @@ let handle_create t reply name vm_config =
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
           let tasks = String.Map.add (Name.to_string name) task t.tasks in
           let t = { t with resources ; tasks } in
-          let t, out = log t name (`Vm_start (name, vm.Vm.pid, vm.Vm.taps, None)) in
+          let t, out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
           Ok (t, [ reply (`String "created VM") ; out ], name, vm)))
 
 let setup_stats t name vm =
-  let stat_out = `Stats_add (vm.Vm.pid, vm.Vm.taps) in
+  let stat_out = `Stats_add (vm.Unikernel.pid, vm.Unikernel.taps) in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, `Stat (header, `Command (`Stats_cmd stat_out))
@@ -94,17 +94,17 @@ let setup_stats t name vm =
 let handle_shutdown t name vm r =
   (match Vmm_unix.shutdown name vm with
    | Ok () -> ()
-   | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Vm.pp vm)) ;
+   | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm)) ;
   let resources = match Vmm_resources.remove_vm t.resources name with
     | Error (`Msg e) ->
-      Logs.warn (fun m -> m "%s while removing vm %a from resources" e Vm.pp vm) ;
+      Logs.warn (fun m -> m "%s while removing vm %a from resources" e Unikernel.pp vm) ;
       t.resources
     | Ok resources -> resources
   in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let tasks = String.Map.remove (Name.to_string name) t.tasks in
   let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
-  let t, logout = log t name (`Vm_stop (name, vm.Vm.pid, r))
+  let t, logout = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r))
   in
   (t, [ `Stat (header, `Command (`Stats_cmd `Stats_remove)) ; logout ])
 
@@ -138,23 +138,23 @@ let handle_policy_cmd t reply id = function
     | _ ->
       Ok (t, [ reply (`Policies policies) ], `End)
 
-let handle_vm_cmd t reply id msg_to_err = function
-  | `Vm_info ->
+let handle_unikernel_cmd t reply id msg_to_err = function
+  | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
       Vmm_trie.fold id t.resources.Vmm_resources.unikernels
-        (fun id vm vms -> (id, vm.Vm.config) :: vms)
+        (fun id vm vms -> (id, vm.Unikernel.config) :: vms)
         []
     in
     begin match vms with
       | [] ->
         Logs.debug (fun m -> m "info: couldn't find %a" Name.pp id) ;
-        Error (`Msg "info: not found")
+        Error (`Msg "info: no unikernel found")
       | _ ->
-        Ok (t, [ reply (`Vms vms) ], `End)
+        Ok (t, [ reply (`Unikernels vms) ], `End)
     end
-  | `Vm_create vm_config -> handle_create t reply id vm_config
-  | `Vm_force_create vm_config ->
+  | `Unikernel_create vm_config -> handle_create t reply id vm_config
+  | `Unikernel_force_create vm_config ->
     begin
       let resources =
         match Vmm_resources.remove_vm t.resources id with
@@ -175,13 +175,13 @@ let handle_vm_cmd t reply id msg_to_err = function
           Ok (t, [], `Wait_and_create
                 (task, fun t -> msg_to_err @@ handle_create t reply id vm_config))
     end
-  | `Vm_destroy ->
+  | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
     | Some vm ->
       Vmm_unix.destroy vm ;
       let id_str = Name.to_string id in
       let out, next =
-        let s = reply (`String "destroyed vm") in
+        let s = reply (`String "destroyed unikernel") in
         match String.Map.find_opt id_str t.tasks with
         | None -> [ s ], `End
         | Some t -> [], `Wait (t, s)
@@ -224,7 +224,7 @@ let handle_block_cmd t reply id = function
       Logs.debug (fun m -> m "block: couldn't find %a" Name.pp id) ;
       Error (`Msg "block: not found")
     | _ ->
-      Ok (t, [ reply (`Blocks blocks) ], `End)
+      Ok (t, [ reply (`Block_devices blocks) ], `End)
 
 let handle_command t (header, payload) =
   let msg_to_err = function
@@ -238,7 +238,7 @@ let handle_command t (header, payload) =
   msg_to_err (
     match payload with
     | `Command (`Policy_cmd pc) -> handle_policy_cmd t reply id pc
-    | `Command (`Vm_cmd vc) -> handle_vm_cmd t reply id msg_to_err vc
+    | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t reply id msg_to_err vc
     | `Command (`Block_cmd bc) -> handle_block_cmd t reply id bc
     | _ ->
       Logs.err (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, payload)) ;

@@ -63,9 +63,6 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
 let jump endp cert key ca name cmd =
   `Ok (Lwt_main.run (handle endp cert key ca name cmd))
 
-let info_ _ endp cert key ca name =
-  jump endp cert key ca name (`Vm_cmd `Vm_info)
-
 let info_policy _ endp cert key ca name =
   jump endp cert key ca name (`Policy_cmd `Policy_info)
 
@@ -76,12 +73,15 @@ let add_policy _ endp cert key ca name vms memory cpus block bridges =
   let p = Vmm_cli.policy vms memory cpus block bridges in
   jump endp cert key ca name (`Policy_cmd (`Policy_add p))
 
-let destroy _ endp cert key ca name =
-  jump endp cert key ca name (`Vm_cmd `Vm_destroy)
+let info_ _ endp cert key ca name =
+  jump endp cert key ca name (`Unikernel_cmd `Unikernel_info)
 
-let create _ endp cert key ca force name image cpuid requested_memory boot_params block_device network compression =
-  match Vmm_cli.create_vm force image cpuid requested_memory boot_params block_device network compression with
-  | Ok cmd -> jump endp cert key ca name (`Vm_cmd cmd)
+let destroy _ endp cert key ca name =
+  jump endp cert key ca name (`Unikernel_cmd `Unikernel_destroy)
+
+let create _ endp cert key ca force name image cpuid memory argv block network compression =
+  match Vmm_cli.create_vm force image cpuid memory argv block network compression with
+  | Ok cmd -> jump endp cert key ca name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> `Error (false, msg)
 
 let console _ endp cert key ca name since =

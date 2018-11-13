@@ -25,8 +25,6 @@ let jump id cmd =
   | Ok () -> `Ok ()
   | Error (`Msg m) -> `Error (false, m)
 
-let info_ _ name = jump name (`Vm_cmd `Vm_info)
-
 let info_policy _ name =
   jump name (`Policy_cmd `Policy_info)
 
@@ -37,12 +35,14 @@ let add_policy _ name vms memory cpus block bridges =
   let p = Vmm_cli.policy vms memory cpus block bridges in
   jump name (`Policy_cmd (`Policy_add p))
 
-let destroy _ name =
-  jump name (`Vm_cmd `Vm_destroy)
+let info_ _ name = jump name (`Unikernel_cmd `Unikernel_info)
 
-let create _ force name image cpuid requested_memory boot_params block_device network compression =
-  match Vmm_cli.create_vm force image cpuid requested_memory boot_params block_device network compression with
-  | Ok cmd -> jump name (`Vm_cmd cmd)
+let destroy _ name =
+  jump name (`Unikernel_cmd `Unikernel_destroy)
+
+let create _ force name image cpuid memory argv block network compression =
+  match Vmm_cli.create_vm force image cpuid memory argv block network compression with
+  | Ok cmd -> jump name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> `Error (false, msg)
 
 let console _ name since =

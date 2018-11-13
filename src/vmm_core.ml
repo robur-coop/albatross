@@ -146,33 +146,33 @@ module Policy = struct
       (String.Set.pp ~sep:Fmt.(unit ", ") Fmt.string) res.bridges
 end
 
-module Vm = struct
-  type vmtype = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
+module Unikernel = struct
+  type typ = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
 
-  let pp_vmtype ppf = function
+  let pp_typ ppf = function
     | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
     | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
     | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
 
   type config = {
     cpuid : int ;
-    requested_memory : int ;
+    memory : int ;
     block_device : string option ;
-    network : string list ;
-    vmimage : vmtype * Cstruct.t ;
+    network_interfaces : string list ;
+    image : typ * Cstruct.t ;
     argv : string list option ;
   }
 
   let pp_image ppf (typ, blob) =
     let l = Cstruct.len blob in
-    Fmt.pf ppf "%a: %d bytes" pp_vmtype typ l
+    Fmt.pf ppf "%a: %d bytes" pp_typ typ l
 
   let pp_config ppf (vm : config) =
     Fmt.pf ppf "cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
-      vm.cpuid vm.requested_memory
+      vm.cpuid vm.memory
       Fmt.(option ~none:(unit "no") string) vm.block_device
-      Fmt.(list ~sep:(unit ", ") string) vm.network
-      pp_image vm.vmimage
+      Fmt.(list ~sep:(unit ", ") string) vm.network_interfaces
+      pp_image vm.image
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
   type t = {
@@ -264,26 +264,26 @@ module Log = struct
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Vm_start of Name.t * int * string list * string option
-    | `Vm_stop of Name.t * int * process_exit
+    | `Unikernel_start of Name.t * int * string list * string option
+    | `Unikernel_stop of Name.t * int * process_exit
   ]
 
   let name = function
     | `Startup -> []
     | `Login (name, _, _) -> name
     | `Logout (name, _, _) -> name
-    | `Vm_start (name, _, _ ,_) -> name
-    | `Vm_stop (name, _, _) -> name
+    | `Unikernel_start (name, _, _ ,_) -> name
+    | `Unikernel_stop (name, _, _) -> name
 
   let pp_log_event ppf = function
     | `Startup -> Fmt.(pf ppf "startup")
     | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp_hum ip port
     | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp_hum ip port
-    | `Vm_start (name, pid, taps, block) ->
+    | `Unikernel_start (name, pid, taps, block) ->
       Fmt.pf ppf "%a started %d (tap %a, block %a)"
         Name.pp name pid Fmt.(list ~sep:(unit "; ") string) taps
         Fmt.(option ~none:(unit "no") string) block
-    | `Vm_stop (name, pid, code) ->
+    | `Unikernel_stop (name, pid, code) ->
       Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code
 
   type t = Ptime.t * log_event

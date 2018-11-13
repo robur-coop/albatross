@@ -17,7 +17,7 @@ open Vmm_core
 type t = private {
   policies : Policy.t Vmm_trie.t ;
   block_devices : (int * bool) Vmm_trie.t ;
-  unikernels : Vm.t Vmm_trie.t ;
+  unikernels : Unikernel.t Vmm_trie.t ;
 }
 
 
@@ -25,7 +25,7 @@ type t = private {
 val empty : t
 
 (** [find_vm t id] is either [Some vm] or [None]. *)
-val find_vm : t -> Name.t -> Vm.t option
+val find_vm : t -> Name.t -> Unikernel.t option
 
 (** [find_policy t Name.t] is either [Some policy] or [None]. *)
 val find_policy : t -> Name.t -> Policy.t option
@@ -35,11 +35,11 @@ val find_block : t -> Name.t -> (int * bool) option
 
 (** [check_vm t Name.t vm] checks whether [vm] under [Name.t] in [t] would be
     allowed under the current policies. *)
-val check_vm : t -> Name.t -> Vm.config -> (unit, [> `Msg of string ]) result
+val check_vm : t -> Name.t -> Unikernel.config -> (unit, [> `Msg of string ]) result
 
 (** [insert_vm t Name.t vm] inserts [vm] under [Name.t] in [t], and returns the new [t] or
     an error. *)
-val insert_vm : t -> Name.t -> Vm.t -> (t, [> `Msg of string]) result
+val insert_vm : t -> Name.t -> Unikernel.t -> (t, [> `Msg of string]) result
 
 (** [insert_policy t Name.t policy] inserts [policy] under [Name.t] in [t], and returns
    the new [t] or an error. *)

@@ -26,11 +26,11 @@ type log_cmd = [
   | `Log_subscribe of Ptime.t option
 ]
 
-type vm_cmd = [
-  | `Vm_info
-  | `Vm_create of Vm.config
-  | `Vm_force_create of Vm.config
-  | `Vm_destroy
+type unikernel_cmd = [
+  | `Unikernel_info
+  | `Unikernel_create of Unikernel.config
+  | `Unikernel_force_create of Unikernel.config
+  | `Unikernel_destroy
 ]
 
 type policy_cmd = [
@@ -49,7 +49,7 @@ type t = [
   | `Console_cmd of console_cmd
   | `Stats_cmd of stats_cmd
   | `Log_cmd of log_cmd
-  | `Vm_cmd of vm_cmd
+  | `Unikernel_cmd of unikernel_cmd
   | `Policy_cmd of policy_cmd
   | `Block_cmd of block_cmd
 ]
@@ -74,8 +74,8 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Vms of (Name.t * Vm.config) list
-  | `Blocks of (Name.t * int * bool) list
+  | `Unikernels of (Name.t * Unikernel.config) list
+  | `Block_devices of (Name.t * int * bool) list
 ]
 
 type wire = header * [

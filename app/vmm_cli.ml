@@ -17,18 +17,18 @@ let setup_log style_renderer level =
   Logs.set_level level;
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
-let create_vm force image cpuid requested_memory argv block_device network compression =
+let create_vm force image cpuid memory argv block_device network_interfaces compression =
   let open Rresult.R.Infix in
   Bos.OS.File.read (Fpath.v image) >>| fun image ->
-  let vmimage = match compression with
+  let image = match compression with
     | 0 -> `Hvt_amd64, Cstruct.of_string image
     | level ->
       let img = Vmm_compress.compress ~level image in
       `Hvt_amd64_compressed, Cstruct.of_string img
   and argv = match argv with [] -> None | xs -> Some xs
   in
-  let vm_config = Vm.{ cpuid ; requested_memory ; block_device ; network ; argv ; vmimage } in
-  if force then `Vm_force_create vm_config else `Vm_create vm_config
+  let config = Unikernel.{ cpuid ; memory ; block_device ; network_interfaces ; argv ; image } in
+  if force then `Unikernel_force_create config else `Unikernel_create config
 
 let policy vms memory cpus block bridges =
   let bridges = String.Set.of_list bridges

@@ -2,6 +2,8 @@
 
 open Vmm_cli
 
+open Vmm_core
+
 type stats = {
   start : Ptime.t ;
   vm_created : int ;
@@ -32,7 +34,7 @@ let create process cont =
     state := state'' ;
     s := { !s with vm_created = succ !s.vm_created } ;
     Lwt.async (fun () ->
-        Vmm_lwt.wait_and_clear vm.Vmm_core.Vm.pid vm.Vmm_core.Vm.stdout >>= fun r ->
+        Vmm_lwt.wait_and_clear vm.Unikernel.pid vm.Unikernel.stdout >>= fun r ->
         let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
         s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
         state := state' ;
@@ -104,7 +106,7 @@ let handle out fd addr =
   Vmm_lwt.safe_close fd
 
 let init_sock sock =
-  let name = Vmm_core.socket_path sock in
+  let name = socket_path sock in
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
   Lwt_unix.set_close_on_exec c ;
   Lwt.catch (fun () ->
@@ -128,13 +130,13 @@ let create_mbox sock =
       Lwt_mvar.take mvar >>= fun data ->
       Vmm_lwt.write_wire fd data >>= function
       | Ok () -> loop ()
-      | Error `Exception -> invalid_arg ("exception while writing to " ^ Fmt.to_to_string Vmm_core.pp_socket sock) ;
+      | Error `Exception -> invalid_arg ("exception while writing to " ^ Fmt.to_to_string pp_socket sock) ;
     in
     Lwt.async loop ;
     Some (mvar, fd)
 
 let server_socket sock =
-  let name = Vmm_core.socket_path sock in
+  let name = socket_path sock in
   (Lwt_unix.file_exists name >>= function
     | true -> Lwt_unix.unlink name
     | false -> Lwt.return_unit) >>= fun () ->

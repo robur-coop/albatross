@@ -4,13 +4,14 @@ open Rresult
 
 open Vmm_core
 
-val prepare : Name.t -> Vm.config -> (string list, [> R.msg ]) result
+val prepare : Name.t -> Unikernel.config -> (string list, [> R.msg ]) result
 
-val shutdown : Name.t -> Vm.t -> (unit, [> R.msg ]) result
+val exec : Name.t -> Unikernel.config -> string list -> Name.t option ->
+  (Unikernel.t, [> R.msg ]) result
 
-val exec : Name.t -> Vm.config -> string list -> Name.t option -> (Vm.t, [> R.msg ]) result
+val shutdown : Name.t -> Unikernel.t -> (unit, [> R.msg ]) result
 
-val destroy : Vm.t -> unit
+val destroy : Unikernel.t -> unit
 
 val close_no_err : Unix.file_descr -> unit
 

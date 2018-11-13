@@ -46,18 +46,18 @@ let pp_log_cmd ppf = function
     Fmt.pf ppf "log subscribe since %a"
       Fmt.(option ~none:(unit "epoch") (Ptime.pp_rfc3339 ())) ts
 
-type vm_cmd = [
-  | `Vm_info
-  | `Vm_create of Vm.config
-  | `Vm_force_create of Vm.config
-  | `Vm_destroy
+type unikernel_cmd = [
+  | `Unikernel_info
+  | `Unikernel_create of Unikernel.config
+  | `Unikernel_force_create of Unikernel.config
+  | `Unikernel_destroy
 ]
 
-let pp_vm_cmd ppf = function
-  | `Vm_info -> Fmt.string ppf "vm info"
-  | `Vm_create vm_config -> Fmt.pf ppf "vm create %a" Vm.pp_config vm_config
-  | `Vm_force_create vm_config -> Fmt.pf ppf "vm force create %a" Vm.pp_config vm_config
-  | `Vm_destroy -> Fmt.string ppf "vm destroy"
+let pp_unikernel_cmd ppf = function
+  | `Unikernel_info -> Fmt.string ppf "unikernel info"
+  | `Unikernel_create config -> Fmt.pf ppf "unikernel create %a" Unikernel.pp_config config
+  | `Unikernel_force_create config -> Fmt.pf ppf "vm force create %a" Unikernel.pp_config config
+  | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
 
 type policy_cmd = [
   | `Policy_info
@@ -85,7 +85,7 @@ type t = [
     | `Console_cmd of console_cmd
     | `Stats_cmd of stats_cmd
     | `Log_cmd of log_cmd
-    | `Vm_cmd of vm_cmd
+    | `Unikernel_cmd of unikernel_cmd
     | `Policy_cmd of policy_cmd
     | `Block_cmd of block_cmd
   ]
@@ -94,7 +94,7 @@ let pp ppf = function
   | `Console_cmd c -> pp_console_cmd ppf c
   | `Stats_cmd s -> pp_stats_cmd ppf s
   | `Log_cmd l -> pp_log_cmd ppf l
-  | `Vm_cmd v -> pp_vm_cmd ppf v
+  | `Unikernel_cmd v -> pp_unikernel_cmd ppf v
   | `Policy_cmd p -> pp_policy_cmd ppf p
   | `Block_cmd b -> pp_block_cmd ppf b
 
@@ -120,8 +120,8 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Vms of (Name.t * Vm.config) list
-  | `Blocks of (Name.t * int * bool) list
+  | `Unikernels of (Name.t * Unikernel.config) list
+  | `Block_devices of (Name.t * int * bool) list
 ]
 
 let pp_block ppf (id, size, active) =
@@ -131,8 +131,8 @@ let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
   | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Policy.pp)) ppf ps
-  | `Vms vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Vm.pp_config)) ppf vms
-  | `Blocks blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
+  | `Unikernels vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Unikernel.pp_config)) ppf vms
+  | `Block_devices blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
 
 type wire = header * [
     | `Command of t
@@ -149,7 +149,7 @@ let pp_wire ppf (header, data) =
   | `Data d -> pp_data ppf d
 
 let endpoint = function
-  | `Vm_cmd _ -> `Vmmd, `End
+  | `Unikernel_cmd _ -> `Vmmd, `End
   | `Policy_cmd _ -> `Vmmd, `End
   | `Block_cmd _ -> `Vmmd, `End
   | `Stats_cmd _ -> `Stats, `Read

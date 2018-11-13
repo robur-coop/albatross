@@ -11,7 +11,7 @@ let flipped_set_mem set s = String.Set.mem s set
 type t = {
   policies : Policy.t Vmm_trie.t ;
   block_devices : (int * bool) Vmm_trie.t ;
-  unikernels : Vm.t Vmm_trie.t ;
+  unikernels : Unikernel.t Vmm_trie.t ;
 }
 
 let pp ppf t =
@@ -23,7 +23,7 @@ let pp ppf t =
        Fmt.pf ppf "block device %a: %dMB (used %B)@." Name.pp id size used) () ;
   Vmm_trie.fold Name.root t.unikernels
     (fun id vm () ->
-       Fmt.pf ppf "vm %a: %a@." Name.pp id Vm.pp_config vm.Vm.config) ()
+       Fmt.pf ppf "vm %a: %a@." Name.pp id Unikernel.pp_config vm.Unikernel.config) ()
 
 let empty = {
   policies = Vmm_trie.empty ;
@@ -40,7 +40,7 @@ let block_usage t name =
 
 let vm_usage t name =
   Vmm_trie.fold name t.unikernels
-    (fun _ vm (vms, memory) -> (succ vms, memory + vm.Vm.config.Vm.requested_memory))
+    (fun _ vm (vms, memory) -> (succ vms, memory + vm.Unikernel.config.Unikernel.memory))
     (0, 0)
 
 let find_vm t name = Vmm_trie.find name t.unikernels
@@ -59,7 +59,7 @@ let set_block_usage t name active =
       Ok (fst (Vmm_trie.insert name (size, active) t))
 
 let maybe_use_block t name vm active =
-  match vm.Vm.config.Vm.block_device with
+  match vm.Unikernel.config.Unikernel.block_device with
   | None -> Ok t
   | Some block ->
     let block_name = Name.block_name name block in
@@ -87,14 +87,14 @@ let remove_block t name = match find_block t name with
       let block_devices = Vmm_trie.remove name t.block_devices in
       Ok { t with block_devices }
 
-let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Vm.config) =
+let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.config) =
   if succ running_vms > p.Policy.vms then
     Error (`Msg "maximum amount of unikernels reached")
-  else if vm.Vm.requested_memory > p.Policy.memory - used_memory then
+  else if vm.Unikernel.memory > p.Policy.memory - used_memory then
     Error (`Msg "maximum allowed memory reached")
-  else if not (IS.mem vm.Vm.cpuid p.Policy.cpuids) then
+  else if not (IS.mem vm.Unikernel.cpuid p.Policy.cpuids) then
     Error (`Msg "CPUid is not allowed by policy")
-  else if not (List.for_all (flipped_set_mem p.Policy.bridges) vm.Vm.network) then
+  else if not (List.for_all (flipped_set_mem p.Policy.bridges) vm.Unikernel.network_interfaces) then
     Error (`Msg "network not allowed by policy")
   else Ok ()
 
@@ -106,7 +106,7 @@ let check_vm t name vm =
     | Some p ->
       let used = vm_usage t dom in
       check_policy p used vm
-  and block_ok = match vm.Vm.block_device with
+  and block_ok = match vm.Unikernel.block_device with
     | None -> Ok ()
     | Some block ->
        let block_name = Name.block_name name block in
@@ -126,7 +126,7 @@ let check_vm t name vm =
   vm_ok
 
 let insert_vm t name vm =
-  check_vm t name vm.Vm.config >>= fun () ->
+  check_vm t name vm.Unikernel.config >>= fun () ->
   match Vmm_trie.insert name vm t.unikernels with
   | unikernels, None ->
     maybe_use_block t.block_devices name vm true >>| fun block_devices ->
@@ -209,8 +209,9 @@ let check_vms t name p =
   let bridges, cpuids =
     Vmm_trie.fold name t.unikernels
       (fun _ vm (bridges, cpuids) ->
-         let config = vm.Vm.config in
-         (String.Set.(union (of_list config.Vm.network) bridges), IS.add config.Vm.cpuid cpuids))
+         let config = vm.Unikernel.config in
+         (String.Set.(union (of_list config.Unikernel.network_interfaces) bridges),
+          IS.add config.Unikernel.cpuid cpuids))
       (String.Set.empty, IS.empty)
   in
   let policy_block = match p.Policy.block with None -> 0 | Some x -> x in

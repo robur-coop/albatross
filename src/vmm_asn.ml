@@ -184,20 +184,20 @@ let log_event =
     | `C1 () -> `Startup
     | `C2 (name, ip, port) -> `Login (to_name name, ip, port)
     | `C3 (name, ip, port) -> `Logout (to_name name, ip, port)
-    | `C4 (name, pid, taps, block) -> `Vm_start (to_name name, pid, taps, block)
+    | `C4 (name, pid, taps, block) -> `Unikernel_start (to_name name, pid, taps, block)
     | `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
         | `C2 n -> `Signal n
         | `C3 n -> `Stop n
       in
-      `Vm_stop (to_name name, pid, status')
+      `Unikernel_stop (to_name name, pid, status')
   and g = function
     | `Startup -> `C1 ()
     | `Login (name, ip, port) -> `C2 (of_name name, ip, port)
     | `Logout (name, ip, port) -> `C3 (of_name name, ip, port)
-    | `Vm_start (name, pid, taps, block) -> `C4 (of_name name, pid, taps, block)
-    | `Vm_stop (name, pid, status) ->
+    | `Unikernel_start (name, pid, taps, block) -> `C4 (of_name name, pid, taps, block)
+    | `Unikernel_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
         | `Signal n -> `C2 n
@@ -238,40 +238,41 @@ let log_cmd =
   Asn.S.map f g @@
   Asn.S.(sequence (single (optional ~label:"since" utc_time)))
 
-let vm_config =
-  let f (cpuid, requested_memory, block_device, network, vmimage, argv) =
-    let network = match network with None -> [] | Some xs -> xs in
-    Vm.{ cpuid ; requested_memory ; block_device ; network ; vmimage ; argv }
+let unikernel_config =
+  let open Unikernel in
+  let f (cpuid, memory, block_device, network_interfaces, image, argv) =
+    let network_interfaces = match network_interfaces with None -> [] | Some xs -> xs in
+    { cpuid ; memory ; block_device ; network_interfaces ; image ; argv }
   and g vm =
-    let network = match vm.Vm.network with [] -> None | xs -> Some xs in
-    (vm.Vm.cpuid, vm.Vm.requested_memory, vm.Vm.block_device, network, vm.Vm.vmimage, vm.Vm.argv)
+    let network_interfaces = match vm.network_interfaces with [] -> None | xs -> Some xs in
+    (vm.cpuid, vm.memory, vm.block_device, network_interfaces, vm.image, vm.argv)
   in
   Asn.S.map f g @@
   Asn.S.(sequence6
            (required ~label:"cpu" int)
            (required ~label:"memory" int)
            (optional ~label:"block" utf8_string)
-           (optional ~label:"bridges" (sequence_of utf8_string))
-           (required ~label:"vmimage" image)
+           (optional ~label:"network_interfaces" (sequence_of utf8_string))
+           (required ~label:"image" image)
            (optional ~label:"arguments" (sequence_of utf8_string)))
 
-let vm_cmd =
+let unikernel_cmd =
   let f = function
-    | `C1 () -> `Vm_info
-    | `C2 vm -> `Vm_create vm
-    | `C3 vm -> `Vm_force_create vm
-    | `C4 () -> `Vm_destroy
+    | `C1 () -> `Unikernel_info
+    | `C2 vm -> `Unikernel_create vm
+    | `C3 vm -> `Unikernel_force_create vm
+    | `C4 () -> `Unikernel_destroy
   and g = function
-    | `Vm_info -> `C1 ()
-    | `Vm_create vm -> `C2 vm
-    | `Vm_force_create vm -> `C3 vm
-    | `Vm_destroy -> `C4 ()
+    | `Unikernel_info -> `C1 ()
+    | `Unikernel_create vm -> `C2 vm
+    | `Unikernel_force_create vm -> `C3 vm
+    | `Unikernel_destroy -> `C4 ()
   in
   Asn.S.map f g @@
   Asn.S.(choice4
            (explicit 0 null)
-           (explicit 1 vm_config)
-           (explicit 2 vm_config)
+           (explicit 1 unikernel_config)
+           (explicit 2 unikernel_config)
            (explicit 3 null))
 
 let policy_cmd =
@@ -320,14 +321,14 @@ let wire_command =
     | `C1 console -> `Console_cmd console
     | `C2 stats -> `Stats_cmd stats
     | `C3 log -> `Log_cmd log
-    | `C4 vm -> `Vm_cmd vm
+    | `C4 vm -> `Unikernel_cmd vm
     | `C5 policy -> `Policy_cmd policy
     | `C6 block -> `Block_cmd block
   and g = function
     | `Console_cmd c -> `C1 c
     | `Stats_cmd c -> `C2 c
     | `Log_cmd c -> `C3 c
-    | `Vm_cmd c -> `C4 c
+    | `Unikernel_cmd c -> `C4 c
     | `Policy_cmd c -> `C5 c
     | `Block_cmd c -> `C6 c
   in
@@ -336,7 +337,7 @@ let wire_command =
            (explicit 0 console_cmd)
            (explicit 1 stats_cmd)
            (explicit 2 log_cmd)
-           (explicit 3 vm_cmd)
+           (explicit 3 unikernel_cmd)
            (explicit 4 policy_cmd)
            (explicit 5 block_cmd))
 
@@ -381,14 +382,14 @@ let success =
     | `C1 () -> `Empty
     | `C2 str -> `String str
     | `C3 policies -> `Policies (List.map (fun (name, p) -> to_name name, p) policies)
-    | `C4 vms -> `Vms (List.map (fun (name, vm) -> to_name name, vm) vms)
-    | `C5 blocks -> `Blocks (List.map (fun (name, s, a) -> to_name name, s, a) blocks)
+    | `C4 vms -> `Unikernels (List.map (fun (name, vm) -> to_name name, vm) vms)
+    | `C5 blocks -> `Block_devices (List.map (fun (name, s, a) -> to_name name, s, a) blocks)
   and g = function
     | `Empty -> `C1 ()
     | `String s -> `C2 s
     | `Policies ps -> `C3 (List.map (fun (name, p) -> of_name name, p) ps)
-    | `Vms vms -> `C4 (List.map (fun (name, v) -> of_name name, v) vms)
-    | `Blocks blocks -> `C5 (List.map (fun (name, s, a) -> of_name name, s, a) blocks)
+    | `Unikernels vms -> `C4 (List.map (fun (name, v) -> of_name name, v) vms)
+    | `Block_devices blocks -> `C5 (List.map (fun (name, s, a) -> of_name name, s, a) blocks)
   in
   Asn.S.map f g @@
   Asn.S.(choice5
@@ -401,7 +402,7 @@ let success =
            (explicit 3 (sequence_of
                           (sequence2
                              (required ~label:"name" (sequence_of utf8_string))
-                             (required ~label:"vm_config" vm_config))))
+                             (required ~label:"config" unikernel_config))))
            (explicit 4 (sequence_of
                           (sequence3
                              (required ~label:"name" (sequence_of utf8_string))

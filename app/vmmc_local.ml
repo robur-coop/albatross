@@ -43,8 +43,6 @@ let handle opt_socket name (cmd : Vmm_commands.t) =
 let jump opt_socket name cmd =
   `Ok (Lwt_main.run (handle opt_socket name cmd))
 
-let info_ _ opt_socket name = jump opt_socket name (`Vm_cmd `Vm_info)
-
 let info_policy _ opt_socket name =
   jump opt_socket name (`Policy_cmd `Policy_info)
 
@@ -55,12 +53,15 @@ let add_policy _ opt_socket name vms memory cpus block bridges =
   let p = Vmm_cli.policy vms memory cpus block bridges in
   jump opt_socket name (`Policy_cmd (`Policy_add p))
 
-let destroy _ opt_socket name =
-  jump opt_socket name (`Vm_cmd `Vm_destroy)
+let info_ _ opt_socket name =
+  jump opt_socket name (`Unikernel_cmd `Unikernel_info)
 
-let create _ opt_socket force name image cpuid requested_memory boot_params block_device network compression =
-  match Vmm_cli.create_vm force image cpuid requested_memory boot_params block_device network compression with
-  | Ok cmd -> jump opt_socket name (`Vm_cmd cmd)
+let destroy _ opt_socket name =
+  jump opt_socket name (`Unikernel_cmd `Unikernel_destroy)
+
+let create _ opt_socket force name image cpuid memory argv block network compression =
+  match Vmm_cli.create_vm force image cpuid memory argv block network compression with
+  | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> `Error (false, msg)
 
 let console _ opt_socket name since =

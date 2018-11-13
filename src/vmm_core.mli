@@ -53,20 +53,20 @@ module Policy : sig
   val pp : t Fmt.t
 end
 
-module Vm : sig
-  type vmtype = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
-  val pp_vmtype : vmtype Fmt.t
+module Unikernel : sig
+  type typ = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
+  val pp_typ : typ Fmt.t
 
   type config = {
     cpuid : int;
-    requested_memory : int;
+    memory : int;
     block_device : string option;
-    network : string list;
-    vmimage : vmtype * Cstruct.t;
+    network_interfaces : string list;
+    image : typ * Cstruct.t;
     argv : string list option;
   }
 
-  val pp_image : (vmtype * Cstruct.t) Fmt.t
+  val pp_image : (typ * Cstruct.t) Fmt.t
 
   val pp_config : config Fmt.t
 
@@ -140,8 +140,8 @@ module Log : sig
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Vm_start of Name.t * int * string list * string option
-    | `Vm_stop of Name.t * int * process_exit ]
+    | `Unikernel_start of Name.t * int * string list * string option
+    | `Unikernel_stop of Name.t * int * process_exit ]
 
   val name : log_event -> Name.t
 

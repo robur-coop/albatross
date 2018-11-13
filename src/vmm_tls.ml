@@ -102,6 +102,6 @@ let handle _addr version chain =
     | `Console_cmd (`Console_subscribe _)
     | `Stats_cmd `Stats_subscribe
     | `Log_cmd (`Log_subscribe _)
-    | `Vm_cmd _
+    | `Unikernel_cmd _
     | `Policy_cmd `Policy_info -> Ok (name, policies, wire)
     | _ -> Error (`Msg "unexpected command")
