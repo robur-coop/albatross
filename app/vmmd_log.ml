@@ -162,6 +162,7 @@ let jump _ file sock =
      Lwt_unix.listen s 1 ;
      let ring = Vmm_ring.create `Startup () in
      read_from_file file >>= fun entries ->
+     Logs.app (fun m -> m "read %d entries from disk" (List.length entries)) ;
      List.iter (Vmm_ring.write ring) entries ;
      let mvar, writer = write_to_file file in
      let start = Ptime_clock.now (), `Startup in
