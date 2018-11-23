@@ -57,7 +57,6 @@ let sign_csr dbname cacert key csr days =
   | Error e -> Error e
 
 let sign _ db cacert cakey csrname days =
-  let days = match days with None -> 1 | Some x -> x in
   Nocrypto_entropy_unix.initialize () ;
   match
     Bos.OS.File.read (Fpath.v cacert) >>= fun cacert ->
@@ -77,7 +76,6 @@ let help _ man_format cmds = function
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
 let generate _ name db days sname sdays =
-  let days = match days with None -> 3650 | Some x -> x in
   Nocrypto_entropy_unix.initialize () ;
   match
     Vmm_provision.priv_key ~bits:4096 None name >>= fun key ->
@@ -105,7 +103,7 @@ let key =
 
 let days =
   let doc = "Number of days" in
-  Arg.(value & opt (some int) None & info [ "days" ] ~doc)
+  Arg.(value & opt int 3650 & info [ "days" ] ~doc)
 
 let db =
   let doc = "Database" in
@@ -127,6 +125,10 @@ let generate_cmd =
   in
   Term.(ret (const generate $ setup_log $ Vmm_provision.nam $ db $ days $ sname $ sday)),
   Term.info "generate" ~doc ~man
+
+let days =
+  let doc = "Number of days" in
+  Arg.(value & opt int 1 & info [ "days" ] ~doc)
 
 let sign_cmd =
   let doc = "sign a request" in
