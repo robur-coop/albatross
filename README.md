@@ -8,15 +8,16 @@ Some daemons are supposed to run in the host system, communicating via Unix doma
 - `vmmd_console`: reads the console output of unikernels (via a fifo passed from `vmmd`)
 - `vmmd_log`: event log
 - `vmmd_stats`: statistics (`getrusage`, ifstat, BHyve debug counters) gathering
-- `vmmd_tls`: authenticates and proxies commands carried by a client certificate
+- `vmmd_tls`: opens a TCP socket which authenticates (TLS with client certificate) and proxies to local unix domain sockets
+- `vmmd_tls_inetd`: authenticates (TLS with client certificate via stdin) and proxies commands carried by a client certificate, to be used by inetd
 - `vmmd_influx`: reports statistics from stats to influx listener
 
 Command-line applications for local and remote management are provided as well
 - `vmmc_local`: executes a command locally via Unix domain sockets
 - `vmmc_remote`: connects to `vmm_tls_endpoint` and executes command
-- `vmmc_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key on host)
 - `vmmp_request`: creates a certificate signing request containing a command
 - `vmmp_ca`: certificate authority operations: sign, generate (and revoke)
+- `vmmc_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key on host)
 
 TODO: from here on, this documentation is not up to date.
 
