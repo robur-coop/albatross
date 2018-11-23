@@ -310,7 +310,7 @@ let block_cmd =
 let version =
   let f data = match data with
     | 3 -> `AV3
-    | _ -> Asn.S.error (`Parse "unknown version number")
+    | x -> Asn.S.error (`Parse (Printf.sprintf "unknown version number 0x%X" x))
   and g = function
     | `AV3 -> 3
   in

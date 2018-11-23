@@ -79,7 +79,7 @@ let extract_policies version chain =
         R.error_msgf "unexpected wire %a" Vmm_commands.pp wire)
     (Ok (Vmm_core.Name.root, [])) chain
 
-let handle _addr version chain =
+let handle version chain =
   separate_chain chain >>= fun (leaf, rest) ->
   name chain >>= fun name ->
   Logs.debug (fun m -> m "leaf is %s, chain %a"

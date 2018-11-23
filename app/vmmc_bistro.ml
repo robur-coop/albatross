@@ -6,6 +6,7 @@ let version = `AV3
 
 let read fd =
   (* now we busy read and process output *)
+  Logs.debug (fun m -> m "reading tls stream") ;
   let rec loop () =
     Vmm_tls_lwt.read_tls fd >>= function
     | Error _ -> Lwt.return ()
@@ -55,9 +56,11 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Lwt_unix.gethostbyname host >>= fun host_entry ->
   let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
   let fd = Lwt_unix.socket host_entry.Lwt_unix.h_addrtype Lwt_unix.SOCK_STREAM 0 in
+  Logs.debug (fun m -> m "connecting to remote host") ;
   Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun () ->
   let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
   Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
+  Logs.debug (fun m -> m "finished tls handshake") ;
   read t
 
 let jump endp cert key ca name cmd =

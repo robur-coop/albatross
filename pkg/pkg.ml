@@ -11,6 +11,7 @@ let () =
     Pkg.bin "app/vmmd_log" ;
     Pkg.bin "app/vmmd_stats" ;
     Pkg.bin "app/vmmd_tls" ;
+    Pkg.bin "app/vmmd_tls_inetd" ;
     Pkg.bin "app/vmmd_influx" ;
     Pkg.bin "app/vmmc_local" ;
     Pkg.bin "app/vmmc_remote" ;

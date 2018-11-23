@@ -25,7 +25,7 @@ for f in albatross_log \
 do install -U $basedir/packaging/rc.d/$f $rootdir/usr/local/etc/rc.d/$f; done
 
 # stage albatross app binaries
-for f in vmmd vmmd_log vmmd_console vmmd_stats vmmd_influx vmmd_tls; do
+for f in vmmd vmmd_log vmmd_console vmmd_stats vmmd_influx vmmd_tls vmmd_tls_inetd; do
     install -U $basedir/_build/app/$f.native \
 	 $rootdir/usr/local/libexec/albatross/$f; done
 
