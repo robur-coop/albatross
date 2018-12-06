@@ -19,7 +19,7 @@ val log_entry_of_cstruct : Cstruct.t -> (Log.t, [> `Msg of string ]) result
 
 val log_to_disk : Vmm_commands.version -> Log.t -> Cstruct.t
 
-val logs_of_disk : Vmm_commands.version -> Cstruct.t -> Log.t list
+val logs_of_disk : Cstruct.t -> Log.t list
 
 type cert_extension = Vmm_commands.version * Vmm_commands.t
 

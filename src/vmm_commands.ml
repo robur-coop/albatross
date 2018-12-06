@@ -3,16 +3,18 @@
 (* the wire protocol *)
 open Vmm_core
 
-type version = [ `AV3 ]
+type version = [ `AV2 | `AV3 ]
 
 let pp_version ppf v =
   Fmt.int ppf
     (match v with
-     | `AV3 -> 3)
+     | `AV3 -> 3
+     | `AV2 -> 2)
 
 let version_eq a b =
   match a, b with
   | `AV3, `AV3 -> true
+  | `AV2, `AV2 -> true
   | _ -> false
 
 type console_cmd = [

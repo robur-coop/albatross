@@ -31,7 +31,7 @@ let write_complete s cs =
 
 let read_from_file file =
   Vmm_lwt.read_from_file file >|= fun data ->
-  let logs = Vmm_asn.logs_of_disk my_version data in
+  let logs = Vmm_asn.logs_of_disk data in
   List.rev logs
 
 let write_to_file file =

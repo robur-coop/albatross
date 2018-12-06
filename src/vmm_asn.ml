@@ -313,9 +313,11 @@ let block_cmd =
 let version =
   let f data = match data with
     | 3 -> `AV3
+    | 2 -> `AV2
     | x -> Asn.S.error (`Parse (Printf.sprintf "unknown version number 0x%X" x))
   and g = function
     | `AV3 -> 3
+    | `AV2 -> 2
   in
   Asn.S.map f g Asn.S.int
 
@@ -445,6 +447,12 @@ let log_entry =
 
 let log_entry_of_cstruct, log_entry_to_cstruct = projections_of log_entry
 
+(* if we revise structure, we need to stay in a sequence.. the first element
+   is always the version, we can dispatch on it for the later reader
+   -- would be easier to use a choice here -- we can define implicit tagged
+   is the current structure, and then 1 for new format etc.
+   keep in mind while changing arbitrary data here which may end up in the log ;)
+*)
 let log_disk =
   Asn.S.(sequence2
            (required ~label:"version" version)
@@ -457,17 +465,12 @@ let log_disk_of_cstruct, log_disk_to_cstruct =
 let log_to_disk version entry =
   log_disk_to_cstruct (version, entry)
 
-let logs_of_disk version buf =
+let logs_of_disk buf =
   let rec next acc buf =
     match log_disk_of_cstruct buf with
-    | Ok ((version', entry), cs) ->
-      let acc' =
-        if Vmm_commands.version_eq version version' then
-          entry :: acc
-        else
-          acc
-      in
-      next acc' cs
+    | Ok ((version, entry), cs) ->
+      Logs.info (fun m -> m "read a log entry version %a" pp_version version) ;
+      next (entry :: acc) cs
     | Error (`Parse msg) ->
       Logs.warn (fun m -> m "parse error %s while parsing log" msg) ;
       acc (* ignore *)
