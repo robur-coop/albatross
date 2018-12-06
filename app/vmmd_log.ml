@@ -34,30 +34,38 @@ let read_from_file file =
   let logs = Vmm_asn.logs_of_disk data in
   List.rev logs
 
-let write_to_file file =
-  let mvar = Lwt_mvar.create_empty () in
-  let rec write_loop ?(retry = true) ?log_entry ?fd () =
-    match fd with
-    | None when retry ->
-      Lwt_unix.openfile file Lwt_unix.[O_APPEND;O_CREAT;O_WRONLY] 0o600 >>= fun fd ->
-      write_loop ~retry:false ?log_entry ~fd ()
-    | None ->
-      Logs.err (fun m -> m "retry is false, exiting") ;
-      Lwt.return_unit
-    | Some fd ->
-      (match log_entry with
-       | None -> Lwt_mvar.take mvar
-       | Some l -> Lwt.return l) >>= fun log_entry ->
-      let data = Vmm_asn.log_to_disk my_version log_entry in
-      Lwt.catch
-        (fun () -> write_complete fd data >|= fun () -> (true, None, Some fd))
-        (fun e ->
-           Logs.err (fun m -> m "exception %s while writing" (Printexc.to_string e)) ;
-           Vmm_lwt.safe_close fd >|= fun () ->
-           (retry, Some log_entry, None)) >>= fun (retry, log_entry, fd) ->
-      write_loop ~retry ?log_entry ?fd ()
+let write_to_file mvar file =
+  let get_fd () =
+    Lwt_unix.openfile file Lwt_unix.[O_APPEND;O_CREAT;O_WRONLY] 0o600
   in
-  mvar, write_loop
+  let rec loop ?(retry = true) ?log_entry fd =
+    (match log_entry with
+     | Some l -> Lwt.return l
+     | None -> Lwt_mvar.take mvar >>= function
+       | `Hup ->
+         Vmm_lwt.safe_close fd >>= fun () ->
+         get_fd () >>= fun fd ->
+         loop ~log_entry:(Ptime_clock.now (), `Hup) fd
+       | `Entry log_entry -> Lwt.return log_entry) >>= fun log_entry ->
+    let data = Vmm_asn.log_to_disk my_version log_entry in
+    Lwt.catch
+      (fun () ->
+         write_complete fd data >>= fun () ->
+         loop fd)
+      (fun e ->
+         Logs.err (fun m -> m "exception %s while writing" (Printexc.to_string e)) ;
+         Vmm_lwt.safe_close fd >>= fun () ->
+         if retry then
+           get_fd () >>= fun fd ->
+           loop ~retry:false ~log_entry fd
+         else begin
+           Logs.err (fun m -> m "retry is false, exiting") ;
+           Lwt.return log_entry
+         end)
+  in
+  get_fd () >>= fun fd ->
+  loop fd >|= fun _ ->
+  ()
 
 let send_history s ring id ts =
   let elements =
@@ -91,7 +99,7 @@ let handle_data s mvar ring hdr entry =
   end else begin
     Vmm_lwt.write_wire s (hdr, `Success `Empty) >>= fun _ ->
     Vmm_ring.write ring entry ;
-    Lwt_mvar.put mvar entry >>= fun () ->
+    Lwt_mvar.put mvar (`Entry entry) >>= fun () ->
     let data' = (hdr, `Data (`Log_data entry)) in
     broadcast hdr.Vmm_commands.name data' !tree >|= fun tree' ->
     tree := tree'
@@ -164,16 +172,19 @@ let jump _ file sock =
      read_from_file file >>= fun entries ->
      Logs.app (fun m -> m "read %d entries from disk" (List.length entries)) ;
      List.iter (Vmm_ring.write ring) entries ;
-     let mvar, writer = write_to_file file in
+     let mvar = Lwt_mvar.create_empty () in
+     Sys.(set_signal sighup (Signal_handle (fun _ ->
+         Lwt.async (fun () -> Lwt_mvar.put mvar `Hup)))) ;
+     Lwt.async (fun () -> write_to_file mvar file) ;
      let start = Ptime_clock.now (), `Startup in
-     Lwt_mvar.put mvar start >>= fun () ->
+     Lwt_mvar.put mvar (`Entry start) >>= fun () ->
      Vmm_ring.write ring start ;
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        Lwt.async (handle mvar ring cs addr) ;
        loop ()
      in
-     Lwt.pick [ loop () ; writer () ]) ;
+     loop ()) ;
   `Ok ()
 
 open Cmdliner
