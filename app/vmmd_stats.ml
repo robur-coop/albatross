@@ -59,7 +59,7 @@ let handle s addr () =
   Logs.warn (fun m -> m "disconnect, dropping %d vms!" (List.length vmids)) ;
   t := remove_vmids !t vmids
 
-let rec timer interval () =
+let timer () =
   let t', outs = tick !t in
   t := t' ;
   Lwt_list.iter_p (fun (s, name, stat) ->
@@ -69,9 +69,7 @@ let rec timer interval () =
         Logs.debug (fun m -> m "removing entry %a" Vmm_core.Name.pp name) ;
         t := remove_entry !t name ;
         Vmm_lwt.safe_close s)
-    outs >>= fun () ->
-  Lwt_unix.sleep interval >>= fun () ->
-  timer interval ()
+    outs
 
 let jump _ file interval =
   Sys.(set_signal sigpipe Signal_ignore) ;
@@ -83,7 +81,7 @@ let jump _ file interval =
      let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
      Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
      Lwt_unix.listen s 1 ;
-     Lwt.async (timer interval) ;
+     let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async timer) in
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        Lwt.async (handle cs addr) ;
