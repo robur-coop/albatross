@@ -141,7 +141,9 @@ module Log : sig
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
     | `Unikernel_start of Name.t * int * string list * string option
-    | `Unikernel_stop of Name.t * int * process_exit ]
+    | `Unikernel_stop of Name.t * int * process_exit
+    | `Hup
+  ]
 
   val name : log_event -> Name.t
 

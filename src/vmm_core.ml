@@ -266,6 +266,7 @@ module Log = struct
     | `Startup
     | `Unikernel_start of Name.t * int * string list * string option
     | `Unikernel_stop of Name.t * int * process_exit
+    | `Hup
   ]
 
   let name = function
@@ -274,9 +275,10 @@ module Log = struct
     | `Logout (name, _, _) -> name
     | `Unikernel_start (name, _, _ ,_) -> name
     | `Unikernel_stop (name, _, _) -> name
+    | `Hup -> []
 
   let pp_log_event ppf = function
-    | `Startup -> Fmt.(pf ppf "startup")
+    | `Startup -> Fmt.string ppf "startup"
     | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp_hum ip port
     | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp_hum ip port
     | `Unikernel_start (name, pid, taps, block) ->
@@ -285,6 +287,8 @@ module Log = struct
         Fmt.(option ~none:(unit "no") string) block
     | `Unikernel_stop (name, pid, code) ->
       Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code
+    | `Hup -> Fmt.string ppf "hup"
+
 
   type t = Ptime.t * log_event
 

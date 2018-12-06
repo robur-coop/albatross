@@ -192,6 +192,7 @@ let log_event =
         | `C3 n -> `Stop n
       in
       `Unikernel_stop (to_name name, pid, status')
+    | `C6 () -> `Hup
   and g = function
     | `Startup -> `C1 ()
     | `Login (name, ip, port) -> `C2 (of_name name, ip, port)
@@ -204,6 +205,7 @@ let log_event =
         | `Stop n -> `C3 n
       in
       `C5 (of_name name, pid, status')
+    | `Hup -> `C6 ()
   in
   let endp =
     Asn.S.(sequence3
@@ -212,7 +214,7 @@ let log_event =
             (required ~label:"port" int))
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
+  Asn.S.(choice6
            (explicit 0 null)
            (explicit 1 endp)
            (explicit 2 endp)
@@ -227,7 +229,8 @@ let log_event =
                           (required ~label:"status" (choice3
                                                        (explicit 0 int)
                                                        (explicit 1 int)
-                                                       (explicit 2 int))))))
+                                                       (explicit 2 int)))))
+           (explicit 5 null))
 
 let log_cmd =
   let f = function
