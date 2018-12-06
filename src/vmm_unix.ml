@@ -199,6 +199,8 @@ let create_block name size =
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
   | false ->
+    let fd = Unix.(openfile (Fpath.to_string block_name) [O_CREAT] 0o600) in
+    close_no_err fd ;
     bytes_of_mb size >>= fun size' ->
     Bos.OS.File.truncate block_name size'
 
