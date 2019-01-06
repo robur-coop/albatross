@@ -120,6 +120,21 @@ let ru =
          @ (required ~label:"nvcsw" int64)
         -@ (required ~label:"nivcsw" int64))
 
+let kinfo_mem =
+  let open Stats in
+  let f (vsize, rss, tsize, dsize, ssize) =
+    { vsize ; rss ; tsize ; dsize ; ssize }
+  and g t =
+    (t.vsize, t.rss, t.tsize, t.dsize, t.ssize)
+  in
+  Asn.S.map f g @@
+  Asn.S.(sequence5
+         (required ~label:"bsize" int64)
+         (required ~label:"rss" int64)
+         (required ~label:"tsize" int64)
+         (required ~label:"dsize" int64)
+         (required ~label:"ssize" int64))
+
 (* TODO is this good? *)
 let int32 =
   let f i = Int32.of_int i
@@ -349,11 +364,11 @@ let wire_command =
 let data =
   let f = function
     | `C1 (timestamp, data) -> `Console_data (timestamp, data)
-    | `C2 (ru, ifs, vmm) -> `Stats_data (ru, vmm, ifs)
+    | `C2 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
     | `C3 (timestamp, event) -> `Log_data (timestamp, event)
   and g = function
     | `Console_data (timestamp, data) -> `C1 (timestamp, data)
-    | `Stats_data (ru, ifs, vmm) -> `C2 (ru, vmm, ifs)
+    | `Stats_data (ru, mem, ifs, vmm) -> `C2 (ru, vmm, ifs, mem)
     | `Log_data (timestamp, event) -> `C3 (timestamp, event)
   in
   Asn.S.map f g @@
@@ -361,13 +376,14 @@ let data =
            (explicit 0 (sequence2
                           (required ~label:"timestamp" utc_time)
                           (required ~label:"data" utf8_string)))
-           (explicit 1 (sequence3
+           (explicit 1 (sequence4
                           (required ~label:"resource_usage" ru)
                           (required ~label:"ifdata" (sequence_of ifdata))
-                          (optional ~label:"vmm_stats"
+                          (optional ~label:"vmm_stats" @@ explicit 0
                              (sequence_of (sequence2
                                              (required ~label:"key" utf8_string)
-                                             (required ~label:"value" int64))))))
+                                             (required ~label:"value" int64))))
+                          (optional ~label:"kinfo_mem" @@ implicit 1 kinfo_mem)))
            (explicit 2 (sequence2
                           (required ~label:"timestamp" utc_time)
                           (required ~label:"event" log_event))))

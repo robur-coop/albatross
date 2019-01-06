@@ -18,4 +18,5 @@ let () =
     Pkg.bin "app/vmmc_bistro" ;
     Pkg.bin "app/vmmp_request" ;
     Pkg.bin "app/vmmp_ca" ;
+    Pkg.test ~run:false "app/vmmc_stat" ;
   ]

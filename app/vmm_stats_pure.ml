@@ -6,6 +6,7 @@ open Rresult.R.Infix
 open Vmm_core
 
 external sysctl_rusage : int -> Stats.rusage = "vmmanage_sysctl_rusage"
+external sysctl_kinfo_mem : int -> Stats.kinfo_mem = "vmmanage_sysctl_kinfo_mem"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
 external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
@@ -83,6 +84,7 @@ let try_open_vmmapi pid_nic =
 
 let gather pid vmctx nics =
   wrap sysctl_rusage pid,
+  wrap sysctl_kinfo_mem pid,
   (match vmctx with
    | Error _ -> None
    | Ok vmctx -> wrap vmmapi_stats vmctx),
@@ -105,13 +107,13 @@ let tick t =
         | xs -> match IM.find_opt pid t.pid_nic with
           | None -> Logs.warn (fun m -> m "couldn't find nics of %d" pid) ; out
           | Some (vmctx, nics) ->
-            let ru, vmm, ifd = gather pid vmctx nics in
+            let ru, mem, vmm, ifd = gather pid vmctx nics in
             match ru with
             | None -> Logs.err (fun m -> m "failed to get rusage for %d" pid) ; out
             | Some ru' ->
               let stats =
                 let vmm' = match vmm with None -> None | Some xs -> Some (List.combine !descr xs) in
-                ru', vmm', ifd
+                ru', mem, vmm', ifd
               in
               List.fold_left (fun out (id, socket) ->
                   match Vmm_core.Name.drop_super ~super:id ~sub:vmid with

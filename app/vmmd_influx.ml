@@ -100,6 +100,18 @@ module P = struct
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
     Printf.sprintf "resource_usage,vm=%s %s" vm (String.concat ~sep:"," fields)
 
+  let encode_kinfo_mem vm mem =
+    let fields =
+      [ "vsize", i64 mem.vsize ;
+        "rss", i64 mem.rss ;
+        "rsize", i64 mem.tsize ;
+        "dsize", i64 mem.dsize ;
+        "ssize", i64 mem.ssize ;
+      ]
+    in
+    let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
+    Printf.sprintf "kinfo_mem,vm=%s %s" vm (String.concat ~sep:"," fields)
+
   let encode_vmm vm xs =
     let escape s =
       let cutted = String.cuts ~sep:"," s in
@@ -190,7 +202,7 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
       safe_close fd >>= fun () ->
       safe_close c >|= fun () ->
       true
-    | Ok (hdr, `Data (`Stats_data (ru, vmm, ifs))) ->
+    | Ok (hdr, `Data (`Stats_data (ru, mem, vmm, ifs))) ->
       begin
         if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
           Logs.err (fun m -> m "unknown wire protocol version") ;
@@ -200,9 +212,10 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
         end else
           let name = Name.to_string hdr.Vmm_commands.name in
           let ru = P.encode_ru name ru in
-          let vmm = match vmm with None -> [] | Some xs -> [ P.encode_vmm name xs ] in
+          let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
+          let vmm = match vmm with None -> [] | Some vmm -> [ P.encode_vmm name vmm ] in
           let taps = List.map (P.encode_if name) ifs in
-          let out = (String.concat ~sep:"\n" (ru :: vmm @ taps)) ^ "\n" in
+          let out = (String.concat ~sep:"\n" (ru :: mem @ vmm @ taps)) ^ "\n" in
           Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
           Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
           | Ok () ->

@@ -15,6 +15,7 @@ true : package(rresult logs ipaddr bos hex ptime astring duration cstruct decomp
 <app/vmmd_log.{ml,native,byte}>: package(ptime.clock.os)
 <app/vmmd_tls*.{ml,native,byte}>: package(tls.lwt ptime.clock.os)
 <app/vmmd_stats.{ml,native,byte}>: link_vmm_stats
+<app/vmmc_stat.{ml,native,byte}>: link_vmm_stats
 
 <app/vmmc_remote.{ml,native,byte}>: package(nocrypto tls.lwt nocrypto.lwt)
 <app/vmmc_bistro.{ml,native,byte}>: package(nocrypto tls.lwt nocrypto.lwt)

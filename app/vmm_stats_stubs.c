@@ -21,6 +21,34 @@
 #include <net/if_mib.h>
 #include <vmmapi.h>
 
+CAMLprim value vmmanage_sysctl_kinfo_mem (value pid_r) {
+  CAMLparam1(pid_r);
+  CAMLlocal3(res, utime, stime);
+  int name[4];
+  int error;
+  size_t len;
+  struct kinfo_proc p;
+
+  len = sizeof(p);
+  name[0] = CTL_KERN;
+  name[1] = KERN_PROC;
+  name[2] = KERN_PROC_PID;
+  name[3] = Int_val(pid_r);
+
+  error = sysctl(name, nitems(name), &p, &len, NULL, 0);
+  if (error < 0)
+    uerror("sysctl", Nothing);
+
+  res = caml_alloc(5, 0);
+  Store_field (res, 0, Val64(p.ki_size));
+  Store_field (res, 1, Val64(p.ki_rssize));
+  Store_field (res, 2, Val64(p.ki_tsize));
+  Store_field (res, 3, Val64(p.ki_dsize));
+  Store_field (res, 4, Val64(p.ki_ssize));
+
+  CAMLreturn(res);
+}
+
 CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
   CAMLparam1(pid_r);
   CAMLlocal3(res, utime, stime);
@@ -199,6 +227,11 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 CAMLprim value vmmanage_sysctl_rusage (value pid_r) {
   CAMLparam1(pid_r);
   uerror("sysctl_rusage", Nothing);
+}
+
+CAMLprim value vmmanage_sysctl_kinfo_mem (value pid_r) {
+  CAMLparam1(pid_r);
+  uerror("sysctl_kinfo_mem", Nothing);
 }
 
 CAMLprim value vmmanage_sysctl_ifcount (value unit) {

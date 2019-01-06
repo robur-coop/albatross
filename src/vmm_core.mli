@@ -101,9 +101,21 @@ module Stats : sig
     nivcsw : int64;
   }
   val pp_rusage : rusage Fmt.t
+  val pp_rusage_mem : rusage Fmt.t
+
+  type kinfo_mem = {
+    vsize : int64 ;
+    rss : int64 ;
+    tsize : int64 ;
+    dsize : int64 ;
+    ssize : int64 ;
+  }
+
+  val pp_kinfo_mem : kinfo_mem Fmt.t
 
   type vmm = (string * int64) list
   val pp_vmm : vmm Fmt.t
+  val pp_vmm_mem : vmm Fmt.t
 
   type ifdata = {
     ifname : string;
@@ -127,7 +139,7 @@ module Stats : sig
   }
   val pp_ifdata : ifdata Fmt.t
 
-  type t = rusage * vmm option * ifdata list
+  type t = rusage * kinfo_mem option * vmm option * ifdata list
   val pp : t Fmt.t
 end
 
