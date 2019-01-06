@@ -62,12 +62,12 @@ let handle s addr () =
 let timer () =
   let t', outs = tick !t in
   t := t' ;
-  Lwt_list.iter_p (fun (s, name, stat) ->
+  Lwt_list.iter_p (fun (s, id, stat) ->
       Vmm_lwt.write_wire s stat >>= function
       | Ok () -> Lwt.return_unit
       | Error `Exception ->
-        Logs.debug (fun m -> m "removing entry %a" Vmm_core.Name.pp name) ;
-        t := remove_entry !t name ;
+        Logs.debug (fun m -> m "removing entry %a" Vmm_core.Name.pp id) ;
+        t := remove_entry !t id ;
         Vmm_lwt.safe_close s)
     outs
 

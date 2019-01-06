@@ -120,7 +120,7 @@ let tick t =
                   | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.Name.pp id Vmm_core.Name.pp vmid) ; out
                   | Some real_id ->
                     let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = real_id } in
-                    ((socket, vmid, (header, `Data (`Stats_data stats))) :: out))
+                    ((socket, id, (header, `Data (`Stats_data stats))) :: out))
                 out xs)
           [] (Vmm_trie.all t'.vmid_pid)
   in
