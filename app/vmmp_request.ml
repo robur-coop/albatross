@@ -199,7 +199,7 @@ let default_cmd =
     `P "$(tname) connects to vmmd via a local socket" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "vmmc_local" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "vmmp_request" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

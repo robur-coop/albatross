@@ -130,13 +130,17 @@ let days =
   let doc = "Number of days" in
   Arg.(value & opt int 1 & info [ "days" ] ~doc)
 
+let cacert =
+  let doc = "cacert" in
+  Arg.(required & pos 0 (some file) None & info [] ~doc ~docv:"CACERT")
+
 let sign_cmd =
   let doc = "sign a request" in
   let man =
     [`S "DESCRIPTION";
      `P "Signs the certificate signing request."]
   in
-  Term.(ret (const sign $ setup_log $ db $ Vmm_provision.cacert $ key $ csr $ days)),
+  Term.(ret (const sign $ setup_log $ db $ cacert $ key $ csr $ days)),
   Term.info "sign" ~doc ~man
 
 let help_cmd =

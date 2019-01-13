@@ -104,7 +104,7 @@ module P = struct
     let fields =
       [ "vsize", i64 mem.vsize ;
         "rss", i64 mem.rss ;
-        "rsize", i64 mem.tsize ;
+        "tsize", i64 mem.tsize ;
         "dsize", i64 mem.dsize ;
         "ssize", i64 mem.ssize ;
       ]

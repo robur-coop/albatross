@@ -75,8 +75,8 @@ messages [
 
 	add path 'vmm/solo5*' mode 0660 group albatross
 
-   * start TLS endpoint via inetd on port 49, add to /etc/inetd.conf:
-tacacs  stream  tcp     nowait  albatross       /usr/local/libexec/albatross/vmmd_tls_inetd   vmmd_tls_inetd /usr/local/etc/albatross/cacert.pem /usr/local/etc/albatross/server.pem /usr/local/etc/albatross/server.key
+   * start TLS endpoint via inetd on port 1025, add to /etc/inetd.conf:
+blackjack  stream  tcp     nowait  albatross       /usr/local/libexec/albatross/vmmd_tls_inetd   vmmd_tls_inetd /usr/local/etc/albatross/cacert.pem /usr/local/etc/albatross/server.pem /usr/local/etc/albatross/server.key
 
      and add cacert.pem server.pem and server.key to /usr/local/etc/albatross
 
