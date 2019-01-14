@@ -46,6 +46,23 @@ let rec wrap f arg =
     Logs.err (fun m -> m "exception %s" (Printexc.to_string e)) ;
     None
 
+let remove_vmid t vmid =
+  Logs.info (fun m -> m "removing vmid %a" Vmm_core.Name.pp vmid) ;
+  match Vmm_trie.find vmid t.vmid_pid with
+  | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.Name.pp vmid) ; t
+  | Some pid ->
+    Logs.info (fun m -> m "removing pid %d" pid) ;
+    (try
+       match IM.find pid t.pid_nic with
+       | Ok vmctx, _, _ -> ignore (wrap vmmapi_close vmctx)
+       | Error _, _, _ -> ()
+     with
+       _ -> ()) ;
+    let pid_nic = IM.remove pid t.pid_nic
+    and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
+    in
+    { t with pid_nic ; vmid_pid }
+
 let fill_descr ctx =
   match !descr with
   | [] ->
@@ -101,32 +118,40 @@ let gather pid vmctx nics =
 let tick t =
   let pid_nic = try_open_vmmapi t.pid_nic in
   let t' = { t with pid_nic } in
-  let outs =
-    List.fold_left (fun out (vmid, pid) ->
+  let outs, to_remove =
+    List.fold_left (fun (out, to_remove) (vmid, pid) ->
         let listeners = Vmm_trie.collect vmid t'.name_sockets in
         match listeners with
-        | [] -> Logs.info (fun m -> m "nobody is listening") ; out
+        | [] -> Logs.info (fun m -> m "nobody is listening") ; (out, to_remove)
         | xs -> match IM.find_opt pid t.pid_nic with
-          | None -> Logs.warn (fun m -> m "couldn't find nics of %d" pid) ; out
+          | None ->
+            Logs.warn (fun m -> m "couldn't find nics of %d" pid) ;
+            out, to_remove
           | Some (vmctx, _, nics) ->
             let ru, mem, vmm, ifd = gather pid vmctx nics in
             match ru with
-            | None -> Logs.err (fun m -> m "failed to get rusage for %d" pid) ; out
+            | None ->
+              Logs.err (fun m -> m "failed to get rusage for %d" pid) ;
+              out, vmid :: to_remove
             | Some ru' ->
               let stats =
                 let vmm' = match vmm with None -> None | Some xs -> Some (List.combine !descr xs) in
                 ru', mem, vmm', ifd
               in
-              List.fold_left (fun out (id, socket) ->
-                  match Vmm_core.Name.drop_super ~super:id ~sub:vmid with
-                  | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.Name.pp id Vmm_core.Name.pp vmid) ; out
-                  | Some real_id ->
-                    let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = real_id } in
-                    ((socket, id, (header, `Data (`Stats_data stats))) :: out))
-                out xs)
-          [] (Vmm_trie.all t'.vmid_pid)
+              let outs =
+                List.fold_left (fun out (id, socket) ->
+                    match Vmm_core.Name.drop_super ~super:id ~sub:vmid with
+                    | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.Name.pp id Vmm_core.Name.pp vmid) ; out
+                    | Some real_id ->
+                      let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = real_id } in
+                      ((socket, id, (header, `Data (`Stats_data stats))) :: out))
+                  out xs
+              in
+              outs, to_remove)
+          ([], []) (Vmm_trie.all t'.vmid_pid)
   in
-  (t', outs)
+  let t'' = List.fold_left remove_vmid t' to_remove in
+  (t'', outs)
 
 let add_pid t vmid vmmdev pid nics =
   match wrap sysctl_ifcount () with
@@ -154,23 +179,6 @@ let add_pid t vmid vmmdev pid nics =
     in
     assert (ret = None) ;
     Ok { t with pid_nic ; vmid_pid }
-
-let remove_vmid t vmid =
-  Logs.info (fun m -> m "removing vmid %a" Vmm_core.Name.pp vmid) ;
-  match Vmm_trie.find vmid t.vmid_pid with
-  | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.Name.pp vmid) ; t
-  | Some pid ->
-    Logs.info (fun m -> m "removing pid %d" pid) ;
-    (try
-       match IM.find pid t.pid_nic with
-       | Ok vmctx, _, _ -> ignore (wrap vmmapi_close vmctx)
-       | Error _, _, _ -> ()
-     with
-       _ -> ()) ;
-    let pid_nic = IM.remove pid t.pid_nic
-    and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
-    in
-    { t with pid_nic ; vmid_pid }
 
 let handle t socket (header, wire) =
   if not (Vmm_commands.version_eq my_version header.Vmm_commands.version) then begin
