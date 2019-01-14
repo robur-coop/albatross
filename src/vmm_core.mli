@@ -118,6 +118,7 @@ module Stats : sig
   val pp_vmm_mem : vmm Fmt.t
 
   type ifdata = {
+    bridge : string;
     ifname : string;
     flags : int32;
     send_length : int32;

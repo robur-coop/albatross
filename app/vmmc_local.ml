@@ -67,7 +67,13 @@ let create _ opt_socket force name image cpuid memory argv block network compres
 let console _ opt_socket name since =
   jump opt_socket name (`Console_cmd (`Console_subscribe since))
 
-let stats _ opt_socket name =
+let stats_add _ opt_socket name vmmdev pid bridge_taps =
+  jump opt_socket name (`Stats_cmd (`Stats_add (vmmdev, pid, bridge_taps)))
+
+let stats_remove _ opt_socket name =
+  jump opt_socket name (`Stats_cmd `Stats_remove)
+
+let stats_subscribe _ opt_socket name =
   jump opt_socket name (`Stats_cmd `Stats_subscribe)
 
 let event_log _ opt_socket name since =
@@ -157,14 +163,32 @@ let console_cmd =
   Term.(ret (const console $ setup_log $ socket $ vm_name $ since)),
   Term.info "console" ~doc ~man
 
-let stats_cmd =
+let stats_subscribe_cmd =
   let doc = "statistics of VMs" in
   let man =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(ret (const stats $ setup_log $ socket $ opt_vm_name)),
+  Term.(ret (const stats_subscribe $ setup_log $ socket $ opt_vm_name)),
   Term.info "stats" ~doc ~man
+
+let stats_remove_cmd =
+  let doc = "remove statistics of VM" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Removes statistics of VM."]
+  in
+  Term.(ret (const stats_remove $ setup_log $ socket $ opt_vm_name)),
+  Term.info "stats_remove" ~doc ~man
+
+let stats_add_cmd =
+  let doc = "Add VM to statistics gathering" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Add VM to statistics gathering."]
+  in
+  Term.(ret (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps)),
+  Term.info "stats_add" ~doc ~man
 
 let log_cmd =
   let doc = "Event log" in
@@ -228,7 +252,8 @@ let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
-             console_cmd ; stats_cmd ; log_cmd ]
+             console_cmd ;
+             stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ; log_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds

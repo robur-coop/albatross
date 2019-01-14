@@ -25,39 +25,32 @@ let pp_sockaddr ppf = function
 
 let handle s addr () =
   Logs.info (fun m -> m "handling stats connection %a" pp_sockaddr addr) ;
-  let rec loop pids =
+  let rec loop () =
     Vmm_lwt.read_wire s >>= function
     | Error _ ->
       Logs.err (fun m -> m "exception while reading") ;
-      Lwt.return pids
+      Lwt.return_unit
     | Ok wire ->
       match handle !t s wire with
       | Error (`Msg msg) ->
         Vmm_lwt.write_wire s (fst wire, `Failure msg) >>= fun _ ->
-        Lwt.return pids
-      | Ok (t', action, out) ->
+        Lwt.return_unit
+      | Ok (t', close, out) ->
         t := t' ;
-        let pids = match action with
-          | `Add pid -> pid :: pids
-          | `Remove pid -> List.filter (fun m -> m <> pid) pids
-          | `Close _ -> pids
-        in
         Vmm_lwt.write_wire s (fst wire, `Success (`String out)) >>= function
         | Ok () ->
-          (match action with
-           | `Close (Some s') ->
+          (match close with
+           | Some s' ->
              Vmm_lwt.safe_close s' >>= fun () ->
              (* read the next *)
-             Vmm_lwt.read_wire s >|= fun _ -> pids
-           | _ -> loop pids)
+             loop ()
+           | None -> loop ())
         | Error _ ->
           Logs.err (fun m -> m "error while writing") ;
-          Lwt.return pids
+          Lwt.return_unit
   in
-  loop [] >>= fun vmids ->
-  Vmm_lwt.safe_close s >|= fun () ->
-  Logs.warn (fun m -> m "disconnect, dropping %d vms!" (List.length vmids)) ;
-  t := remove_vmids !t vmids
+  loop () >>= fun () ->
+  Vmm_lwt.safe_close s
 
 let timer () =
   let t', outs = tick !t in

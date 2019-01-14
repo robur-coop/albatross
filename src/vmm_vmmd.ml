@@ -86,7 +86,13 @@ let handle_create t reply name vm_config =
           Ok (t, [ reply (`String "created VM") ; out ], name, vm)))
 
 let setup_stats t name vm =
-  let stat_out = `Stats_add (vm.Unikernel.pid, vm.Unikernel.taps) in
+  let stat_out =
+    let pid = vm.Unikernel.pid in
+    let name = "solo5-" ^ string_of_int pid
+    and ifs = Unikernel.(List.combine vm.config.network_interfaces vm.taps)
+    in
+    `Stats_add (name, pid, ifs)
+  in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, `Stat (header, `Command (`Stats_cmd stat_out))

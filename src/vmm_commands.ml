@@ -29,13 +29,15 @@ let pp_console_cmd ppf = function
       Fmt.(option ~none:(unit "epoch") (Ptime.pp_rfc3339 ())) ts
 
 type stats_cmd = [
-  | `Stats_add of int * string list
+  | `Stats_add of string * int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
 ]
 
 let pp_stats_cmd ppf = function
-  | `Stats_add (pid, taps) -> Fmt.pf ppf "stats add: pid %d taps %a" pid Fmt.(list ~sep:(unit ", ") string) taps
+  | `Stats_add (vmmdev, pid, taps) ->
+    Fmt.pf ppf "stats add: vmm device %s pid %d taps %a" vmmdev pid
+      Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ": ") string string)) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
 
@@ -154,7 +156,8 @@ let endpoint = function
   | `Unikernel_cmd _ -> `Vmmd, `End
   | `Policy_cmd _ -> `Vmmd, `End
   | `Block_cmd _ -> `Vmmd, `End
-  | `Stats_cmd _ -> `Stats, `Read
+  | `Stats_cmd `Stats_subscribe -> `Stats, `Read
+  | `Stats_cmd _ -> `Stats, `End
   | `Console_cmd _ -> `Console, `Read
   | `Log_cmd _ -> `Log, `Read
 

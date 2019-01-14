@@ -17,7 +17,7 @@ type console_cmd = [
 ]
 
 type stats_cmd = [
-  | `Stats_add of int * string list
+  | `Stats_add of string * int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
 ]

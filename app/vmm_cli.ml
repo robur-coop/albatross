@@ -62,6 +62,26 @@ let vm_c =
   in
   (parse, Name.pp)
 
+let bridge_tap_c =
+  let parse s = match Astring.String.cut ~sep:":" s with
+    | None -> `Error "broken, format is bridge:tap"
+    | Some (bridge, tap) -> `Ok (bridge, tap)
+  in
+  (parse, fun ppf (bridge, tap) -> Format.fprintf ppf "%s:%s" bridge tap)
+
+let bridge_taps =
+  let doc = "Bridge and tap device names" in
+  Arg.(value & opt_all bridge_tap_c [] & info [ "bridge" ] ~doc)
+
+let pid_req1 =
+  let doc = "Process id" in
+  Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"PID")
+
+let vmm_dev_req0 =
+  let doc = "VMM device name" in
+  Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VMMDEV")
+
+
 let opt_vm_name =
   let doc = "name of virtual machine." in
   Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)

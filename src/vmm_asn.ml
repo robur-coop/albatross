@@ -144,14 +144,15 @@ let int32 =
 
 let ifdata =
   let open Stats in
-  let f (ifname, (flags, (send_length, (max_send_length, (send_drops, (mtu, (baudrate, (input_packets, (input_errors, (output_packets, (output_errors, (collisions, (input_bytes, (output_bytes, (input_mcast, (output_mcast, (input_dropped, output_dropped))))))))))))))))) =
-    { ifname; flags; send_length; max_send_length; send_drops; mtu; baudrate; input_packets; input_errors; output_packets; output_errors; collisions; input_bytes; output_bytes; input_mcast; output_mcast; input_dropped; output_dropped }
+  let f (bridge, (ifname, (flags, (send_length, (max_send_length, (send_drops, (mtu, (baudrate, (input_packets, (input_errors, (output_packets, (output_errors, (collisions, (input_bytes, (output_bytes, (input_mcast, (output_mcast, (input_dropped, output_dropped)))))))))))))))))) =
+    { bridge ; ifname; flags; send_length; max_send_length; send_drops; mtu; baudrate; input_packets; input_errors; output_packets; output_errors; collisions; input_bytes; output_bytes; input_mcast; output_mcast; input_dropped; output_dropped }
   and g i =
-    (i.ifname, (i.flags, (i.send_length, (i.max_send_length, (i.send_drops, (i.mtu, (i.baudrate, (i.input_packets, (i.input_errors, (i.output_packets, (i.output_errors, (i.collisions, (i.input_bytes, (i.output_bytes, (i.input_mcast, (i.output_mcast, (i.input_dropped, i.output_dropped)))))))))))))))))
+    (i.bridge, (i.ifname, (i.flags, (i.send_length, (i.max_send_length, (i.send_drops, (i.mtu, (i.baudrate, (i.input_packets, (i.input_errors, (i.output_packets, (i.output_errors, (i.collisions, (i.input_bytes, (i.output_bytes, (i.input_mcast, (i.output_mcast, (i.input_dropped, i.output_dropped))))))))))))))))))
   in
   Asn.S.map f g @@
   Asn.S.(sequence @@
-         (required ~label:"ifname" utf8_string)
+         (required ~label:"bridge" utf8_string)
+       @ (required ~label:"ifname" utf8_string)
        @ (required ~label:"flags" int32)
        @ (required ~label:"send_length" int32)
        @ (required ~label:"max_send_length" int32)
@@ -172,19 +173,24 @@ let ifdata =
 
 let stats_cmd =
   let f = function
-    | `C1 (pid, taps) -> `Stats_add (pid, taps)
+    | `C1 (name, pid, taps) -> `Stats_add (name, pid, taps)
     | `C2 () -> `Stats_remove
     | `C3 () -> `Stats_subscribe
   and g = function
-    | `Stats_add (pid, taps) -> `C1 (pid, taps)
+    | `Stats_add (name, pid, taps) -> `C1 (name, pid, taps)
     | `Stats_remove -> `C2 ()
     | `Stats_subscribe -> `C3 ()
   in
   Asn.S.map f g @@
   Asn.S.(choice3
-           (explicit 0 (sequence2
+           (explicit 0 (sequence3
+                          (required ~label:"vmmdev" utf8_string)
                           (required ~label:"pid" int)
-                          (required ~label:"taps" (sequence_of utf8_string))))
+                          (required ~label:"network"
+                             (sequence_of
+                                (sequence2
+                                   (required ~label:"bridge" utf8_string)
+                                   (required ~label:"tap" utf8_string))))))
            (explicit 1 null)
            (explicit 2 null))
 
@@ -455,6 +461,28 @@ let wire =
            (required ~label:"payload" payload))
 
 let wire_of_cstruct, wire_to_cstruct = projections_of wire
+
+(* maybe one day to smoothly transition to a new version,
+   but this requires version handshaking in all communication (i.e. server
+   sends: supported versions, client picks one to talk over this channel)
+let payload_of_cstruct, _ = projections_of payload
+let wire_of_cstruct versions buf =
+  let wire_header =
+    Asn.S.(sequence2
+             (required ~label:"header" header)
+             (required ~label:"payload" octet_string))
+  in
+  let wire_header_of_cstruct, _ = projections_of wire_header in
+  match wire_header_of_cstruct buf with
+  | Error e -> Error e
+  | Ok (header, payload) ->
+    if List.mem header.version versions then
+      match payload_of_cstruct payload with
+      | Ok p -> Ok (header, p)
+      | Error e -> Error e
+    else
+      Error (`Msg "unsupported version")
+*)
 
 let log_entry =
   Asn.S.(sequence2

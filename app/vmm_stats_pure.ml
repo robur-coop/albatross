@@ -22,12 +22,15 @@ let my_version = `AV3
 let descr = ref []
 
 type 'a t = {
-  pid_nic : ((vmctx, int) result * (int * string) list) IM.t ;
+  pid_nic : ((vmctx, int) result * string * (string * int * string) list) IM.t ;
   vmid_pid : int Vmm_trie.t ;
   name_sockets : 'a Vmm_trie.t ;
 }
 
-let pp_strings pp taps = Fmt.(list ~sep:(unit ",@ ") string) pp taps
+let pp_strings pp strs = Fmt.(list ~sep:(unit ",@ ") string) pp strs
+
+let pp_nics pp nets =
+  Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit ": ") string string)) pp nets
 
 let empty () =
   { pid_nic = IM.empty ; vmid_pid = Vmm_trie.empty ; name_sockets = Vmm_trie.empty }
@@ -56,30 +59,29 @@ let fill_descr ctx =
     end
   | ds -> Logs.debug (fun m -> m "%d descr are already present" (List.length ds))
 
-let open_vmmapi ?(retries = 4) pid =
-  let name = "solo5-" ^ string_of_int pid in
+let open_vmmapi ?(retries = 4) name =
   if retries = 0 then begin
-    Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %d" pid) ;
+    Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %s" name) ;
     Error 0
   end else
     match wrap vmmapi_open name with
     | None ->
       let left = max 0 (pred retries) in
-      Logs.warn (fun m -> m "(ignored, %d attempts left) vmmapi_open failed for %d" left pid) ;
+      Logs.warn (fun m -> m "(ignored, %d attempts left) vmmapi_open failed for %s" left name) ;
       Error left
     | Some vmctx ->
-      Logs.info (fun m -> m "vmmapi_open succeeded for %d" pid) ;
+      Logs.info (fun m -> m "vmmapi_open succeeded for %s" name) ;
       fill_descr vmctx ;
       Ok vmctx
 
 let try_open_vmmapi pid_nic =
-  IM.fold (fun pid (vmctx, nics) fresh ->
+  IM.fold (fun pid (vmctx, vmmdev, nics) fresh ->
       let vmctx =
         match vmctx with
         | Ok vmctx -> Ok vmctx
-        | Error retries -> open_vmmapi ~retries pid
+        | Error retries -> open_vmmapi ~retries vmmdev
       in
-      IM.add pid (vmctx, nics) fresh)
+      IM.add pid (vmctx, vmmdev, nics) fresh)
     pid_nic IM.empty
 
 let gather pid vmctx nics =
@@ -88,12 +90,12 @@ let gather pid vmctx nics =
   (match vmctx with
    | Error _ -> None
    | Ok vmctx -> wrap vmmapi_stats vmctx),
-  List.fold_left (fun ifd (nic, nname) ->
+  List.fold_left (fun ifd (bridge, nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
         Logs.warn (fun m -> m "failed to get ifdata for %s" nname) ;
         ifd
-      | Some data -> data::ifd)
+      | Some data -> { data with bridge }::ifd)
     [] nics
 
 let tick t =
@@ -106,7 +108,7 @@ let tick t =
         | [] -> Logs.info (fun m -> m "nobody is listening") ; out
         | xs -> match IM.find_opt pid t.pid_nic with
           | None -> Logs.warn (fun m -> m "couldn't find nics of %d" pid) ; out
-          | Some (vmctx, nics) ->
+          | Some (vmctx, _, nics) ->
             let ru, mem, vmm, ifd = gather pid vmctx nics in
             match ru with
             | None -> Logs.err (fun m -> m "failed to get rusage for %d" pid) ; out
@@ -126,26 +128,28 @@ let tick t =
   in
   (t', outs)
 
-let add_pid t vmid pid nics =
+let add_pid t vmid vmmdev pid nics =
   match wrap sysctl_ifcount () with
   | None ->
-    Logs.err (fun m -> m "sysctl ifcount failed for %d %a" pid pp_strings nics) ;
+    Logs.err (fun m -> m "sysctl ifcount failed for %d %a" pid pp_nics nics) ;
     Error (`Msg "sysctl ifcount failed")
   | Some max_nic ->
     let rec go cnt acc id =
       if id > 0 && cnt > 0 then
         match wrap sysctl_ifdata id with
-        | Some ifd when List.mem ifd.Vmm_core.Stats.ifname nics ->
-          go (pred cnt) ((id, ifd.Vmm_core.Stats.ifname) :: acc) (pred id)
-        | _ -> go cnt acc (pred id)
+        | None -> go cnt acc (pred id)
+        | Some ifd ->
+          match List.find_opt (fun (_, tap) -> String.equal tap ifd.Stats.ifname) nics with
+          | Some (bridge, tap) -> go (pred cnt) ((bridge, id, tap) :: acc) (pred id)
+          | None -> go cnt acc (pred id)
       else
         List.rev acc
     in
     Ok (go (List.length nics) [] max_nic) >>= fun nic_ids ->
-    let vmctx = open_vmmapi pid in
-    Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_strings nics
+    let vmctx = open_vmmapi vmmdev in
+    Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_nics nics
                   (match vmctx with Error _ -> false | Ok _ -> true)) ;
-    let pid_nic = IM.add pid (vmctx, nic_ids) t.pid_nic
+    let pid_nic = IM.add pid (vmctx, vmmdev, nic_ids) t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
     in
     assert (ret = None) ;
@@ -159,17 +163,14 @@ let remove_vmid t vmid =
     Logs.info (fun m -> m "removing pid %d" pid) ;
     (try
        match IM.find pid t.pid_nic with
-       | Ok vmctx, _ -> ignore (wrap vmmapi_close vmctx)
-       | Error _, _ -> ()
+       | Ok vmctx, _, _ -> ignore (wrap vmmapi_close vmctx)
+       | Error _, _, _ -> ()
      with
        _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
     and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
     in
     { t with pid_nic ; vmid_pid }
-
-let remove_vmids t vmids =
-  List.fold_left remove_vmid t vmids
 
 let handle t socket (header, wire) =
   if not (Vmm_commands.version_eq my_version header.Vmm_commands.version) then begin
@@ -183,15 +184,15 @@ let handle t socket (header, wire) =
       begin
         let id = header.Vmm_commands.name in
         match cmd with
-        | `Stats_add (pid, taps) ->
-          add_pid t id pid taps >>= fun t ->
-          Ok (t, `Add id, "added")
+        | `Stats_add (vmmdev, pid, taps) ->
+          add_pid t id vmmdev pid taps >>= fun t ->
+          Ok (t, None, "added")
         | `Stats_remove ->
           let t = remove_vmid t id in
-          Ok (t, `Remove id, "removed")
+          Ok (t, None, "removed")
         | `Stats_subscribe ->
           let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
-          Ok ({ t with name_sockets }, `Close close, "subscribed")
+          Ok ({ t with name_sockets }, close, "subscribed")
       end
     | _ ->
       Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire (header, wire)) ;

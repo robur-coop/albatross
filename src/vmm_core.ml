@@ -237,6 +237,7 @@ module Stats = struct
       (List.filter (fun (k, _) -> k = "Resident memory" || k = "Wired memory") vmm)
 
   type ifdata = {
+    bridge : string ;
     ifname : string ;
     flags : int32 ;
     send_length : int32 ;
@@ -258,8 +259,8 @@ module Stats = struct
   }
 
   let pp_ifdata ppf i =
-    Fmt.pf ppf "ifname %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
-      i.ifname i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
+    Fmt.pf ppf "bridge %s ifname %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
+      i.bridge i.ifname i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
   type t = rusage * kinfo_mem option * vmm option * ifdata list
   let pp ppf (ru, mem, vmm, ifs) =
