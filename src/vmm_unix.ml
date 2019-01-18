@@ -37,10 +37,10 @@ let null = match read_fd_for_file (Fpath.v "/dev/null") with
   | Ok fd -> fd
   | Error _ -> invalid_arg "cannot read /dev/null"
 
-let rec create_process prog args stdout stderr =
-  try Unix.create_process prog args null stdout stderr with
+let rec create_process prog args stdout =
+  try Unix.create_process prog args null stdout stdout with
   | Unix.Unix_error (Unix.EINTR, _, _) ->
-      create_process prog args stdout stderr
+      create_process prog args stdout
 
 let rec close fd =
   try Unix.close fd with
@@ -175,11 +175,14 @@ let exec name vm taps block =
   Logs.debug (fun m -> m "opened file descriptor!");
   try
     Logs.debug (fun m -> m "creating process");
-    let pid = create_process prog line stdout stdout in
+    let pid = create_process prog line stdout in
     Logs.debug (fun m -> m "created process %d: %a" pid Bos.Cmd.pp cmd) ;
+    (* we gave a copy (well, two copies) of that file descriptor to the solo5
+       process and don't really need it here anymore... *)
+    close stdout ;
     (* this should get rid of the vmimage from vmmd's memory! *)
     let config = Unikernel.{ vm with image = (fst vm.Unikernel.image, Cstruct.create 0) } in
-    Ok Unikernel.{ config ; cmd ; pid ; taps ; stdout }
+    Ok Unikernel.{ config ; cmd ; pid ; taps }
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;

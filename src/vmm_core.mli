@@ -75,7 +75,6 @@ module Unikernel : sig
     cmd : Bos.Cmd.t;
     pid : int;
     taps : string list;
-    stdout : Unix.file_descr;
   }
 
   val pp : t Fmt.t

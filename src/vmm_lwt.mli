@@ -8,7 +8,7 @@ val ret : Unix.process_status -> Vmm_core.process_exit
 
 val waitpid : int -> (int * Lwt_unix.process_status, unit) result Lwt.t
 
-val wait_and_clear : int -> Unix.file_descr -> Vmm_core.process_exit Lwt.t
+val wait_and_clear : int -> Vmm_core.process_exit Lwt.t
 
 val read_wire : Lwt_unix.file_descr ->
   (Vmm_commands.wire, [> `Eof | `Exception | `Toomuch ]) result Lwt.t

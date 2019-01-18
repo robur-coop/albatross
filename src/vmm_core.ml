@@ -180,7 +180,6 @@ module Unikernel = struct
     cmd : Bos.Cmd.t ;
     pid : int ;
     taps : string list ;
-    stdout : Unix.file_descr (* ringbuffer thingy *)
   }
 
   let pp ppf vm =

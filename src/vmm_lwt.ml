@@ -29,10 +29,9 @@ let rec waitpid pid =
                      (Printexc.to_string e) pid) ;
         Lwt.return (Error ()))
 
-let wait_and_clear pid stdout =
+let wait_and_clear pid =
   Logs.debug (fun m -> m "waitpid() for pid %d" pid) ;
   waitpid pid >|= fun r ->
-  Vmm_unix.close_no_err stdout ;
   match r with
   | Error () ->
     Logs.err (fun m -> m "waitpid() for %d returned error" pid) ;

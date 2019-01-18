@@ -34,7 +34,7 @@ let create process cont =
     state := state'' ;
     s := { !s with vm_created = succ !s.vm_created } ;
     Lwt.async (fun () ->
-        Vmm_lwt.wait_and_clear vm.Unikernel.pid vm.Unikernel.stdout >>= fun r ->
+        Vmm_lwt.wait_and_clear vm.Unikernel.pid >>= fun r ->
         let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
         s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
         state := state' ;
