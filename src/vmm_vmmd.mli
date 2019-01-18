@@ -28,3 +28,5 @@ val handle_command : 'a t -> Vmm_commands.wire ->
                                       | `End ]) ]
 
 val setup_stats : 'a t -> Name.t -> Unikernel.t -> 'a t * out
+
+val kill : 'a t -> unit

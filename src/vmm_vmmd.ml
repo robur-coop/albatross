@@ -16,6 +16,10 @@ type 'a t = {
   tasks : 'a String.Map.t ;
 }
 
+let kill t =
+  List.iter Vmm_unix.destroy
+    (List.map snd (Vmm_trie.all t.resources.Vmm_resources.unikernels))
+
 let init wire_version =
   let t = {
     wire_version ;
