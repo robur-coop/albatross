@@ -111,7 +111,7 @@ module Name = struct
     match drop_super ~super ~sub with None -> false | Some _ -> true
 
   let pp ppf ids =
-    Fmt.(pf ppf "[name %a]" (list ~sep:(unit ".") string) ids)
+    Fmt.(pf ppf "[vm: %a]" (list ~sep:(unit ".") string) ids)
 end
 
 module Policy = struct
