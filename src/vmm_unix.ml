@@ -147,7 +147,7 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec name vm taps block =
+let exec name config taps block =
   (match taps, block with
    | [], None -> Ok "none"
    | [_], None -> Ok "net"
@@ -156,10 +156,10 @@ let exec name vm taps block =
    | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
   let net = List.map (fun t -> "--net=" ^ t) taps
   and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_file dev) ]
-  and argv = match vm.Unikernel.argv with None -> [] | Some xs -> xs
-  and mem = "--mem=" ^ string_of_int vm.Unikernel.memory
+  and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
+  and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
-  cpuset vm.Unikernel.cpuid >>= fun cpuset ->
+  cpuset config.Unikernel.cpuid >>= fun cpuset ->
   let cmd =
     Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt" + bin) % mem %%
              of_list net %% of_list block %
@@ -180,7 +180,7 @@ let exec name vm taps block =
        process and don't really need it here anymore... *)
     close stdout ;
     (* this should get rid of the vmimage from vmmd's memory! *)
-    let config = Unikernel.{ vm with image = (fst vm.Unikernel.image, Cstruct.create 0) } in
+    let config = Unikernel.{ config with image = (fst config.Unikernel.image, Cstruct.create 0) } in
     Ok Unikernel.{ config ; cmd ; pid ; taps }
   with
     Unix.Unix_error (e, _, _) ->
