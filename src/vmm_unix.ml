@@ -185,7 +185,7 @@ let exec name config taps block =
     close_no_err stdout;
     R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_error e
 
-let destroy vm = Unix.kill vm.Unikernel.pid 15 (* 15 is SIGTERM *)
+let destroy vm = Unix.kill vm.Unikernel.pid Sys.sigterm
 
 let bytes_of_mb size =
   let res = size lsl 20 in
