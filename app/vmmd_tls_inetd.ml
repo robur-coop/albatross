@@ -26,7 +26,6 @@ let jump cacert cert priv_key =
   `Ok ()
 
 open Cmdliner
-open Vmm_cli
 
 let cmd =
   Term.(ret (const jump $ cacert $ cert $ key)),
