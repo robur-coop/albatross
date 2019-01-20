@@ -52,12 +52,9 @@ let remove_vmid t vmid =
   | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.Name.pp vmid) ; t
   | Some pid ->
     Logs.info (fun m -> m "removing pid %d" pid) ;
-    (try
-       match IM.find pid t.pid_nic with
-       | Ok vmctx, _, _ -> ignore (wrap vmmapi_close vmctx)
-       | Error _, _, _ -> ()
-     with
-       _ -> ()) ;
+    (match IM.find_opt pid t.pid_nic with
+     | Some (Ok vmctx, _, _) -> ignore (wrap vmmapi_close vmctx)
+     | _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
     and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
     in
@@ -76,7 +73,7 @@ let fill_descr ctx =
     end
   | ds -> Logs.debug (fun m -> m "%d descr are already present" (List.length ds))
 
-let open_vmmapi ?(retries = 4) name =
+let open_vmmapi ~retries name =
   if retries = 0 then begin
     Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %s" name) ;
     Error 0
@@ -112,7 +109,7 @@ let gather pid vmctx nics =
       | None ->
         Logs.warn (fun m -> m "failed to get ifdata for %s" nname) ;
         ifd
-      | Some data -> { data with bridge }::ifd)
+      | Some data -> { data with Stats.bridge }::ifd)
     [] nics
 
 let tick t =
@@ -171,10 +168,8 @@ let add_pid t vmid vmmdev pid nics =
         List.rev acc
     in
     Ok (go (List.length nics) [] max_nic) >>= fun nic_ids ->
-    let vmctx = open_vmmapi vmmdev in
-    Logs.info (fun m -> m "adding %d %a with vmctx %b" pid pp_nics nics
-                  (match vmctx with Error _ -> false | Ok _ -> true)) ;
-    let pid_nic = IM.add pid (vmctx, vmmdev, nic_ids) t.pid_nic
+    Logs.info (fun m -> m "adding %a %d %a" Name.pp vmid pid pp_nics nics) ;
+    let pid_nic = IM.add pid (Error 4, vmmdev, nic_ids) t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
     in
     assert (ret = None) ;
