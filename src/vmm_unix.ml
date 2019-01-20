@@ -71,13 +71,14 @@ let rec fifo_exists file =
   | Unix.Unix_error (e, _, _) ->
       R.error_msgf "file %a exists: %s" Fpath.pp file (Unix.error_message e)
 
-let uname () =
+let uname =
   let cmd = Bos.Cmd.(v "uname" % "-s") in
-  lazy Bos.OS.Cmd.(run_out cmd |> out_string)
+  lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
+      | Ok (s, _) -> s
+      | Error (`Msg m) -> invalid_arg m)
 
 let create_tap bridge =
-  Lazy.force (uname ()) >>= fun (sys, _) ->
-  match sys with
+  match Lazy.force uname with
   | x when x = "FreeBSD" ->
     let cmd = Bos.Cmd.(v "ifconfig" % "tap" % "create") in
     Bos.OS.Cmd.run_out cmd |> Bos.OS.Cmd.out_string >>= fun (name, _) ->
@@ -98,8 +99,7 @@ let create_tap bridge =
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let destroy_tap tapname =
-  Lazy.force (uname ()) >>= fun (sys, _) ->
-  match sys with
+  match Lazy.force uname with
   | x when x = "FreeBSD" ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % tapname % "destroy")
   | x when x = "Linux" ->
@@ -139,9 +139,8 @@ let shutdown name vm =
   List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.Unikernel.taps
 
 let cpuset cpu =
-  Lazy.force (uname ()) >>= fun (sys, _) ->
   let cpustring = string_of_int cpu in
-  match sys with
+  match Lazy.force uname with
   | x when x = "FreeBSD" ->
     Ok ([ "cpuset" ; "-l" ; cpustring ])
   | x when x = "Linux" ->
