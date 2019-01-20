@@ -124,7 +124,7 @@ let handle_create t reply name vm_config =
           let t = { t with resources } in
           let t, out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
           let t, stat_out = setup_stats t name vm in
-          Ok (t, [ stat_out ; out ; reply (`String "created VM") ], name, vm)))
+          Ok (t, stat_out :: out :: reply, name, vm)))
 
 let handle_shutdown t name vm r =
   (match Vmm_unix.shutdown name vm with
@@ -186,7 +186,9 @@ let handle_unikernel_cmd t reply id msg_to_err = function
       | _ ->
         Ok (t, [ reply (`Unikernels vms) ], `End)
     end
-  | `Unikernel_create vm_config -> handle_create t reply id vm_config
+  | `Unikernel_create vm_config ->
+    let success = reply (`String "created VM") in
+    handle_create t [ success ] id vm_config
   | `Unikernel_force_create vm_config ->
     begin
       let resources =
@@ -196,11 +198,14 @@ let handle_unikernel_cmd t reply id msg_to_err = function
       in
       Vmm_resources.check_vm resources id vm_config >>= fun () ->
       match Vmm_resources.find_vm t.resources id with
-      | None -> handle_create t reply id vm_config
+      | None ->
+        let success = reply (`String "created VM (didn't exist before)") in
+        handle_create t [ success ] id vm_config
       | Some vm ->
         Vmm_unix.destroy vm ;
+        let success = reply (`String "destroyed and created VM") in
         Ok (t, [], `Wait_and_create
-              (id, fun t -> msg_to_err @@ handle_create t reply id vm_config))
+              (id, fun t -> msg_to_err @@ handle_create t [ success ] id vm_config))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
