@@ -179,8 +179,6 @@ let exec name config taps block =
     (* we gave a copy (well, two copies) of that file descriptor to the solo5
        process and don't really need it here anymore... *)
     close stdout ;
-    (* this should get rid of the vmimage from vmmd's memory! *)
-    let config = Unikernel.{ config with image = (fst config.Unikernel.image, Cstruct.create 0) } in
     Ok Unikernel.{ config ; cmd ; pid ; taps }
   with
     Unix.Unix_error (e, _, _) ->
