@@ -16,9 +16,10 @@ type 'a t = {
   waiters : 'a String.Map.t ;
 }
 
-let kill t =
-  List.iter Vmm_unix.destroy
-    (List.map snd (Vmm_trie.all t.resources.Vmm_resources.unikernels))
+let killall t =
+  match List.map snd (Vmm_trie.all t.resources.Vmm_resources.unikernels) with
+  | [] -> false
+  | vms -> List.iter Vmm_unix.destroy vms ; true
 
 let waiter t id =
   let name = Name.to_string id in

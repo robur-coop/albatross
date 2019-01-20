@@ -154,14 +154,17 @@ let jump _ =
      (create_mbox `Log >|= function
        | None -> invalid_arg "cannot connect to log socket"
        | Some l -> l) >>= fun (l, l_fd, l_mut) ->
+     let self_destruct_mutex = Lwt_mutex.create () in
      let self_destruct () =
-       Vmm_vmmd.kill !state ;
-       (* not too happy about the sleep here, but cleaning up resources is
-          really important (fifos, vm images, tap devices) - which is done in
-          asynchronous (waiter tasks)
-       *)
-       Lwt_unix.sleep 1. >>= fun () ->
-       Vmm_lwt.safe_close ss
+       Lwt_mutex.with_lock self_destruct_mutex (fun () ->
+           (if Vmm_vmmd.killall !state then
+              (* not too happy about the sleep here, but cleaning up resources
+                 is really important (fifos, vm images, tap devices) - which is
+                 done asynchronously (in the task waitpid() on the pid) *)
+              Lwt_unix.sleep 1.
+            else
+              Lwt.return_unit) >>= fun () ->
+           Vmm_lwt.safe_close ss)
      in
      Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
      (create_mbox `Console >|= function

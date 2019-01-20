@@ -31,4 +31,4 @@ val handle_command : 'a t -> Vmm_commands.wire ->
                                       [ `Create of 'a t -> ('a t * out list * Name.t * Unikernel.t, [> Rresult.R.msg ]) result
                                       | `End ]) ]
 
-val kill : 'a t -> unit
+val killall : 'a t -> bool
