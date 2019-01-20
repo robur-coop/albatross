@@ -108,11 +108,12 @@ let dump_unikernels t =
 
 let setup_stats t name vm =
   let stat_out =
-    let pid = vm.Unikernel.pid in
-    let name = "solo5-" ^ string_of_int pid
+    let name = match Vmm_unix.vm_device vm with
+      | Error _ -> ""
+      | Ok name -> name
     and ifs = Unikernel.(List.combine vm.config.network_interfaces vm.taps)
     in
-    `Stats_add (name, pid, ifs)
+    `Stats_add (name, vm.Unikernel.pid, ifs)
   in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
