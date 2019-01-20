@@ -149,99 +149,115 @@ let rec stats_loop () =
 
 let jump _ =
   Sys.(set_signal sigpipe Signal_ignore);
-  Lwt_main.run
-    (server_socket `Vmmd >>= fun ss ->
-     (create_mbox `Log >|= function
-       | None -> invalid_arg "cannot connect to log socket"
-       | Some l -> l) >>= fun (l, l_fd, l_mut) ->
-     let self_destruct_mutex = Lwt_mutex.create () in
-     let self_destruct () =
-       Lwt_mutex.with_lock self_destruct_mutex (fun () ->
-           (if Vmm_vmmd.killall !state then
-              (* not too happy about the sleep here, but cleaning up resources
-                 is really important (fifos, vm images, tap devices) - which is
-                 done asynchronously (in the task waitpid() on the pid) *)
-              Lwt_unix.sleep 1.
-            else
-              Lwt.return_unit) >>= fun () ->
-           Vmm_lwt.safe_close ss)
-     in
-     Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-     (create_mbox `Console >|= function
-       | None -> invalid_arg "cannot connect to console socket"
-       | Some c -> c) >>= fun (c, c_fd, c_mut) ->
-     create_mbox `Stats >>= fun s ->
+  match Vmm_vmmd.restore_unikernels () with
+  | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
+  | Ok old_unikernels ->
 
-     let write_reply txt (header, cmd) name mvar fd mut =
-       Lwt_mutex.with_lock mut (fun () ->
-           Lwt_mvar.put mvar (header, cmd) >>= fun () ->
-           Vmm_lwt.read_wire fd) >|= function
-       | Ok (header', reply) ->
-         if not Vmm_commands.(version_eq header.version header'.version) then begin
-           Logs.err (fun m -> m "%s: wrong version (got %a, expected %a) in reply from %s"
-                        txt
-                        Vmm_commands.pp_version header'.Vmm_commands.version
-                        Vmm_commands.pp_version header.Vmm_commands.version
-                        name) ;
-           invalid_arg "bad version received"
-         end else if not Vmm_commands.(Int64.equal header.sequence header'.sequence) then begin
-           Logs.err (fun m -> m "%s: wrong id %Lu (expected %Lu) in reply from %s"
-                        txt header'.Vmm_commands.sequence header.Vmm_commands.sequence name) ;
-           invalid_arg "wrong sequence number received"
-         end else begin
-           Logs.debug (fun m -> m "%s: received valid reply from %s %a"
-                          txt name Vmm_commands.pp_wire (header', reply)) ;
-           match reply with
-           | `Success _ -> ()
-           | `Failure msg ->
-             (* can we programatically solve such a situation? *)
-             (* we at least know e.g when writing to console resulted in an error,
-                that we can't continue but need to roll back -- and not continue
-                with execvp() *)
-             Logs.err (fun m -> m "%s: received failure %s from %s" txt msg name)
-           | _ ->
-             Logs.err (fun m -> m "%s: unexpected data from %s" txt name) ;
-             invalid_arg "unexpected data"
-         end
-       | Error _ ->
-         Logs.err (fun m -> m "error in read from %s" name) ;
-         invalid_arg "communication failure"
-     in
-     let out txt = function
-       | `Stat wire ->
-         begin match s with
-           | None -> Lwt.return_unit
-           | Some (s, s_fd, s_mut) -> write_reply txt wire "stats" s s_fd s_mut
-         end
-       | `Log wire -> write_reply txt wire "log" l l_fd l_mut
-       | `Cons wire -> write_reply txt wire "console" c c_fd c_mut
-     in
-     let process ?fd txt wires =
-       Lwt_list.iter_p (function
-           | (#Vmm_vmmd.service_out as o) -> out txt o
-           | `Data wire -> match fd with
-             | None ->
-               Logs.app (fun m -> m "%s received %a" txt Vmm_commands.pp_wire wire) ;
-               Lwt.return_unit
-             | Some fd ->
-               (* TODO should we terminate the connection on write failure? *)
-               Vmm_lwt.write_wire fd wire >|= fun _ ->
-               ())
-         wires
-     in
+    Lwt_main.run
+      (server_socket `Vmmd >>= fun ss ->
+       (create_mbox `Log >|= function
+         | None -> invalid_arg "cannot connect to log socket"
+         | Some l -> l) >>= fun (l, l_fd, l_mut) ->
+       let self_destruct_mutex = Lwt_mutex.create () in
+       let self_destruct () =
+         Lwt_mutex.with_lock self_destruct_mutex (fun () ->
+             (if Vmm_vmmd.killall !state then
+                (* not too happy about the sleep here, but cleaning up resources
+                   is really important (fifos, vm images, tap devices) - which
+                   is done asynchronously (in the task waitpid() on the pid) *)
+                Lwt_unix.sleep 1.
+              else
+                Lwt.return_unit) >>= fun () ->
+             Vmm_lwt.safe_close ss)
+       in
+       Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
+       (create_mbox `Console >|= function
+         | None -> invalid_arg "cannot connect to console socket"
+         | Some c -> c) >>= fun (c, c_fd, c_mut) ->
+       create_mbox `Stats >>= fun s ->
 
-     Lwt.async stats_loop ;
-     Lwt.catch (fun () ->
-         let rec loop () =
-           Lwt_unix.accept ss >>= fun (fd, addr) ->
-           Lwt_unix.set_close_on_exec fd ;
-           Lwt.async (fun () -> handle (process ~fd) fd addr) ;
-           loop ()
-         in
-         loop ())
-       (fun e ->
-          Logs.err (fun m -> m "exception %s, shutting down" (Printexc.to_string e));
-          self_destruct ()))
+       let write_reply txt (header, cmd) name mvar fd mut =
+         Lwt_mutex.with_lock mut (fun () ->
+             Lwt_mvar.put mvar (header, cmd) >>= fun () ->
+             Vmm_lwt.read_wire fd) >|= function
+         | Ok (header', reply) ->
+           if not Vmm_commands.(version_eq header.version header'.version) then begin
+             Logs.err (fun m -> m "%s: wrong version (got %a, expected %a) in reply from %s"
+                          txt
+                          Vmm_commands.pp_version header'.Vmm_commands.version
+                          Vmm_commands.pp_version header.Vmm_commands.version
+                          name) ;
+             invalid_arg "bad version received"
+           end else if not Vmm_commands.(Int64.equal header.sequence header'.sequence) then begin
+             Logs.err (fun m -> m "%s: wrong id %Lu (expected %Lu) in reply from %s"
+                          txt header'.Vmm_commands.sequence header.Vmm_commands.sequence name) ;
+             invalid_arg "wrong sequence number received"
+           end else begin
+             Logs.debug (fun m -> m "%s: received valid reply from %s %a"
+                            txt name Vmm_commands.pp_wire (header', reply)) ;
+             match reply with
+             | `Success _ -> ()
+             | `Failure msg ->
+               (* can we programatically solve such a situation? *)
+               (* we at least know e.g when writing to console resulted in an error,
+                  that we can't continue but need to roll back -- and not continue
+                  with execvp() *)
+               Logs.err (fun m -> m "%s: received failure %s from %s" txt msg name)
+             | _ ->
+               Logs.err (fun m -> m "%s: unexpected data from %s" txt name) ;
+               invalid_arg "unexpected data"
+           end
+         | Error _ ->
+           Logs.err (fun m -> m "error in read from %s" name) ;
+           invalid_arg "communication failure"
+       in
+       let out txt = function
+         | `Stat wire ->
+           begin match s with
+             | None -> Lwt.return_unit
+             | Some (s, s_fd, s_mut) -> write_reply txt wire "stats" s s_fd s_mut
+           end
+         | `Log wire -> write_reply txt wire "log" l l_fd l_mut
+         | `Cons wire -> write_reply txt wire "console" c c_fd c_mut
+       in
+       let process ?fd txt wires =
+         Lwt_list.iter_p (function
+             | (#Vmm_vmmd.service_out as o) -> out txt o
+             | `Data wire -> match fd with
+               | None ->
+                 Logs.app (fun m -> m "%s received %a" txt Vmm_commands.pp_wire wire) ;
+                 Lwt.return_unit
+               | Some fd ->
+                 (* TODO should we terminate the connection on write failure? *)
+                 Vmm_lwt.write_wire fd wire >|= fun _ ->
+                 ()) wires
+       in
+
+       Lwt.async stats_loop ;
+
+       let start_unikernel (name, config) =
+         match Vmm_vmmd.handle_create !state [] name config with
+         | Error (`Msg msg) ->
+           Logs.err (fun m -> m "failed to restart %a: %s" Name.pp name msg) ;
+           Lwt.return_unit
+         | Ok (state', out, `Create next) ->
+           state := state' ;
+           process "create from dump" out >>= fun () ->
+           create process next
+       in
+       Lwt_list.iter_p start_unikernel (Vmm_trie.all old_unikernels) >>= fun () ->
+
+       Lwt.catch (fun () ->
+           let rec loop () =
+             Lwt_unix.accept ss >>= fun (fd, addr) ->
+             Lwt_unix.set_close_on_exec fd ;
+             Lwt.async (fun () -> handle (process ~fd) fd addr) ;
+             loop ()
+           in
+           loop ())
+         (fun e ->
+            Logs.err (fun m -> m "exception %s, shutting down" (Printexc.to_string e));
+            self_destruct ()))
 
 open Cmdliner
 

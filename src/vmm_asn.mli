@@ -25,3 +25,6 @@ type cert_extension = Vmm_commands.version * Vmm_commands.t
 
 val cert_extension_of_cstruct : Cstruct.t -> (cert_extension, [> `Msg of string ]) result
 val cert_extension_to_cstruct : cert_extension -> Cstruct.t
+
+val unikernels_to_cstruct : Unikernel.config Vmm_trie.t -> Cstruct.t
+val unikernels_of_cstruct : Cstruct.t -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result

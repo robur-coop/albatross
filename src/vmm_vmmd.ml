@@ -16,10 +16,12 @@ type 'a t = {
   waiters : 'a String.Map.t ;
 }
 
+let in_shutdown = ref false
+
 let killall t =
   match List.map snd (Vmm_trie.all t.resources.Vmm_resources.unikernels) with
   | [] -> false
-  | vms -> List.iter Vmm_unix.destroy vms ; true
+  | vms -> in_shutdown := true ; List.iter Vmm_unix.destroy vms ; true
 
 let waiter t id =
   let name = Name.to_string id in
@@ -80,6 +82,30 @@ let log t name event =
   Logs.debug (fun m -> m "log %a" Log.pp data) ;
   ({ t with log_counter }, `Log (header, `Data (`Log_data data)))
 
+let restore_unikernels () =
+  match Vmm_unix.restore () with
+  | Error `NoFile ->
+    Logs.warn (fun m -> m "no state dump found, starting with no unikernels") ;
+    Ok Vmm_trie.empty
+  | Error (`Msg msg) -> Error (`Msg ("while reading state: " ^ msg))
+  | Ok data ->
+    match Vmm_asn.unikernels_of_cstruct data with
+    | Error (`Msg msg) -> Error (`Msg ("couldn't parse state: " ^ msg))
+    | Ok unikernels ->
+      Logs.info (fun m -> m "restored some unikernels") ;
+      Ok unikernels
+
+let dump_unikernels t =
+  let unikernels = Vmm_trie.all t.resources.Vmm_resources.unikernels in
+  let trie = List.fold_left (fun t (name, unik) ->
+      fst @@ Vmm_trie.insert name unik.Unikernel.config t)
+      Vmm_trie.empty unikernels
+  in
+  let data = Vmm_asn.unikernels_to_cstruct trie in
+  match Vmm_unix.dump data with
+  | Error (`Msg msg) -> Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
+  | Ok () -> Logs.info (fun m -> m "dumped current state")
+
 let setup_stats t name vm =
   let stat_out =
     let pid = vm.Unikernel.pid in
@@ -122,6 +148,7 @@ let handle_create t reply name vm_config =
           Logs.debug (fun m -> m "exec()ed vm") ;
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
           let t = { t with resources } in
+          dump_unikernels t ;
           let t, out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
           let t, stat_out = setup_stats t name vm in
           Ok (t, stat_out :: out :: reply, name, vm)))
@@ -137,6 +164,7 @@ let handle_shutdown t name vm r =
     | Ok resources -> resources
   in
   let t = { t with resources } in
+  if not !in_shutdown then dump_unikernels t ;
   let t, logout = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r)) in
   let t, stat_out = remove_stats t name in
   (t, [ stat_out ; logout ])

@@ -521,6 +521,42 @@ let logs_of_disk buf =
   in
   next [] buf
 
+let trie e =
+  let f elts =
+    List.fold_left (fun trie (key, value) ->
+        match Name.of_string key with
+        | Error (`Msg m) -> invalid_arg m
+        | Ok name ->
+          let trie, ret = Vmm_trie.insert name value trie in
+          assert (ret = None);
+          trie) Vmm_trie.empty elts
+  and g trie =
+    List.map (fun (k, v) -> Name.to_string k, v) (Vmm_trie.all trie)
+  in
+  Asn.S.map f g @@
+  Asn.S.(sequence_of
+           (sequence2
+              (required ~label:"name" utf8_string)
+              (required ~label:"value" e)))
+
+let version0_unikernels = trie unikernel_config
+
+let unikernels =
+   (* the choice is the implicit version + migration... be aware when
+     any dependent data layout changes .oO(/o\) *)
+  let f = function
+    | `C1 () -> Asn.S.error (`Parse "shouldn't happen")
+    | `C2 data -> data
+  and g data =
+    `C2 data
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice2
+           (explicit 0 null)
+           (explicit 1 version0_unikernels))
+
+let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
+
 type cert_extension = version * t
 
 let cert_extension =

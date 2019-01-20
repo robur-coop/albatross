@@ -54,6 +54,24 @@ let close_no_err fd = try close fd with _ -> ()
 open Vmm_core
 
 let dbdir = Fpath.(v "/var" / "db" / "albatross")
+
+let dump, restore =
+  let open R.Infix in
+  let state_file = Fpath.(dbdir / "state") in
+  (fun data ->
+     Bos.OS.File.exists state_file >>= fun exists ->
+     (if exists then begin
+        let bak = Fpath.(state_file + "bak") in
+        Bos.OS.U.(error_to_msg @@ rename state_file bak)
+      end else Ok ()) >>= fun () ->
+     Bos.OS.File.write state_file (Cstruct.to_string data)),
+  (fun () ->
+     Bos.OS.File.exists state_file >>= fun exists ->
+     if exists then
+       Bos.OS.File.read state_file >>| fun data ->
+       Cstruct.of_string data
+     else Error `NoFile)
+
 let blockdir = Fpath.(dbdir / "block")
 
 let block_file name =

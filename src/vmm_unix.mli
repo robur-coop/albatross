@@ -20,3 +20,7 @@ val create_block : Name.t -> int -> (unit, [> R.msg ]) result
 val destroy_block : Name.t -> (unit, [> R.msg ]) result
 
 val find_block_devices : unit -> ((Name.t * int) list, [> R.msg ]) result
+
+val dump : Cstruct.t -> (unit, [> R.msg ]) result
+
+val restore : unit -> (Cstruct.t, [> R.msg | `NoFile ]) result
