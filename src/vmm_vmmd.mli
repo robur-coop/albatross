@@ -18,17 +18,18 @@ type service_out = [
 
 type out = [ service_out | `Data of Vmm_commands.wire ]
 
+type 'a create =
+  'a t -> ('a t * out list * Name.t * Unikernel.t, [ `Msg of string ]) result
+
 val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
   [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * out list
 
 val handle_command : 'a t -> Vmm_commands.wire ->
   'a t * out list *
-  [ `Create of 'a t -> ('a t * out list * Name.t * Unikernel.t, [> `Msg of string ]) result
+  [ `Create of 'a create
   | `Loop
   | `End
   | `Wait of Name.t * out
-  | `Wait_and_create of Name.t * ('a t -> 'a t * out list *
-                                      [ `Create of 'a t -> ('a t * out list * Name.t * Unikernel.t, [> Rresult.R.msg ]) result
-                                      | `End ]) ]
+  | `Wait_and_create of Name.t * ('a t -> 'a t * out list * [ `Create of 'a create | `End ]) ]
 
 val killall : 'a t -> bool

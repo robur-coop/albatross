@@ -70,6 +70,9 @@ type service_out = [
 
 type out = [ service_out | `Data of Vmm_commands.wire ]
 
+type 'a create =
+  'a t -> ('a t * out list * Name.t * Unikernel.t, [ `Msg of string ]) result
+
 let log t name event =
   let data = (Ptime_clock.now (), event) in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.log_counter ; name } in
