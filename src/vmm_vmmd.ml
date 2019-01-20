@@ -13,12 +13,28 @@ type 'a t = {
   stats_counter : int64 ;
   log_counter : int64 ;
   resources : Vmm_resources.t ;
-  tasks : 'a String.Map.t ;
+  waiters : 'a String.Map.t ;
 }
 
 let kill t =
   List.iter Vmm_unix.destroy
     (List.map snd (Vmm_trie.all t.resources.Vmm_resources.unikernels))
+
+let waiter t id =
+  let name = Name.to_string id in
+  match String.Map.find name t.waiters with
+  | None -> t, None
+  | Some waiter ->
+    let waiters = String.Map.remove name t.waiters in
+    { t with waiters }, Some waiter
+
+let register t id create =
+  let name = Name.to_string id in
+  match String.Map.find name t.waiters with
+  | None ->
+    let task, waiter = create () in
+    Some ({ t with waiters = String.Map.add name waiter t.waiters }, task)
+  | Some _ -> None
 
 let init wire_version =
   let t = {
@@ -27,7 +43,7 @@ let init wire_version =
     stats_counter = 1L ;
     log_counter = 1L ;
     resources = Vmm_resources.empty ;
-    tasks = String.Map.empty ;
+    waiters = String.Map.empty ;
   } in
   match Vmm_unix.find_block_devices () with
   | Error (`Msg msg) ->
@@ -75,7 +91,7 @@ let handle_create t reply name vm_config =
   in
   Ok ({ t with console_counter = Int64.succ t.console_counter },
       [ `Cons cons_out ],
-      `Create (fun t task ->
+      `Create (fun t ->
           (* actually execute the vm *)
           let block_device = match vm_config.Unikernel.block_device with
             | None -> None
@@ -84,8 +100,7 @@ let handle_create t reply name vm_config =
           Vmm_unix.exec name vm_config taps block_device >>= fun vm ->
           Logs.debug (fun m -> m "exec()ed vm") ;
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
-          let tasks = String.Map.add (Name.to_string name) task t.tasks in
-          let t = { t with resources ; tasks } in
+          let t = { t with resources } in
           let t, out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
           Ok (t, [ reply (`String "created VM") ; out ], name, vm)))
 
@@ -112,8 +127,7 @@ let handle_shutdown t name vm r =
     | Ok resources -> resources
   in
   let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
-  let tasks = String.Map.remove (Name.to_string name) t.tasks in
-  let t = { t with stats_counter = Int64.succ t.stats_counter ; resources ; tasks } in
+  let t = { t with stats_counter = Int64.succ t.stats_counter ; resources } in
   let t, logout = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r))
   in
   (t, [ `Stat (header, `Command (`Stats_cmd `Stats_remove)) ; logout ])
@@ -176,28 +190,15 @@ let handle_unikernel_cmd t reply id msg_to_err = function
       | None -> handle_create t reply id vm_config
       | Some vm ->
         Vmm_unix.destroy vm ;
-        let id_str = Name.to_string id in
-        match String.Map.find_opt id_str t.tasks with
-        | None -> handle_create t reply id vm_config
-        | Some task ->
-          let tasks = String.Map.remove id_str t.tasks in
-          let t = { t with tasks } in
-          Ok (t, [], `Wait_and_create
-                (task, fun t -> msg_to_err @@ handle_create t reply id vm_config))
+        Ok (t, [], `Wait_and_create
+              (id, fun t -> msg_to_err @@ handle_create t reply id vm_config))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
     | Some vm ->
       Vmm_unix.destroy vm ;
-      let id_str = Name.to_string id in
-      let out, next =
-        let s = reply (`String "destroyed unikernel") in
-        match String.Map.find_opt id_str t.tasks with
-        | None -> [ s ], `End
-        | Some t -> [], `Wait (t, s)
-      in
-      let tasks = String.Map.remove id_str t.tasks in
-      Ok ({ t with tasks }, out, next)
+      let s = reply (`String "destroyed unikernel") in
+      Ok (t, [], `Wait (id, s))
     | None -> Error (`Msg "destroy: not found")
 
 let handle_block_cmd t reply id = function

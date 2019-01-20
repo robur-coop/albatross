@@ -25,25 +25,33 @@ let version = `AV3
 let state = ref (Vmm_vmmd.init version)
 
 let create process cont =
-  let await, wakeme = Lwt.wait () in
-  match cont !state await with
+  match cont !state with
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "create continuation failed %s" msg) ;
     Lwt.return_unit
-  | Ok (state'', out, name, vm) ->
-    state := state'' ;
+  | Ok (state', out, name, vm) ->
+    state := state' ;
     s := { !s with vm_created = succ !s.vm_created } ;
     Lwt.async (fun () ->
         Vmm_lwt.wait_and_clear vm.Unikernel.pid >>= fun r ->
         let state', out' = Vmm_vmmd.handle_shutdown !state name vm r in
-        s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
         state := state' ;
-        (process "handle_shutdown" out' >|= fun _ -> ()) >|= fun () ->
-        Lwt.wakeup wakeme ()) ;
+        s := { !s with vm_destroyed = succ !s.vm_destroyed } ;
+        (process "handle shutdown" out' >|= fun _ -> ()) >|= fun () ->
+        let state', waiter_opt = Vmm_vmmd.waiter !state name in
+        state := state' ;
+        (match waiter_opt with
+         | None -> ()
+         | Some wakeme -> Lwt.wakeup wakeme ())) ;
     (process "setting up console" out >|= fun _ -> ()) >>= fun () ->
     let state', out = Vmm_vmmd.setup_stats !state name vm in
     state := state' ;
     process "setting up statistics" [ out ] >|= fun _ -> ()
+
+let register who header =
+  match Vmm_vmmd.register !state who Lwt.task with
+  | None -> Error (`Data (header, `Failure "task already registered"))
+  | Some (state', task) -> state := state' ; Ok task
 
 let handle out fd addr =
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
@@ -90,17 +98,23 @@ let handle out fd addr =
         | `Loop -> loop ()
         | `End -> Lwt.return_unit
         | `Create cont -> create process cont
-        | `Wait (task, out) ->
-          task >>= fun () ->
-          process "wait" [ out ] >|= ignore
-        | `Wait_and_create (task, next) ->
-          task >>= fun () ->
-          let state', data, n = next !state in
-          state := state' ;
-          process "wait and create" data >>= fun _ ->
-          match n with
-          | `End -> Lwt.return_unit
-          | `Create cont -> create process cont >|= ignore
+        | `Wait (who, out) ->
+          (match register who (fst wire) with
+           | Error out' -> process "wait" [ out' ] >|= ignore
+           | Ok task ->
+             task >>= fun () ->
+             process "wait" [ out ] >|= ignore)
+        | `Wait_and_create (who, next) ->
+          (match register who (fst wire) with
+           | Error out' -> process "wait and create" [ out' ] >|= ignore
+           | Ok task ->
+             task >>= fun () ->
+             let state', data, n = next !state in
+             state := state' ;
+             process "wait and create" data >>= fun _ ->
+             match n with
+             | `End -> Lwt.return_unit
+             | `Create cont -> create process cont >|= ignore)
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close fd

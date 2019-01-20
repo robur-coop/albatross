@@ -6,6 +6,10 @@ type 'a t
 
 val init : Vmm_commands.version -> 'a t
 
+val waiter : 'a t -> Name.t -> 'a t * 'a option
+
+val register : 'a t -> Name.t -> (unit -> 'b * 'a) -> ('a t * 'b) option
+
 type service_out = [
   | `Stat of Vmm_commands.wire
   | `Log of Vmm_commands.wire
@@ -19,12 +23,12 @@ val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
 
 val handle_command : 'a t -> Vmm_commands.wire ->
   'a t * out list *
-  [ `Create of 'c t -> 'c -> ('c t * out list * Name.t * Unikernel.t, [> `Msg of string ]) result
+  [ `Create of 'a t -> ('a t * out list * Name.t * Unikernel.t, [> `Msg of string ]) result
   | `Loop
   | `End
-  | `Wait of 'a * out
-  | `Wait_and_create of 'a * ('a t -> 'a t * out list *
-                                      [ `Create of 'd t -> 'd -> ('d t * out list * Name.t * Unikernel.t, [> Rresult.R.msg ]) result
+  | `Wait of Name.t * out
+  | `Wait_and_create of Name.t * ('a t -> 'a t * out list *
+                                      [ `Create of 'a t -> ('a t * out list * Name.t * Unikernel.t, [> Rresult.R.msg ]) result
                                       | `End ]) ]
 
 val setup_stats : 'a t -> Name.t -> Unikernel.t -> 'a t * out
