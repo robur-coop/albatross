@@ -76,6 +76,23 @@ let log t name event =
   Logs.debug (fun m -> m "log %a" Log.pp data) ;
   ({ t with log_counter }, `Log (header, `Data (`Log_data data)))
 
+let setup_stats t name vm =
+  let stat_out =
+    let pid = vm.Unikernel.pid in
+    let name = "solo5-" ^ string_of_int pid
+    and ifs = Unikernel.(List.combine vm.config.network_interfaces vm.taps)
+    in
+    `Stats_add (name, pid, ifs)
+  in
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
+  let t = { t with stats_counter = Int64.succ t.stats_counter } in
+  t, `Stat (header, `Command (`Stats_cmd stat_out))
+
+let remove_stats t name =
+  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
+  let t = { t with stats_counter = Int64.succ t.stats_counter } in
+  (t, `Stat (header, `Command (`Stats_cmd `Stats_remove)))
+
 let handle_create t reply name vm_config =
   (match Vmm_resources.find_vm t.resources name with
    | Some _ -> Error (`Msg "VM with same name is already running")
@@ -102,19 +119,8 @@ let handle_create t reply name vm_config =
           Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
           let t = { t with resources } in
           let t, out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
-          Ok (t, [ reply (`String "created VM") ; out ], name, vm)))
-
-let setup_stats t name vm =
-  let stat_out =
-    let pid = vm.Unikernel.pid in
-    let name = "solo5-" ^ string_of_int pid
-    and ifs = Unikernel.(List.combine vm.config.network_interfaces vm.taps)
-    in
-    `Stats_add (name, pid, ifs)
-  in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
-  let t = { t with stats_counter = Int64.succ t.stats_counter } in
-  t, `Stat (header, `Command (`Stats_cmd stat_out))
+          let t, stat_out = setup_stats t name vm in
+          Ok (t, [ stat_out ; out ; reply (`String "created VM") ], name, vm)))
 
 let handle_shutdown t name vm r =
   (match Vmm_unix.shutdown name vm with
@@ -126,11 +132,10 @@ let handle_shutdown t name vm r =
       t.resources
     | Ok resources -> resources
   in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
-  let t = { t with stats_counter = Int64.succ t.stats_counter ; resources } in
-  let t, logout = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r))
-  in
-  (t, [ `Stat (header, `Command (`Stats_cmd `Stats_remove)) ; logout ])
+  let t = { t with resources } in
+  let t, logout = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r)) in
+  let t, stat_out = remove_stats t name in
+  (t, [ stat_out ; logout ])
 
 let handle_policy_cmd t reply id = function
   | `Policy_remove ->

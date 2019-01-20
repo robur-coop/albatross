@@ -43,10 +43,7 @@ let create process cont =
         (match waiter_opt with
          | None -> ()
          | Some wakeme -> Lwt.wakeup wakeme ())) ;
-    (process "setting up console" out >|= fun _ -> ()) >>= fun () ->
-    let state', out = Vmm_vmmd.setup_stats !state name vm in
-    state := state' ;
-    process "setting up statistics" [ out ] >|= fun _ -> ()
+    (process "setting up statistics, log, reply" out >|= fun _ -> ())
 
 let register who header =
   match Vmm_vmmd.register !state who Lwt.task with
