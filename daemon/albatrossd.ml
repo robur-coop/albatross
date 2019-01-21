@@ -22,9 +22,7 @@ open Lwt.Infix
 
 let version = `AV3
 
-let state = ref (Vmm_vmmd.init version)
-
-let create stat_out log_out cons_out data_out cons succ_cont fail_cont =
+let create state stat_out log_out cons_out data_out cons succ_cont fail_cont =
   cons_out "create" cons >>= function
   | Error () ->
     let data = fail_cont () in
@@ -53,12 +51,12 @@ let create stat_out log_out cons_out data_out cons succ_cont fail_cont =
       log_out "setting up log" log >>= fun () ->
       data_out data
 
-let register who header =
+let register state who header =
   match Vmm_vmmd.register !state who Lwt.task with
   | None -> Error (header, `Failure "task already registered")
   | Some (state', task) -> state := state' ; Ok task
 
-let handle log_out cons_out stat_out fd addr =
+let handle state log_out cons_out stat_out fd addr =
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
   (* now we need to read a packet and handle it
     (1)
@@ -93,15 +91,15 @@ let handle log_out cons_out stat_out fd addr =
         | `Loop wire -> out wire >>= loop
         | `End wire -> out wire
         | `Create (cons, succ, fail) ->
-          create stat_out log_out cons_out out cons succ fail
+          create state stat_out log_out cons_out out cons succ fail
         | `Wait (who, data) ->
-          (match register who (fst wire) with
+          (match register state who (fst wire) with
            | Error data' -> out data'
            | Ok task ->
              task >>= fun () ->
              out data)
         | `Wait_and_create (who, next) ->
-          (match register who (fst wire) with
+          (match register state who (fst wire) with
            | Error data -> out data
            | Ok task ->
              task >>= fun () ->
@@ -109,13 +107,13 @@ let handle log_out cons_out stat_out fd addr =
              | Error data -> out data
              | Ok (state', `Create (cons, succ, fail)) ->
                state := state' ;
-               create stat_out log_out cons_out out cons succ fail)
+               create state stat_out log_out cons_out out cons succ fail)
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close fd
 
-let connect_client_socket sock =
-  let name = socket_path sock in
+let connect_client_socket ~tmpdir sock =
+  let name = socket_path ~tmpdir sock in
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
   Lwt_unix.set_close_on_exec c ;
   Lwt.catch (fun () ->
@@ -127,8 +125,8 @@ let connect_client_socket sock =
        (Lwt.catch (fun () -> Lwt_unix.close c) (fun _ -> Lwt.return_unit)) >|= fun () ->
        None)
 
-let server_socket sock =
-  let name = socket_path sock in
+let server_socket ~tmpdir sock =
+  let name = socket_path ~tmpdir sock in
   (Lwt_unix.file_exists name >>= function
     | true -> Lwt_unix.unlink name
     | false -> Lwt.return_unit) >>= fun () ->
@@ -179,14 +177,15 @@ let write_reply name (fd, mut) txt (header, cmd) =
     Logs.err (fun m -> m "error in read from %s" name) ;
     invalid_arg "communication failure"
 
-let jump _ =
+let jump _ dbdir tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);
-  match Vmm_vmmd.restore_unikernels () with
+  let state = ref (Vmm_vmmd.init ~dbdir ~tmpdir version) in
+  match Vmm_vmmd.restore_unikernels ~dbdir with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->
     Lwt_main.run
-      (server_socket `Vmmd >>= fun ss ->
-       (connect_client_socket `Log >|= function
+      (server_socket ~tmpdir `Vmmd >>= fun ss ->
+       (connect_client_socket ~tmpdir `Log >|= function
          | None -> invalid_arg "cannot connect to log socket"
          | Some l -> l) >>= fun l ->
        let self_destruct_mutex = Lwt_mutex.create () in
@@ -202,10 +201,10 @@ let jump _ =
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       (connect_client_socket `Console >|= function
+       (connect_client_socket ~tmpdir `Console >|= function
          | None -> invalid_arg "cannot connect to console socket"
          | Some c -> c) >>= fun c ->
-       connect_client_socket `Stats >>= fun s ->
+       connect_client_socket ~tmpdir `Stats >>= fun s ->
 
        let log_out txt wire = write_reply "log" l txt wire >|= fun _ -> ()
        and cons_out = write_reply "cons" c
@@ -226,7 +225,7 @@ let jump _ =
            Lwt.return_unit
          | Ok (state', `Create (cons, succ, fail)) ->
            state := state' ;
-           create stat_out log_out cons_out data_out cons succ fail
+           create state stat_out log_out cons_out data_out cons succ fail
        in
        Lwt_list.iter_p start_unikernel (Vmm_trie.all old_unikernels) >>= fun () ->
 
@@ -234,7 +233,7 @@ let jump _ =
            let rec loop () =
              Lwt_unix.accept ss >>= fun (fd, addr) ->
              Lwt_unix.set_close_on_exec fd ;
-             Lwt.async (fun () -> handle log_out cons_out stat_out fd addr) ;
+             Lwt.async (fun () -> handle state log_out cons_out stat_out fd addr) ;
              loop ()
            in
            loop ())
@@ -245,7 +244,7 @@ let jump _ =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ setup_log),
+  Term.(const jump $ setup_log $ state_directory $ runtime_directory),
   Term.info "albatrossd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

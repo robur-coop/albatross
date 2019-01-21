@@ -64,7 +64,8 @@ let timer () =
         Vmm_lwt.safe_close s)
     outs
 
-let jump _ file interval =
+let jump _ tmpdir interval =
+  let file = Vmm_core.socket_path ~tmpdir `Stats in
   Sys.(set_signal sigpipe Signal_ignore) ;
   let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run
@@ -85,16 +86,12 @@ let jump _ file interval =
 open Cmdliner
 open Albatross_cli
 
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Stats) & info [ "socket" ] ~doc)
-
 let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in
   Arg.(value & opt int 10 & info [ "interval" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ socket $ interval)),
+  Term.(term_result (const jump $ setup_log $ runtime_directory $ interval)),
   Term.info "albatross_stats" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

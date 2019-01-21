@@ -53,30 +53,30 @@ let close_no_err fd = try close fd with _ -> ()
 
 open Vmm_core
 
-let dbdir = Fpath.(v "/var" / "db" / "albatross")
-
 let dump, restore =
   let open R.Infix in
-  let state_file = Fpath.(dbdir / "state") in
-  (fun data ->
+  (fun ~dbdir data ->
+     let state_file = Fpath.(dbdir / "state") in
      Bos.OS.File.exists state_file >>= fun exists ->
      (if exists then begin
         let bak = Fpath.(state_file + "bak") in
         Bos.OS.U.(error_to_msg @@ rename state_file bak)
       end else Ok ()) >>= fun () ->
-     Bos.OS.File.write state_file (Cstruct.to_string data)),
-  (fun () ->
+     Bos.OS.File.write ~mode:0o600 state_file (Cstruct.to_string data)),
+  (fun ~dbdir ->
+     let state_file = Fpath.(dbdir / "state") in
      Bos.OS.File.exists state_file >>= fun exists ->
      if exists then
        Bos.OS.File.read state_file >>| fun data ->
        Cstruct.of_string data
      else Error `NoFile)
 
-let blockdir = Fpath.(dbdir / "block")
+let blockdir ~dbdir =
+  Fpath.(dbdir / "block")
 
-let block_file name =
+let block_file ~dbdir name =
   let file = Name.to_string name in
-  Fpath.(blockdir / file)
+  Fpath.(blockdir ~dbdir / file)
 
 let rec mkfifo name =
   try Unix.mkfifo (Fpath.to_string name) 0o640 with
@@ -89,6 +89,15 @@ let rec fifo_exists file =
   | Unix.Unix_error (e, _, _) ->
       R.error_msgf "file %a exists: %s" Fpath.pp file (Unix.error_message e)
 
+let uname_t =
+  (* omg where is the ocaml binding to uname(2).os_type ??? *)
+  let cmd = Bos.Cmd.(v "uname" % "-s") in
+  match Bos.OS.Cmd.(run_out cmd |> out_string) with
+  | Ok ("FreeBSD", _) -> `FreeBSD
+  | Ok ("Linux", _) -> `Linux
+  | Ok (_s, _) -> `Unimplemented_OS
+  | Error (`Msg m) -> invalid_arg m
+
 let uname =
   let cmd = Bos.Cmd.(v "uname" % "-s") in
   lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
@@ -96,13 +105,13 @@ let uname =
       | Error (`Msg m) -> invalid_arg m)
 
 let create_tap bridge =
-  match Lazy.force uname with
-  | x when x = "FreeBSD" ->
+  match uname_t with
+  | `FreeBSD ->
     let cmd = Bos.Cmd.(v "ifconfig" % "tap" % "create") in
     Bos.OS.Cmd.run_out cmd |> Bos.OS.Cmd.out_string >>= fun (name, _) ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) >>= fun () ->
     Ok name
-  | x when x = "Linux" ->
+  | `Linux ->
     let prefix = "vmmtap" in
     let rec find_n x =
       let nam = prefix ^ string_of_int x in
@@ -111,29 +120,31 @@ let create_tap bridge =
       | Ok _ -> find_n (succ x)
     in
     let tap = find_n 0 in
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % "mode" % "tap" % tap) >>= fun () ->
+    Bos.OS.Cmd.run Bos.Cmd.(
+        v "ip" % "tuntap" % "add" % "mode" % "tap" % tap) >>= fun () ->
     Bos.OS.Cmd.run Bos.Cmd.(v "brctl" % "addif" % bridge % tap) >>= fun () ->
     Ok tap
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
+  | `Unimplemented_OS -> Error (`Msg ("unsupported operating system "))
 
 let destroy_tap tapname =
-  match Lazy.force uname with
-  | x when x = "FreeBSD" ->
+  match uname_t with
+  | `FreeBSD ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % tapname % "destroy")
-  | x when x = "Linux" ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "del" % "dev" % tapname % "mode" % "tap")
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
+  | `Linux ->
+    Bos.OS.Cmd.run Bos.Cmd.(
+        v "ip" % "tuntap" % "del" % "dev" % tapname % "mode" % "tap")
+  | `Unimplemented_OS -> Error (`Msg ("unsupported operating system "))
 
-let prepare name vm =
+let prepare ~tmpdir name vm =
   (match vm.Unikernel.image with
-   | `Hvt_amd64, blob -> Ok blob
+   | (`Hvt_amd64 | `Hvt_arm64 | `Spt_amd64 | `Spt_arm64), blob -> Ok blob
    | `Hvt_amd64_compressed, blob ->
      begin match Vmm_compress.uncompress (Cstruct.to_string blob) with
        | Ok blob -> Ok (Cstruct.of_string blob)
        | Error () -> Error (`Msg "failed to uncompress")
      end
-   | `Hvt_arm64, _ -> Error (`Msg "no amd64 hvt image found")) >>= fun image ->
-  let fifo = Name.fifo_file name in
+  ) >>= fun image ->
+  let fifo = Name.fifo_file ~tmpdir name in
   (match fifo_exists fifo with
    | Ok true -> Ok ()
    | Ok false -> Error (`Msg ("file " ^ Fpath.to_string fifo ^ " exists and is not a fifo"))
@@ -147,28 +158,29 @@ let prepare name vm =
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
     (Ok []) vm.Unikernel.network_interfaces >>= fun taps ->
-  Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
+  Bos.OS.File.write ~mode:0o600 (Name.image_file ~tmpdir name)
+    (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
-let free_resources name taps =
+let free_resources ~tmpdir name taps =
   (* same order as prepare! *)
-  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
-  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
+  Bos.OS.File.delete (Name.image_file ~tmpdir name) >>= fun () ->
+  Bos.OS.File.delete (Name.fifo_file ~tmpdir name) >>= fun () ->
   List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) taps
 
 let vm_device vm =
-  match Lazy.force uname with
-  | x when x = "FreeBSD" -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
-  | _ -> Error (`Msg "don't know what you mean, sorry")
+  match uname_t with
+  | `FreeBSD -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
+  | _ -> Error (`Msg "vm_device not implemented on non-FreeBSD")
 
-let shutdown name vm =
+let shutdown ~tmpdir name vm =
   (* since solo5 0.4.1, it drops privileges on FreeBSD *)
   (* this results in solo5-hvt not being able to sysctl hw.vmm.destroy *)
-  (match Lazy.force uname, vm_device vm with
-   | x, Ok name when x = "FreeBSD" ->
+  (match uname_t, vm_device vm with
+   | `FreeBSD, Ok name ->
      ignore (Bos.OS.Cmd.run Bos.Cmd.(v "bhyvectl" % "--destroy" % ("--vm=" ^ name)))
    | _ -> ()) ;
-  free_resources name vm.Unikernel.taps
+  free_resources ~tmpdir name vm.Unikernel.taps
 
 let cpuset cpu =
   let cpustring = string_of_int cpu in
@@ -179,28 +191,37 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec name config taps block =
-  (match taps, block with
-   | [], None -> Ok "none"
-   | [_], None -> Ok "net"
-   | [], Some _ -> Ok "block"
-   | [_], Some _ -> Ok "block-net"
-   | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
+let exec ~dbdir ~tmpdir name config taps block =
+  (match fst config.Vmm_core.Unikernel.image with
+   | `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ->
+     (match taps, block with
+      | [], None -> Ok "none"
+      | [_], None -> Ok "net"
+      | [], Some _ -> Ok "block"
+      | [_], Some _ -> Ok "block-net"
+      | _, _ -> Error (`Msg "cannot handle multiple network interfaces")
+     ) >>| fun bin ->
+     Fpath.(dbdir / "solo5-hvt" + bin |> to_string)
+   | `Spt_amd64 | `Spt_arm64 ->
+     Ok "solo5-spt"
+  ) >>= fun host_bin ->
   let net = List.map (fun t -> "--net=" ^ t) taps
-  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_file dev) ]
+  and block = match block with
+    | None -> []
+    | Some dev -> [ "--disk=" ^ Fpath.to_string (block_file ~dbdir dev) ]
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   cpuset config.Unikernel.cpuid >>= fun cpuset ->
   let cmd =
-    Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt" + bin) % mem %%
+    Bos.Cmd.(of_list cpuset % host_bin % mem %%
              of_list net %% of_list block %
-             "--" % p (Name.image_file name) %% of_list argv)
+             "--" % p (Name.image_file ~tmpdir name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
   let line = Array.of_list line in
-  let fifo = Name.fifo_file name in
+  let fifo = Name.fifo_file ~tmpdir name in
   Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
   write_fd_for_file fifo >>= fun stdout ->
   Logs.debug (fun m -> m "opened file descriptor!");
@@ -226,8 +247,8 @@ let bytes_of_mb size =
   else
     Error (`Msg "overflow while computing bytes")
 
-let create_block name size =
-  let block_name = block_file name in
+let create_block ~dbdir name size =
+  let block_name = block_file ~dbdir name in
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
   | false ->
@@ -236,8 +257,8 @@ let create_block name size =
     bytes_of_mb size >>= fun size' ->
     Bos.OS.File.truncate block_name size'
 
-let destroy_block name =
-  Bos.OS.File.delete (block_file name)
+let destroy_block ~dbdir name =
+  Bos.OS.File.delete (block_file ~dbdir name)
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then
@@ -245,11 +266,11 @@ let mb_of_bytes size =
   else
     Ok (size lsr 20)
 
-let find_block_devices () =
-  Bos.OS.Dir.contents ~rel:true blockdir >>= fun files ->
+let find_block_devices ~dbdir =
+  Bos.OS.Dir.contents ~rel:true (blockdir ~dbdir) >>= fun files ->
   List.fold_left (fun acc file ->
       acc >>= fun acc ->
-      let path = Fpath.append blockdir file in
+      let path = Fpath.append (blockdir ~dbdir) file in
       Bos.OS.File.exists path >>= function
       | false ->
         Logs.warn (fun m -> m "file %a doesn't exist, but was listed" Fpath.pp path) ;

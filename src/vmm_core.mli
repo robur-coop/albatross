@@ -2,8 +2,8 @@
 
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
-val socket_path : service -> string
-val pp_socket : service Fmt.t
+val socket_path : tmpdir:Fpath.t -> service -> string
+val pp_socket : tmpdir:Fpath.t -> service Fmt.t
 
 module IS : sig
   include Set.S with type elt = int
@@ -19,8 +19,13 @@ module Name : sig
   val is_root : t -> bool
   val equal : t -> t -> bool
 
-  val image_file : t -> Fpath.t
-  val fifo_file : t -> Fpath.t
+  val image_file : tmpdir:Fpath.t -> t -> Fpath.t
+  (** [image_file tmpdir image_name] is
+      [Fpath.(tmpdir/image_name."img")]*)
+
+  val fifo_file : tmpdir:Fpath.t -> t -> Fpath.t
+  (** [fifo_file tmpdir fifo_name] is
+      [Fpath.(tmpdir/"fifo"/fifo_name)]*)
 
   val of_list : string list -> (t, [> `Msg of string ]) result
   val to_list : t -> string list
@@ -54,7 +59,9 @@ module Policy : sig
 end
 
 module Unikernel : sig
-  type typ = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
+  type typ = [ `Hvt_amd64 | `Hvt_amd64_compressed
+             | `Hvt_arm64
+             | `Spt_amd64 | `Spt_arm64 ]
   val pp_typ : typ Fmt.t
 
   type config = {

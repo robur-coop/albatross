@@ -297,7 +297,9 @@ open Albatross_cli
 
 let socket =
   let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Stats) & info [ "socket" ] ~doc)
+  Arg.(value & opt string (Vmm_core.socket_path
+                             (Fpath.of_string "" |> function Ok x -> x)
+                             `Stats) & info [ "socket" ] ~doc)
 
 let influx =
   Arg.(required & pos 0 (some host_port) None & info [] ~docv:"INFLUXHOST:INFLUXPORT"

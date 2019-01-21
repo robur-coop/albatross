@@ -9,6 +9,8 @@ open R.Infix
 
 type 'a t = {
   wire_version : Vmm_commands.version ;
+  dbdir : Fpath.t; (* /var/{db,lib}/albatross etc*)
+  tmpdir: Fpath.t; (* /run/albatross/ etc*)
   console_counter : int64 ;
   stats_counter : int64 ;
   log_counter : int64 ;
@@ -39,16 +41,17 @@ let register t id create =
     Some ({ t with waiters = String.Map.add name waiter t.waiters }, task)
   | Some _ -> None
 
-let init wire_version =
+let init ~dbdir ~tmpdir wire_version =
   let t = {
     wire_version ;
+    dbdir ; tmpdir ;
     console_counter = 1L ;
     stats_counter = 1L ;
     log_counter = 1L ;
     resources = Vmm_resources.empty ;
     waiters = String.Map.empty ;
   } in
-  match Vmm_unix.find_block_devices () with
+  match Vmm_unix.find_block_devices ~dbdir with
   | Error (`Msg msg) ->
     Logs.warn (fun m -> m "couldn't find block devices %s" msg) ;
     t
@@ -76,8 +79,8 @@ let log t name event =
   Logs.debug (fun m -> m "log %a" Log.pp data) ;
   ({ t with log_counter }, (header, `Data (`Log_data data)))
 
-let restore_unikernels () =
-  match Vmm_unix.restore () with
+let restore_unikernels ~dbdir =
+  match Vmm_unix.restore ~dbdir with
   | Error `NoFile ->
     Logs.warn (fun m -> m "no state dump found, starting with no unikernels") ;
     Ok Vmm_trie.empty
@@ -96,8 +99,9 @@ let dump_unikernels t =
       Vmm_trie.empty unikernels
   in
   let data = Vmm_asn.unikernels_to_cstruct trie in
-  match Vmm_unix.dump data with
-  | Error (`Msg msg) -> Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
+  match Vmm_unix.dump ~dbdir:t.dbdir data with
+  | Error (`Msg msg) ->
+    Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
   | Ok () -> Logs.info (fun m -> m "dumped current state")
 
 let setup_stats t name vm =
@@ -125,7 +129,7 @@ let handle_create t hdr name vm_config =
   Logs.debug (fun m -> m "now checking resource policies") ;
   Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_unix.prepare name vm_config >>= fun taps ->
+  Vmm_unix.prepare ~tmpdir:t.tmpdir name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   let cons_out =
     let header = Vmm_commands.{ version = t.wire_version ; sequence = t.console_counter ; name } in
@@ -143,7 +147,7 @@ let handle_create t hdr name vm_config =
       | Some block -> Some (Name.block_name name block)
     in
     Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
-    Vmm_unix.exec name vm_config taps block_device >>| fun vm ->
+    Vmm_unix.exec ~dbdir:t.dbdir ~tmpdir:t.tmpdir name vm_config taps block_device >>| fun vm ->
     Logs.debug (fun m -> m "exec()ed vm") ;
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
@@ -152,7 +156,7 @@ let handle_create t hdr name vm_config =
     let t, stat_out = setup_stats t name vm in
     (t, stat_out, log_out, (hdr, `Success (`String "created VM")), name, vm)
   and fail () =
-    match Vmm_unix.free_resources name taps with
+    match Vmm_unix.free_resources ~tmpdir:t.tmpdir name taps with
     | Ok () -> (hdr, `Failure "could not create VM: console failed")
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in
@@ -162,7 +166,7 @@ let handle_create t hdr name vm_config =
       `Create (cons_out, success, fail))
 
 let handle_shutdown t name vm r =
-  (match Vmm_unix.shutdown name vm with
+  (match Vmm_unix.shutdown ~tmpdir:t.tmpdir name vm with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm)) ;
   let resources = match Vmm_resources.remove_vm t.resources name with
@@ -253,7 +257,7 @@ let handle_block_cmd t reply id = function
       | None -> Error (`Msg "remove block: not found")
       | Some (_, true) -> Error (`Msg "remove block: is in use")
       | Some (_, false) ->
-        Vmm_unix.destroy_block id >>= fun () ->
+        Vmm_unix.destroy_block ~dbdir:t.dbdir id >>= fun () ->
         Vmm_resources.remove_block t.resources id >>= fun resources ->
         Ok ({ t with resources }, `End (reply (`String "removed block")))
     end
@@ -264,7 +268,7 @@ let handle_block_cmd t reply id = function
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         Vmm_resources.check_block t.resources id size >>= fun () ->
-        Vmm_unix.create_block id size >>= fun () ->
+        Vmm_unix.create_block ~dbdir:t.dbdir id size >>= fun () ->
         Vmm_resources.insert_block t.resources id size >>= fun resources ->
         Ok ({ t with resources }, `Loop (reply (`String "added block device")))
     end

@@ -159,7 +159,8 @@ let handle mvar ring s addr () =
   end >>= fun () ->
   Vmm_lwt.safe_close s
 
-let jump _ file sock =
+let jump _ file tmpdir : unit =
+  let sock = Vmm_core.socket_path ~tmpdir `Log in
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
     ((Lwt_unix.file_exists sock >>= function
@@ -189,16 +190,12 @@ let jump _ file sock =
 open Cmdliner
 open Albatross_cli
 
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Log) & info [ "socket" ] ~doc)
-
-let file =
+let logfile =
   let doc = "File to write the log to" in
   Arg.(value & opt string "/var/log/albatross" & info [ "logfile" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ file $ socket)),
+  Term.(term_result (const jump $ setup_log $ logfile $ runtime_directory)),
   Term.info "albatross_log" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -39,8 +39,8 @@ let info_ _ name = jump name (`Unikernel_cmd `Unikernel_info)
 let destroy _ name =
   jump name (`Unikernel_cmd `Unikernel_destroy)
 
-let create _ force name image cpuid memory argv block network compression =
-  match Albatross_cli.create_vm force image cpuid memory argv block network compression with
+let create _ force name image image_type cpuid memory argv block network compression =
+  match Albatross_cli.create_vm force image image_type cpuid memory argv block network compression with
   | Ok cmd -> jump name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> Error (`Msg msg)
 
@@ -121,7 +121,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(term_result (const create $ setup_log $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level)),
+  Term.(term_result (const create $ setup_log $ force $ vm_name $ image $ image_type $ cpu $ vm_mem $ args $ block $ net $ compress_level)),
   Term.info "create" ~doc ~man
 
 let console_cmd =

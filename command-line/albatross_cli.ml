@@ -17,14 +17,19 @@ let setup_log style_renderer level =
   Logs.set_level level;
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
-let create_vm force image cpuid memory argv block_device network_interfaces compression =
+let create_vm force image_file (image_type:Vmm_core.Unikernel.typ) cpuid memory argv block_device
+    network_interfaces compression =
   let open Rresult.R.Infix in
-  Bos.OS.File.read (Fpath.v image) >>| fun image ->
-  let image = match compression with
-    | 0 -> `Hvt_amd64, Cstruct.of_string image
-    | level ->
+  Bos.OS.File.read (Fpath.v image_file) >>| fun image ->
+  (* TODO idk is it here we want to check the platform against what we can run? ie arm64/amd64? *)
+  let image = match image_type, compression with
+    | (`Hvt_amd64 | `Hvt_arm64 | `Spt_amd64 | `Spt_arm64), 0 ->
+      image_type, Cstruct.of_string image
+    | (`Hvt_amd64 | `Hvt_amd64_compressed), level ->
       let img = Vmm_compress.compress ~level image in
       `Hvt_amd64_compressed, Cstruct.of_string img
+    | _, 0 -> .
+    | _, _ -> failwith "TODO FUCK SHIT IS COMPRESSED"
   and argv = match argv with [] -> None | xs -> Some xs
   in
   let config = Unikernel.{ cpuid ; memory ; block_device ; network_interfaces ; argv ; image } in
@@ -42,6 +47,18 @@ let setup_log =
   Term.(const setup_log
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
+
+
+let image_type_c : Vmm_core.Unikernel.typ Arg.converter =
+  Arg.conv ~docv:"TYPE" @@
+  ((function
+      | "spt-amd64" -> Ok `Spt_amd64
+      | "spt-arm64" -> Ok `Spt_arm64
+      | "hvt-amd64" -> Ok `Hvt_amd64
+      | "hvt-arm64" -> Ok `Hvt_arm64
+      | _ -> Error (`Msg "No idea")
+    ),
+   Vmm_core.Unikernel.pp_typ)
 
 let host_port : (string * int) Arg.converter =
   let parse s =
@@ -81,6 +98,9 @@ let vmm_dev_req0 =
   let doc = "VMM device name" in
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VMMDEV")
 
+let image_type =
+  let doc = "eg \"spt-amd64\" or \"hvt-arm64\"" in
+  Arg.(value & opt image_type_c `Hvt_amd64 & info ["t"; "image-type"] ~doc)
 
 let opt_vm_name =
   let doc = "name of virtual machine." in
@@ -164,3 +184,25 @@ let timestamp_c =
 let since =
   let doc = "Receive data since a specified timestamp (RFC 3339 encoded)" in
   Arg.(value & opt (some timestamp_c) None & info [ "since" ] ~doc)
+
+let runtime_directory =
+  let doc = "directory in which to cache runtime data. a.k.a 'tmpdir'" in
+  let fpath = Arg.conv (Fpath.of_string , Fpath.pp) in
+  Arg.(value
+       & opt fpath (Fpath.of_string
+                      (match Vmm_unix.uname_t with
+                       | `Linux -> "/run/albatross"
+                       | `FreeBSD | _ -> "/var/run/albatross")
+                    |> function Ok p -> p | Error _ -> failwith "oops.")
+       & info [ "runtime-directory" ] ~doc)
+
+let state_directory =
+  let doc = "directory in which to store vmm state. a.k.a 'dbdir'" in
+  let fpath = Arg.conv (Fpath.of_string , Fpath.pp) in
+  Arg.(value
+       & opt fpath (Fpath.of_string
+                      (match Vmm_unix.uname_t with
+                       | `Linux -> "/var/lib/albatross"
+                       | `FreeBSD | _ -> "/var/db/albatross")
+                    |> function Ok p -> p | Error _ -> failwith "oops.")
+       & info [ "state-directory" ] ~doc)

@@ -66,7 +66,9 @@ let handle ca tls =
   | Error (`Msg m) -> Lwt.fail_with m
   | Ok (name, policies, cmd) ->
     let sock, next = Vmm_commands.endpoint cmd in
-    connect (Vmm_core.socket_path sock) >>= fun fd ->
+    connect (Vmm_core.socket_path
+               (Fpath.of_string "" |> function Ok x -> x)
+               sock) >>= fun fd ->
     (match sock with
      | `Vmmd ->
        Lwt_list.fold_left_s (fun r (id, policy) ->

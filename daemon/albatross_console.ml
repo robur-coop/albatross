@@ -50,8 +50,8 @@ let read_console id name ring channel () =
        end ;
        Lwt_io.close channel)
 
-let open_fifo name =
-  let fifo = Vmm_core.Name.fifo_file name in
+let open_fifo ~tmpdir name =
+  let fifo = Vmm_core.Name.fifo_file ~tmpdir name in
   Lwt.catch (fun () ->
       Logs.debug (fun m -> m "opening %a for reading" Fpath.pp fifo) ;
       Lwt_io.open_file ~mode:Lwt_io.Input (Fpath.to_string fifo) >>= fun channel ->
@@ -66,9 +66,9 @@ let open_fifo name =
 
 let t = ref String.Map.empty
 
-let add_fifo id =
+let add_fifo ~tmpdir id =
   let name = Vmm_core.Name.to_string id in
-  open_fifo id >|= function
+  open_fifo ~tmpdir id >|= function
   | None -> Error (`Msg "opening")
   | Some f ->
     let ring = match String.Map.find name !t with
@@ -110,7 +110,7 @@ let send_history s r id since =
       | Error _ -> Vmm_lwt.safe_close s)
     entries
 
-let handle s addr () =
+let handle ~tmpdir s addr () =
   Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
   let rec loop () =
     Vmm_lwt.read_wire s >>= function
@@ -126,7 +126,7 @@ let handle s addr () =
         match cmd with
         | `Console_add ->
           begin
-            add_fifo name >>= fun res ->
+            add_fifo ~tmpdir name >>= fun res ->
             let reply = match res with
               | Ok () -> `Success `Empty
               | Error (`Msg msg) -> `Failure msg
@@ -156,18 +156,19 @@ let handle s addr () =
   Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnected")
 
-let jump _ file =
+let jump _ tmpdir =
+  let sock = Vmm_core.socket_path ~tmpdir `Console in
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
-    ((Lwt_unix.file_exists file >>= function
-       | true -> Lwt_unix.unlink file
+    ((Lwt_unix.file_exists sock >>= function
+       | true -> Lwt_unix.unlink sock
        | false -> Lwt.return_unit) >>= fun () ->
      let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
+     Lwt_unix.(bind s (ADDR_UNIX sock)) >>= fun () ->
      Lwt_unix.listen s 1 ;
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
-       Lwt.async (handle cs addr) ;
+       Lwt.async (handle ~tmpdir cs addr) ;
        loop ()
      in
      loop ())
@@ -176,12 +177,20 @@ open Cmdliner
 
 open Albatross_cli
 
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Console) & info [ "socket" ] ~doc)
+let runtime_directory =
+  let doc = "directory in which to cache runtime data. a.k.a 'tmpdir'" in
+  let fpath = Arg.conv (Fpath.of_string , Fpath.pp) in
+  Arg.(value
+       & opt fpath (Fpath.of_string
+                      (match Vmm_unix.uname_t with
+                       | `Linux -> "/run/albatross"
+                       | `FreeBSD | _ -> "/var/run/albatross")
+                    |> function Ok p -> p | Error _ -> failwith "oops.")
+       & info [ "runtime-directory" ] ~doc)
+
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ socket)),
+  Term.(term_result (const jump $ setup_log $ runtime_directory)),
   Term.info "albatross_console" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

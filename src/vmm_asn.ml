@@ -55,16 +55,22 @@ let image =
     | `C1 x -> `Hvt_amd64, x
     | `C2 x -> `Hvt_arm64, x
     | `C3 x -> `Hvt_amd64_compressed, x
+    | `C4 x -> `Spt_amd64, x
+    | `C5 x -> `Spt_arm64, x
   and g = function
     | `Hvt_amd64, x -> `C1 x
     | `Hvt_arm64, x -> `C2 x
     | `Hvt_amd64_compressed, x -> `C3 x
+    | `Spt_amd64, x -> `C4 x
+    | `Spt_arm64, x -> `C5 x
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice5
            (explicit 0 octet_string)
            (explicit 1 octet_string)
-           (explicit 2 octet_string))
+           (explicit 2 octet_string)
+           (explicit 3 octet_string)
+           (explicit 4 octet_string))
 
 let console_cmd =
   let f = function

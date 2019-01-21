@@ -2,22 +2,20 @@
 
 open Astring
 
-let tmpdir = Fpath.(v "/var" / "run" / "albatross")
-let sockdir = Fpath.(tmpdir / "util")
-
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
-let socket_path t =
+let socket_path ~tmpdir t =
+  let sockdir = Fpath.(tmpdir / "util") in
   let path = match t with
     | `Console -> Fpath.(sockdir / "console" + "sock")
-    | `Vmmd -> Fpath.(tmpdir / "vmmd" + "sock")
+    | `Vmmd -> Fpath.(sockdir / "vmmd" + "sock")
     | `Stats -> Fpath.(sockdir / "stat" + "sock")
     | `Log -> Fpath.(sockdir / "log" + "sock")
   in
   Fpath.to_string path
 
-let pp_socket ppf t =
-  let name = socket_path t in
+let pp_socket ~tmpdir ppf t =
+  let name = socket_path ~tmpdir t in
   Fmt.pf ppf "socket: %s" name
 
 module I = struct
@@ -75,11 +73,11 @@ module Name = struct
     | _::prefix -> List.rev prefix
     | [] -> []
 
-  let image_file name =
+  let image_file ~tmpdir name =
     let file = to_string name in
     Fpath.(tmpdir / file + "img")
 
-  let fifo_file name =
+  let fifo_file ~tmpdir name =
     let file = to_string name in
     Fpath.(tmpdir / "fifo" / file)
 
@@ -147,12 +145,15 @@ module Policy = struct
 end
 
 module Unikernel = struct
-  type typ = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
+  type typ = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed
+             | `Spt_amd64 | `Spt_arm64 ]
 
   let pp_typ ppf = function
     | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
     | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
     | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
+    | `Spt_amd64 -> Fmt.pf ppf "spt-amd64"
+    | `Spt_arm64 -> Fmt.pf ppf "spt-arm64"
 
   type config = {
     cpuid : int ;

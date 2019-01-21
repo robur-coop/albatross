@@ -4,7 +4,7 @@ open Vmm_core
 
 type 'a t
 
-val init : Vmm_commands.version -> 'a t
+val init : dbdir:Fpath.t -> tmpdir:Fpath.t -> Vmm_commands.version -> 'a t
 
 val waiter : 'a t -> Name.t -> 'a t * 'a option
 
@@ -33,6 +33,7 @@ val handle_command : 'a t -> Vmm_commands.wire ->
 
 val killall : 'a t -> bool
 
-val restore_unikernels : unit -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
+val restore_unikernels : dbdir:Fpath.t ->
+  (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
 
 val dump_unikernels : 'a t -> unit
