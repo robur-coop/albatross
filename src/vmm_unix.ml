@@ -203,7 +203,7 @@ let exec ~dbdir ~tmpdir name config taps block =
      ) >>| fun bin ->
      Fpath.(dbdir / "solo5-hvt" + bin |> to_string)
    | `Spt_amd64 | `Spt_arm64 ->
-     Ok "solo5-spt"
+     Ok "/usr/local/sbin/solo5-spt"
   ) >>= fun host_bin ->
   let net = List.map (fun t -> "--net=" ^ t) taps
   and block = match block with
@@ -218,9 +218,9 @@ let exec ~dbdir ~tmpdir name config taps block =
              of_list net %% of_list block %
              "--" % p (Name.image_file ~tmpdir name) %% of_list argv)
   in
-  let line = Bos.Cmd.to_list cmd in
-  let prog = try List.hd line with Failure _ -> failwith err_empty_line in
-  let line = Array.of_list line in
+  let prog = match Bos.Cmd.line_tool cmd with Some x -> x | None ->
+    failwith err_empty_line in
+  let line = Array.of_list (Bos.Cmd.to_list cmd) in
   let fifo = Name.fifo_file ~tmpdir name in
   Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
   write_fd_for_file fifo >>= fun stdout ->

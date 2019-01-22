@@ -1,0 +1,24 @@
+[Unit]
+
+# To configure this service, please use the following command
+# to create an override configuration:
+# systemctl edit albatross_log.service
+
+Description=Albatross log daemon (vmmd_log)
+After=syslog.target
+[Service]
+Type=simple
+
+User=root
+
+WorkingDirectory=/
+
+#ExecStartPre=id # the fbsd scripts do something here, not sure what
+ExecStart=/usr/local/sbin/vmmd_log.native --logfile="%L/albatross.log" -vv
+
+RuntimeDirectory=albatross
+RuntimeDirectory=albatross albatross/fifo albatross/util
+PIDFile=/%t/albatross/log.pid
+
+[Install]
+WantedBy=multi-user.target

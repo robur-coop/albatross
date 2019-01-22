@@ -1,0 +1,33 @@
+[Unit]
+
+# To configure this service, please use the following command
+# to create an override configuration:
+# systemctl edit albatross_stat.service
+
+Description=Albatross stat daemon (vmmd_stat)
+After=syslog.target
+[Service]
+Type=simple
+
+#Environment="albatross_stat_user=root"
+User=root
+
+WorkingDirectory=/
+
+Environment=albatross_prefix=/usr/local/sbin/vmmd_stat.native
+#ExecStartPre=id # the fbsd scripts do something here, not sure what
+ExecStart=/usr/local/sbin/vmmd_stats.native -vv
+#--runtime-directory="%t/albatross/"
+
+# state=%S
+# runtime=%t
+# small temp=%T
+# large temp=%V
+# PrivateTmp=yes
+
+RuntimeDirectoryPreserve=yes
+RuntimeDirectory=albatross albatross/fifo albatross/util
+PIDFile=%t/albatross/stat.pid
+
+[Install]
+WantedBy=multi-user.target

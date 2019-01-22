@@ -1,0 +1,22 @@
+[Unit]
+Description=Albatross VMM daemon (vmmd)
+Requires=albatross_console.service albatross_log.service albatross_stat.service
+After=syslog.target albatross_console.service albatross_log.service albatross_stat.service
+[Service]
+Type=simple
+
+#Environment=albatross_daemon_user=root
+#User=${albatross_daemon_user}
+User=root
+
+WorkingDirectory=/
+
+#ExecStartPre=id # the fbsd scripts do something here, not sure what
+ExecStart=/usr/local/sbin/vmmd.native -vv
+
+RuntimeDirectoryPreserve=yes
+RuntimeDirectory=albatross albatross/fifo albatross/util
+PIDFile=/%t/albatross/daemon.pid
+
+[Install]
+WantedBy=multi-user.target
