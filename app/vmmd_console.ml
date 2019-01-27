@@ -69,15 +69,18 @@ let t = ref String.Map.empty
 let add_fifo id =
   let name = Vmm_core.Name.to_string id in
   open_fifo id >|= function
+  | None -> Error (`Msg "opening")
   | Some f ->
-    let ring = Vmm_ring.create "" () in
-    Logs.debug (fun m -> m "inserting fifo %s" name) ;
-    let map = String.Map.add name ring !t in
-    t := map ;
+    let ring = match String.Map.find name !t with
+      | None ->
+        let ring = Vmm_ring.create "" () in
+        let map = String.Map.add name ring !t in
+        t := map ;
+        ring
+      | Some ring -> ring
+    in
     Lwt.async (read_console id name ring f) ;
     Ok ()
-  | None ->
-    Error (`Msg "opening")
 
 let subscribe s id =
   let name = Vmm_core.Name.to_string id in
