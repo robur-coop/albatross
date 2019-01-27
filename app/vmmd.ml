@@ -100,36 +100,18 @@ let handle process fd addr =
   loop () >>= fun () ->
   Vmm_lwt.safe_close fd
 
-let init_sock sock =
+let connect_client_socket sock =
   let name = socket_path sock in
   let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
   Lwt_unix.set_close_on_exec c ;
   Lwt.catch (fun () ->
-      Lwt_unix.(connect c (ADDR_UNIX name)) >|= fun () -> Some c)
+      Lwt_unix.(connect c (ADDR_UNIX name)) >|= fun () ->
+      Some (c, Lwt_mutex.create ()))
     (fun e ->
        Logs.warn (fun m -> m "error %s connecting to socket %s"
                      (Printexc.to_string e) name) ;
        (Lwt.catch (fun () -> Lwt_unix.close c) (fun _ -> Lwt.return_unit)) >|= fun () ->
        None)
-
-let create_mbox sock =
-  init_sock sock >|= function
-  | None -> None
-  | Some fd ->
-    let mvar = Lwt_mvar.create_empty () in
-    (* could be more elaborate:
-       if <log> fails, we can reconnect and spit our more log messages to the new socket
-       if <console> fails, all running VMs terminate, so we can terminate as well ;)
-       if <stat> fails, we'd need to retransmit all VM info to stat (or stat has to ask at connect) *)
-    let rec loop () =
-      Lwt_mvar.take mvar >>= fun data ->
-      Logs.debug (fun m -> m "writing %a" Vmm_commands.pp_wire data) ;
-      Vmm_lwt.write_wire fd data >>= function
-      | Ok () -> loop ()
-      | Error `Exception -> invalid_arg ("exception while writing to " ^ Fmt.to_to_string pp_socket sock) ;
-    in
-    Lwt.async loop ;
-    Some (mvar, fd, Lwt_mutex.create ())
 
 let server_socket sock =
   let name = socket_path sock in
@@ -155,9 +137,9 @@ let jump _ =
 
     Lwt_main.run
       (server_socket `Vmmd >>= fun ss ->
-       (create_mbox `Log >|= function
+       (connect_client_socket `Log >|= function
          | None -> invalid_arg "cannot connect to log socket"
-         | Some l -> l) >>= fun (l, l_fd, l_mut) ->
+         | Some l -> l) >>= fun (l_fd, l_mut) ->
        let self_destruct_mutex = Lwt_mutex.create () in
        let self_destruct () =
          Lwt_mutex.with_lock self_destruct_mutex (fun () ->
@@ -171,15 +153,16 @@ let jump _ =
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       (create_mbox `Console >|= function
+       (connect_client_socket `Console >|= function
          | None -> invalid_arg "cannot connect to console socket"
-         | Some c -> c) >>= fun (c, c_fd, c_mut) ->
-       create_mbox `Stats >>= fun s ->
+         | Some c -> c) >>= fun (c_fd, c_mut) ->
+       connect_client_socket `Stats >>= fun s ->
 
-       let write_reply txt (header, cmd) name mvar fd mut =
+       let write_reply txt (header, cmd) name fd mut =
          Lwt_mutex.with_lock mut (fun () ->
-             Lwt_mvar.put mvar (header, cmd) >>= fun () ->
-             Vmm_lwt.read_wire fd) >|= function
+             Vmm_lwt.write_wire fd (header, cmd) >>= function
+             | Error `Exception -> invalid_arg ("exception while writing to " ^ txt)
+             | Ok () -> Vmm_lwt.read_wire fd) >|= function
          | Ok (header', reply) ->
            if not Vmm_commands.(version_eq header.version header'.version) then begin
              Logs.err (fun m -> m "%s: wrong version (got %a, expected %a) in reply from %s"
@@ -198,10 +181,12 @@ let jump _ =
              match reply with
              | `Success _ -> ()
              | `Failure msg ->
-               (* can we programatically solve such a situation? *)
+               (* can we programatically recover from such a situation? *)
                (* we at least know e.g when writing to console resulted in an error,
                   that we can't continue but need to roll back -- and not continue
-                  with execvp() *)
+                  with execvp()
+
+                  -> we also should destroy image file, fifo, tap devices (i.e. Vmm_unix.shutdown) *)
                Logs.err (fun m -> m "%s: received failure %s from %s" txt msg name)
              | _ ->
                Logs.err (fun m -> m "%s: unexpected data from %s" txt name) ;
@@ -215,10 +200,10 @@ let jump _ =
          | `Stat wire ->
            begin match s with
              | None -> Lwt.return_unit
-             | Some (s, s_fd, s_mut) -> write_reply txt wire "stats" s s_fd s_mut
+             | Some (s_fd, s_mut) -> write_reply txt wire "stats" s_fd s_mut
            end
-         | `Log wire -> write_reply txt wire "log" l l_fd l_mut
-         | `Cons wire -> write_reply txt wire "console" c c_fd c_mut
+         | `Log wire -> write_reply txt wire "log" l_fd l_mut
+         | `Cons wire -> write_reply txt wire "console" c_fd c_mut
        in
        let process ?fd txt wires =
          Lwt_list.iter_p (function
