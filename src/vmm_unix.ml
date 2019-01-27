@@ -210,7 +210,7 @@ let exec name config taps block =
     Logs.debug (fun m -> m "created process %d: %a" pid Bos.Cmd.pp cmd) ;
     (* we gave a copy (well, two copies) of that file descriptor to the solo5
        process and don't really need it here anymore... *)
-    close stdout ;
+    close_no_err stdout ;
     Ok Unikernel.{ config ; cmd ; pid ; taps }
   with
     Unix.Unix_error (e, _, _) ->

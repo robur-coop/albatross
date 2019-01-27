@@ -51,16 +51,15 @@ let find_block t name = Vmm_trie.find name t.block_devices
 
 let set_block_usage t name active =
   match Vmm_trie.find name t with
-  | None -> Error (`Msg "unknown block device")
+  | None -> invalid_arg ("block device " ^ Name.to_string name ^ " not in trie")
   | Some (size, curr) ->
-    if curr = active then
-      Error (`Msg "failed because the requested block usage was already set")
-    else
-      Ok (fst (Vmm_trie.insert name (size, active) t))
+    if curr = active
+    then invalid_arg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive"))
+    else fst (Vmm_trie.insert name (size, active) t)
 
-let maybe_use_block t name vm active =
+let use_block t name vm active =
   match vm.Unikernel.config.Unikernel.block_device with
-  | None -> Ok t
+  | None -> t
   | Some block ->
     let block_name = Name.block_name name block in
     set_block_usage t block_name active
@@ -68,9 +67,9 @@ let maybe_use_block t name vm active =
 let remove_vm t name = match find_vm t name with
   | None -> Error (`Msg "unknown vm")
   | Some vm ->
-    maybe_use_block t.block_devices name vm false >>| fun block_devices ->
+    let block_devices = use_block t.block_devices name vm false in
     let unikernels = Vmm_trie.remove name t.unikernels in
-    { t with block_devices ; unikernels }
+    Ok { t with block_devices ; unikernels }
 
 let remove_policy t name = match find_policy t name with
   | None -> Error (`Msg "unknown policy")
@@ -126,12 +125,10 @@ let check_vm t name vm =
   vm_ok
 
 let insert_vm t name vm =
-  check_vm t name vm.Unikernel.config >>= fun () ->
-  match Vmm_trie.insert name vm t.unikernels with
-  | unikernels, None ->
-    maybe_use_block t.block_devices name vm true >>| fun block_devices ->
-    { t with unikernels ; block_devices }
-  | _, Some _ -> Error (`Msg "vm already exists")
+  let unikernels, old = Vmm_trie.insert name vm t.unikernels in
+  (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
+  let block_devices = use_block t.block_devices name vm true in
+  { t with unikernels ; block_devices }
 
 let check_block t name size =
   let block_ok = match find_block t name with

@@ -31,8 +31,9 @@ let create stat_out log_out cons_out data_out cons succ_cont fail_cont =
     data_out data
   | Ok () -> match succ_cont !state with
     | Error (`Msg msg) ->
-      Logs.err (fun m -> m "create continuation failed %s" msg) ;
-      Lwt.return_unit
+      Logs.err (fun m -> m "create (exec) failed %s" msg) ;
+      let data = fail_cont () in
+      data_out data
     | Ok (state', stat, log, data, name, vm) ->
       state := state' ;
       s := { !s with vm_created = succ !s.vm_created } ;

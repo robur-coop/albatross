@@ -37,9 +37,12 @@ val find_block : t -> Name.t -> (int * bool) option
     allowed under the current policies. *)
 val check_vm : t -> Name.t -> Unikernel.config -> (unit, [> `Msg of string ]) result
 
-(** [insert_vm t Name.t vm] inserts [vm] under [Name.t] in [t], and returns the new [t] or
-    an error. *)
-val insert_vm : t -> Name.t -> Unikernel.t -> (t, [> `Msg of string]) result
+(** [insert_vm t Name.t vm] inserts [vm] under [Name.t] in [t], and returns the
+    new [t].  The caller has to ensure (using {!check_vm}) that a VM with the
+    same name does not yet exist, and the block device is not in use.
+    @raise Invalid_argument if block device is already in use, or VM already
+    exists. *)
+val insert_vm : t -> Name.t -> Unikernel.t -> t
 
 (** [insert_policy t Name.t policy] inserts [policy] under [Name.t] in [t], and returns
    the new [t] or an error. *)

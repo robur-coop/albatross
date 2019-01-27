@@ -132,19 +132,25 @@ let handle_create t hdr name vm_config =
     (header, `Command (`Console_cmd `Console_add))
   in
   let success t =
-    (* actually execute the vm *)
+    (* actually execute the vm:
+       - check for safety that executing it would not exceed any resources
+       - execute it
+       - update resources
+       --> if either the first or second fails, then the fail continuation
+           below needs to be called *)
     let block_device = match vm_config.Unikernel.block_device with
       | None -> None
       | Some block -> Some (Name.block_name name block)
     in
-    Vmm_unix.exec name vm_config taps block_device >>= fun vm ->
+    Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
+    Vmm_unix.exec name vm_config taps block_device >>| fun vm ->
     Logs.debug (fun m -> m "exec()ed vm") ;
-    Vmm_resources.insert_vm t.resources name vm >>= fun resources ->
+    let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
     dump_unikernels t ;
     let t, log_out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
     let t, stat_out = setup_stats t name vm in
-    Ok (t, stat_out, log_out, (hdr, `Success (`String "created VM")), name, vm)
+    (t, stat_out, log_out, (hdr, `Success (`String "created VM")), name, vm)
   and fail () =
     match Vmm_unix.free_resources name taps with
     | Ok () -> (hdr, `Failure "could not create VM: console failed")
