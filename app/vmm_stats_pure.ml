@@ -119,7 +119,7 @@ let tick t =
     List.fold_left (fun (out, to_remove) (vmid, pid) ->
         let listeners = Vmm_trie.collect vmid t'.name_sockets in
         match listeners with
-        | [] -> Logs.info (fun m -> m "nobody is listening") ; (out, to_remove)
+        | [] -> Logs.debug (fun m -> m "nobody is listening") ; (out, to_remove)
         | xs -> match IM.find_opt pid t.pid_nic with
           | None ->
             Logs.warn (fun m -> m "couldn't find nics of %d" pid) ;
