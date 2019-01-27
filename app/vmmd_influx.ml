@@ -149,8 +149,8 @@ module P = struct
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "interface,vm=%s,ifname=%s,bridge=%s %s"
-      vm ifd.ifname ifd.bridge (String.concat ~sep:"," fields)
+    Printf.sprintf "interface,vm=%s,bridge=%s %s"
+      vm ifd.bridge (String.concat ~sep:"," fields)
 end
 
 let my_version = `AV3

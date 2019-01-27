@@ -161,7 +161,7 @@ let add_pid t vmid vmmdev pid nics =
         match wrap sysctl_ifdata id with
         | None -> go cnt acc (pred id)
         | Some ifd ->
-          match List.find_opt (fun (_, tap) -> String.equal tap ifd.Stats.ifname) nics with
+          match List.find_opt (fun (_, tap) -> String.equal tap ifd.Stats.bridge) nics with
           | Some (bridge, tap) -> go (pred cnt) ((bridge, id, tap) :: acc) (pred id)
           | None -> go cnt acc (pred id)
       else

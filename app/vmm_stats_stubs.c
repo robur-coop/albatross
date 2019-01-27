@@ -198,26 +198,25 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
   if (sysctl(name, nitems(name), &data, &datalen, NULL, 0) != 0)
     uerror("sysctl", Nothing);
 
-  res = caml_alloc(19, 0);
+  res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(data.ifmd_name));
-  Store_field(res, 1, caml_copy_string(data.ifmd_name));
-  Store_field(res, 2, Val32(data.ifmd_flags));
-  Store_field(res, 3, Val32(data.ifmd_snd_len));
-  Store_field(res, 4, Val32(data.ifmd_snd_maxlen));
-  Store_field(res, 5, Val32(data.ifmd_snd_drops));
-  Store_field(res, 6, Val32(data.ifmd_data.ifi_mtu));
-  Store_field(res, 7, Val64(data.ifmd_data.ifi_baudrate));
-  Store_field(res, 8, Val64(data.ifmd_data.ifi_ipackets));
-  Store_field(res, 9, Val64(data.ifmd_data.ifi_ierrors));
-  Store_field(res, 10, Val64(data.ifmd_data.ifi_opackets));
-  Store_field(res, 11, Val64(data.ifmd_data.ifi_oerrors));
-  Store_field(res, 12, Val64(data.ifmd_data.ifi_collisions));
-  Store_field(res, 13, Val64(data.ifmd_data.ifi_ibytes));
-  Store_field(res, 14, Val64(data.ifmd_data.ifi_obytes));
-  Store_field(res, 15, Val64(data.ifmd_data.ifi_imcasts));
-  Store_field(res, 16, Val64(data.ifmd_data.ifi_omcasts));
-  Store_field(res, 17, Val64(data.ifmd_data.ifi_iqdrops));
-  Store_field(res, 18, Val64(data.ifmd_data.ifi_oqdrops));
+  Store_field(res, 1, Val32(data.ifmd_flags));
+  Store_field(res, 2, Val32(data.ifmd_snd_len));
+  Store_field(res, 3, Val32(data.ifmd_snd_maxlen));
+  Store_field(res, 4, Val32(data.ifmd_snd_drops));
+  Store_field(res, 5, Val32(data.ifmd_data.ifi_mtu));
+  Store_field(res, 6, Val64(data.ifmd_data.ifi_baudrate));
+  Store_field(res, 7, Val64(data.ifmd_data.ifi_ipackets));
+  Store_field(res, 8, Val64(data.ifmd_data.ifi_ierrors));
+  Store_field(res, 9, Val64(data.ifmd_data.ifi_opackets));
+  Store_field(res, 10, Val64(data.ifmd_data.ifi_oerrors));
+  Store_field(res, 11, Val64(data.ifmd_data.ifi_collisions));
+  Store_field(res, 12, Val64(data.ifmd_data.ifi_ibytes));
+  Store_field(res, 13, Val64(data.ifmd_data.ifi_obytes));
+  Store_field(res, 14, Val64(data.ifmd_data.ifi_imcasts));
+  Store_field(res, 15, Val64(data.ifmd_data.ifi_omcasts));
+  Store_field(res, 16, Val64(data.ifmd_data.ifi_iqdrops));
+  Store_field(res, 17, Val64(data.ifmd_data.ifi_oqdrops));
 
   CAMLreturn(res);
 }

@@ -118,7 +118,6 @@ module Stats : sig
 
   type ifdata = {
     bridge : string;
-    ifname : string;
     flags : int32;
     send_length : int32;
     max_send_length : int32;
