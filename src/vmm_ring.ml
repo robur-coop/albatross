@@ -9,7 +9,7 @@ type 'a t = {
 }
 
 let create ?(size = 1024) neutral () =
-  { data = Array.make 1024 (Ptime.min, neutral)  ; write = 0 ; size }
+  { data = Array.make size (Ptime.min, neutral) ; write = 0 ; size }
 
 let inc t = (succ t.write) mod t.size
 
