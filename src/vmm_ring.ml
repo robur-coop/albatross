@@ -23,7 +23,7 @@ let not_written ts = Ptime.equal ts Ptime.min
 
 let entry_not_written (ts, _) = not_written ts
 
-let earlier than (ts, v) =
+let earlier than (ts, _) =
   if not_written ts then true else Ptime.is_earlier ts ~than
 
 let read_some tst t =
