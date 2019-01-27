@@ -143,10 +143,13 @@ let rec stats_loop () =
   stats_loop ()
 
 let write_reply name (fd, mut) txt (header, cmd) =
+  Logs.debug (fun m -> m "locking to write to %s" name) ;
   Lwt_mutex.with_lock mut (fun () ->
       Vmm_lwt.write_wire fd (header, cmd) >>= function
       | Error `Exception -> invalid_arg ("exception during " ^ txt ^ " while writing to " ^ name)
-      | Ok () -> Vmm_lwt.read_wire fd) >|= function
+      | Ok () -> Vmm_lwt.read_wire fd) >|= fun r ->
+  Logs.debug (fun m -> m "unlocking, wrote and read %s" name) ;
+  match r with
   | Ok (header', reply) ->
     if not Vmm_commands.(version_eq header.version header'.version) then begin
       Logs.err (fun m -> m "%s: wrong version (got %a, expected %a) in reply from %s"
