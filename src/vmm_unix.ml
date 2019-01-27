@@ -150,6 +150,12 @@ let prepare name vm =
   Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
+let free_resources name taps =
+  (* same order as prepare! *)
+  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
+  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
+  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) taps
+
 let vm_device vm =
   match Lazy.force uname with
   | x when x = "FreeBSD" -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
@@ -162,10 +168,7 @@ let shutdown name vm =
    | x, Ok name when x = "FreeBSD" ->
      ignore (Bos.OS.Cmd.run Bos.Cmd.(v "bhyvectl" % "--destroy" % ("--vm=" ^ name)))
    | _ -> ()) ;
-  (* same order as prepare! *)
-  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
-  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
-  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) vm.Unikernel.taps
+  free_resources name vm.Unikernel.taps
 
 let cpuset cpu =
   let cpustring = string_of_int cpu in

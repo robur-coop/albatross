@@ -9,6 +9,8 @@ val prepare : Name.t -> Unikernel.config -> (string list, [> R.msg ]) result
 val exec : Name.t -> Unikernel.config -> string list -> Name.t option ->
   (Unikernel.t, [> R.msg ]) result
 
+val free_resources : Name.t -> string list -> (unit, [> R.msg ]) result
+
 val shutdown : Name.t -> Unikernel.t -> (unit, [> R.msg ]) result
 
 val destroy : Unikernel.t -> unit

@@ -10,31 +10,26 @@ val waiter : 'a t -> Name.t -> 'a t * 'a option
 
 val register : 'a t -> Name.t -> (unit -> 'b * 'a) -> ('a t * 'b) option
 
-type service_out = [
-  | `Stat of Vmm_commands.wire
-  | `Log of Vmm_commands.wire
-  | `Cons of Vmm_commands.wire
-]
-
-type out = [ service_out | `Data of Vmm_commands.wire ]
-
 type 'a create =
-  'a t -> ('a t * out list * Name.t * Unikernel.t, [ `Msg of string ]) result
+  Vmm_commands.wire *
+  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.wire * Name.t * Unikernel.t, [ `Msg of string ]) result) *
+  (unit -> Vmm_commands.wire)
 
 val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
-  [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * out list
+  [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * Vmm_commands.wire * Vmm_commands.wire
 
-val handle_create : 'a t -> out list ->
+val handle_create : 'a t -> Vmm_commands.header ->
   Name.t -> Unikernel.config ->
-  ('a t * out list * [ `Create of 'a create ], [> `Msg of string ]) result
+  ('a t * [ `Create of 'a create ], [> `Msg of string ]) result
 
 val handle_command : 'a t -> Vmm_commands.wire ->
-  'a t * out list *
-  [ `Create of 'a create
-  | `Loop
-  | `End
-  | `Wait of Name.t * out
-  | `Wait_and_create of Name.t * ('a t -> 'a t * out list * [ `Create of 'a create | `End ]) ]
+  ('a t *
+   [ `Create of 'a create
+   | `Loop of Vmm_commands.wire
+   | `End of Vmm_commands.wire
+   | `Wait of Name.t * Vmm_commands.wire
+   | `Wait_and_create of Name.t * ('a t -> ('a t * [ `Create of 'a create ], Vmm_commands.wire) result) ],
+   Vmm_commands.wire) result
 
 val killall : 'a t -> bool
 
