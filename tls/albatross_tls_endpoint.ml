@@ -13,7 +13,7 @@ let server_socket port =
   listen s 10 ;
   Lwt.return s
 
-let jump _ cacert cert priv_key port =
+let jump _ cacert cert priv_key port tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
     (Nocrypto_entropy_lwt.initialize () >>= fun () ->
@@ -30,7 +30,7 @@ let jump _ cacert cert priv_key port =
            Lwt.async (fun () ->
                Lwt.catch
                  (fun () ->
-                    (handle ca t >|= function
+                    (handle ~tmpdir ca t >|= function
                       | Error (`Msg msg) -> Logs.err (fun m -> m "error in handle %s" msg)
                       | Ok () -> ()) >>= fun () ->
                     Vmm_tls_lwt.close t)
@@ -59,7 +59,7 @@ let port =
   Arg.(value & opt int 1025 & info [ "port" ] ~doc)
 
 let cmd =
-  Term.(const jump $ setup_log $ cacert $ cert $ key $ port),
+  Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ runtime_directory),
   Term.info "albatross_tls_endpoint" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

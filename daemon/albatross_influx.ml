@@ -288,18 +288,13 @@ let client stat_socket influxhost influxport vm =
   in
   loop ()
 
-let run_client _ socket (influxhost, influxport) vm =
+let run_client _ tmpdir (influxhost, influxport) vm =
   Sys.(set_signal sigpipe Signal_ignore) ;
-  Lwt_main.run (client socket influxhost influxport vm)
+  let stat_socket = socket_path ~tmpdir `Stats in
+  Lwt_main.run (client stat_socket influxhost influxport vm)
 
 open Cmdliner
 open Albatross_cli
-
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path
-                             (Fpath.of_string "" |> function Ok x -> x)
-                             `Stats) & info [ "socket" ] ~doc)
 
 let influx =
   Arg.(required & pos 0 (some host_port) None & info [] ~docv:"INFLUXHOST:INFLUXPORT"
@@ -311,7 +306,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(pure run_client $ setup_log $ socket $ influx $ opt_vm_name),
+  Term.(pure run_client $ setup_log $ runtime_directory $ influx $ opt_vm_name),
   Term.info "albatross_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =

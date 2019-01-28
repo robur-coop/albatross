@@ -60,15 +60,13 @@ let process fd tls =
     | Ok () -> Ok ()
     | Error `Exception -> Error (`Msg "exception on write")
 
-let handle ca tls =
+let handle ~tmpdir ca tls =
   client_auth ca tls >>= fun chain ->
   match Vmm_tls.handle my_version chain with
   | Error (`Msg m) -> Lwt.fail_with m
   | Ok (name, policies, cmd) ->
     let sock, next = Vmm_commands.endpoint cmd in
-    connect (Vmm_core.socket_path
-               (Fpath.of_string "" |> function Ok x -> x)
-               sock) >>= fun fd ->
+    connect (Vmm_core.socket_path ~tmpdir sock) >>= fun fd ->
     (match sock with
      | `Vmmd ->
        Lwt_list.fold_left_s (fun r (id, policy) ->
