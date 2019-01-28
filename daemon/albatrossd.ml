@@ -76,11 +76,14 @@ let handle state log_out cons_out stat_out fd addr =
   in
 
   let rec loop () =
-    Logs.debug (fun m -> m "now reading") ;
+    Logs.debug (fun m -> m "now reading from %a" Vmm_lwt.pp_sockaddr addr) ;
     Vmm_lwt.read_wire fd >>= function
-    | Error _ ->
-      Logs.err (fun m -> m "error while reading") ;
-      Lwt.return_unit
+    | Error `Toomuch ->
+      Logs.err (fun m -> m "error while reading TOOMUCH"); Lwt.return_unit
+    | Error `Exception ->
+      Logs.err (fun m -> m "error while reading EXCEPTION") ; Lwt.return_unit
+    | Error `Eof ->
+      Logs.err (fun m -> m "error while reading EOF") ; Lwt.return_unit
     | Ok wire ->
       Logs.debug (fun m -> m "read %a" Vmm_commands.pp_wire wire) ;
       match Vmm_vmmd.handle_command !state wire with
@@ -219,6 +222,9 @@ let jump _ dbdir tmpdir =
          let hdr = Vmm_commands.{ version ; sequence = 0L ; name = Name.root }
          and data_out _ = Lwt.return_unit
          in
+         Logs.debug (fun m -> m "going to START UNIKERNEL TODO @[%a %a@]"
+                        Vmm_core.Name.pp name
+                        Vmm_core.Unikernel.pp_config config);
          match Vmm_vmmd.handle_create !state hdr name config with
          | Error (`Msg msg) ->
            Logs.err (fun m -> m "failed to restart %a: %s" Name.pp name msg) ;

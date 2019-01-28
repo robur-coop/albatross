@@ -18,5 +18,18 @@ RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross albatross/fifo albatross/util
 PIDFile=/%t/albatross/daemon.pid
 
+## hardening stuff
+ProtectSystem=full
+ProtectHome=true
+UMask=0077
+OOMScoreAdjust=-1000
+#AppArmorProfile=
+#SmackProcessLabel=albatross_vmm
+IgnoreSIGPIPE=true
+#SystemCallFilter=~reboot
+#SystemCallFilter=
+RestrictAddressFamilies=AF_UNIX AF_INET
+#RuntimeDirectoryMode=0700
+
 [Install]
 WantedBy=multi-user.target

@@ -98,12 +98,6 @@ let uname_t =
   | Ok (_s, _) -> `Unimplemented_OS
   | Error (`Msg m) -> invalid_arg m
 
-let uname =
-  let cmd = Bos.Cmd.(v "uname" % "-s") in
-  lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
-      | Ok (s, _) -> s
-      | Error (`Msg m) -> invalid_arg m)
-
 let create_tap bridge =
   match uname_t with
   | `FreeBSD ->
@@ -184,12 +178,12 @@ let shutdown ~tmpdir name vm =
 
 let cpuset cpu =
   let cpustring = string_of_int cpu in
-  match Lazy.force uname with
-  | x when x = "FreeBSD" ->
+  match uname_t with
+  | `FreeBSD ->
     Ok ([ "cpuset" ; "-l" ; cpustring ])
-  | x when x = "Linux" ->
+  | `Linux ->
     Ok ([ "taskset" ; "-c" ; cpustring ])
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
+  | _ -> Error (`Msg ("unsupported operating system for cpuset"))
 
 let exec ~dbdir ~tmpdir name config taps block =
   (match fst config.Vmm_core.Unikernel.image with
