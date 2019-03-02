@@ -22,9 +22,12 @@ let key_ids pub issuer =
 
 let timestamps validity =
   let now = Ptime_clock.now () in
-  match Ptime.add_span now (Ptime.Span.of_int_s validity) with
-  | None -> invalid_arg "span too big - reached end of ptime"
-  | Some exp -> (now, exp)
+  match
+    Ptime.sub_span now (Ptime.Span.of_int_s 10),
+    Ptime.add_span now (Ptime.Span.of_int_s validity)
+  with
+  | None, _ | _, None -> invalid_arg "span too big - reached end of ptime"
+  | Some now, Some exp -> (now, exp)
 
 let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Vmm_lwt.read_from_file cert >>= fun cert_cs ->
