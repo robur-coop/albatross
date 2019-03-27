@@ -17,7 +17,7 @@ let connect socket_path =
 let process fd =
   Vmm_lwt.read_wire fd >|= function
   | Error _ -> Error ()
-  | Ok wire -> Ok (Vmm_cli.print_result version wire)
+  | Ok wire -> Ok (Albatross_cli.print_result version wire)
 
 let read fd =
   (* now we busy read and process output *)
@@ -50,7 +50,7 @@ let remove_policy _ opt_socket name =
   jump opt_socket name (`Policy_cmd `Policy_remove)
 
 let add_policy _ opt_socket name vms memory cpus block bridges =
-  let p = Vmm_cli.policy vms memory cpus block bridges in
+  let p = Albatross_cli.policy vms memory cpus block bridges in
   jump opt_socket name (`Policy_cmd (`Policy_add p))
 
 let info_ _ opt_socket name =
@@ -60,7 +60,7 @@ let destroy _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_destroy)
 
 let create _ opt_socket force name image cpuid memory argv block network compression =
-  match Vmm_cli.create_vm force image cpuid memory argv block network compression with
+  match Albatross_cli.create_vm force image cpuid memory argv block network compression with
   | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> `Error (false, msg)
 
@@ -94,7 +94,7 @@ let help _ _ man_format cmds = function
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let socket =
   let doc = "Socket to connect to" in
@@ -243,10 +243,10 @@ let default_cmd =
   let doc = "VMM local client" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) connects to vmmd via a local socket" ]
+    `P "$(tname) connects to albatrossd via a local socket" ]
   in
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "vmmc_local" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_client_local" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

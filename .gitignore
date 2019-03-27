@@ -1,2 +1,3 @@
 _build
-vmm.install
+albatross.install
+.merlin

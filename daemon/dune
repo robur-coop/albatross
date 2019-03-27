@@ -1,0 +1,34 @@
+(library
+  (name albatross_cli)
+  (public_name albatross.cli)
+  (wrapped false)
+  (modules albatross_cli)
+  (libraries checkseum.c albatross lwt.unix cmdliner logs.fmt logs.cli fmt.cli fmt.tty ipaddr.unix))
+
+(executable
+  (name albatrossd)
+  (public_name albatrossd)
+  (package albatross)
+  (modules albatrossd)
+  (libraries albatross.cli albatross))
+
+(executable
+  (name albatross_console)
+  (public_name albatross-console)
+  (package albatross)
+  (modules albatross_console)
+  (libraries albatross.cli albatross))
+
+(executable
+  (name albatross_influx)
+  (public_name albatross-influx)
+  (package albatross)
+  (modules albatross_influx)
+  (libraries albatross.cli albatross))
+
+(executable
+  (name albatross_log)
+  (public_name albatross-log)
+  (package albatross)
+  (modules albatross_log)
+  (libraries albatross.cli albatross))

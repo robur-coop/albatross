@@ -32,7 +32,7 @@ start_precmd="albatross_daemon_precmd"
 : ${albatross_daemon_flags:=""}
 
 pidfile="/var/run/albatross_daemon.pid"
-procname="/usr/local/libexec/albatross/vmmd"
+procname="/usr/local/libexec/albatross/albatrossd"
 
 #
 # force_depend script [rcvar]

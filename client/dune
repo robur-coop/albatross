@@ -1,0 +1,20 @@
+(executable
+  (name albatross_client_bistro)
+  (public_name albatross-client-bistro)
+  (package albatross)
+  (modules albatross_client_bistro)
+  (libraries albatross.cli albatross albatross.tls))
+
+(executable
+  (name albatross_client_local)
+  (public_name albatross-client-local)
+  (package albatross)
+  (modules albatross_client_local)
+  (libraries albatross.cli albatross))
+
+(executable
+  (name albatross_client_remote_tls)
+  (public_name albatross-client-remote-tls)
+  (package albatross)
+  (modules albatross_client_remote_tls)
+  (libraries albatross.cli albatross albatross.tls))

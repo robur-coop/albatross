@@ -25,12 +25,26 @@ for f in albatross_log \
 do install -U $basedir/packaging/rc.d/$f $rootdir/usr/local/etc/rc.d/$f; done
 
 # stage albatross app binaries
-for f in vmmd vmmd_log vmmd_console vmmd_stats vmmd_influx vmmd_tls vmmd_tls_inetd; do
-    install -U $basedir/_build/app/$f.native \
+for f in albatrossd albatross_log albatross_console albatross_influx; do
+    install -U $basedir/_build/default/daemon/$f.exe \
 	 $rootdir/usr/local/libexec/albatross/$f; done
 
-for f in vmmc_local vmmc_remote vmmc_bistro vmmp_ca vmmp_request; do
-    install -U $basedir/_build/app/$f.native \
+for f in albatross_tls_endpoint albatross_tls_inetd; do
+    install -U $basedir/_build/default/tls/$f.exe \
+	 $rootdir/usr/local/libexec/albatross/$f; done
+
+install -U $basedir/_build/default/stats/albatross_stats.exe \
+	 $rootdir/usr/local/libexec/albatross/albatross_stats
+
+install -U $basedir/_build/default/stats/albatross_stat_client.exe \
+	 $rootdir/usr/local/sbin/albatross_stat_client
+
+for f in albatross_client_local albatross_client_remote_tls albatross_client_bistro; do
+    install -U $basedir/_build/default/client/$f.exe \
+	$rootdir/usr/local/sbin/$f; done
+
+for f in albatross_provision_ca albatross_provision_request; do
+    install -U $basedir/_build/default/provision/$f.exe \
 	$rootdir/usr/local/sbin/$f; done
 
 # create +MANIFEST

@@ -8,7 +8,7 @@ let rec read_tls_write_cons t =
   Vmm_tls_lwt.read_tls t >>= function
   | Error _ -> Lwt.return_unit
   | Ok wire ->
-    Vmm_cli.print_result version wire ;
+    Albatross_cli.print_result version wire ;
     read_tls_write_cons t
 
 let client cas host port cert priv_key =
@@ -45,7 +45,7 @@ let run_client _ cas cert key (host, port) =
   Lwt_main.run (client cas host port cert key)
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let cas =
   let doc = "The full path to PEM encoded certificate authorities. Can either be a FILE or a DIRECTORY." in
@@ -64,13 +64,13 @@ let destination =
   Arg.(required & pos 3 (some host_port) None & info [] ~docv:"HOST:PORT" ~doc)
 
 let cmd =
-  let doc = "VMM remote TLS client" in
+  let doc = "Albatross remote TLS client" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) connects to a server and initiates a TLS handshake" ]
+    `P "$(tname) connects to an Albatross server and initiates a TLS handshake" ]
   in
   Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "vmmc_remote" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_client_remote_tls" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd

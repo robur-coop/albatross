@@ -1,6 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Vmm_provision
+open Albatross_provision
 open Vmm_asn
 
 open Rresult.R.Infix
@@ -32,7 +32,7 @@ let remove_policy _ name =
   jump name (`Policy_cmd `Policy_remove)
 
 let add_policy _ name vms memory cpus block bridges =
-  let p = Vmm_cli.policy vms memory cpus block bridges in
+  let p = Albatross_cli.policy vms memory cpus block bridges in
   jump name (`Policy_cmd (`Policy_add p))
 
 let info_ _ name = jump name (`Unikernel_cmd `Unikernel_info)
@@ -41,7 +41,7 @@ let destroy _ name =
   jump name (`Unikernel_cmd `Unikernel_destroy)
 
 let create _ force name image cpuid memory argv block network compression =
-  match Vmm_cli.create_vm force image cpuid memory argv block network compression with
+  match Albatross_cli.create_vm force image cpuid memory argv block network compression with
   | Ok cmd -> jump name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> `Error (false, msg)
 
@@ -69,7 +69,7 @@ let help _ man_format cmds = function
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let destroy_cmd =
   let doc = "destroys a virtual machine" in
@@ -184,22 +184,22 @@ let help_cmd =
     let doc = "The topic to get help on. `topics' lists the topics." in
     Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
   in
-  let doc = "display help about vmmc" in
+  let doc = "display help about albatross provision request" in
   let man =
     [`S "DESCRIPTION";
-     `P "Prints help about albatross local client commands and subcommands"]
+     `P "Prints help about albatross provision request commands and subcommands"]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ topic)),
   Term.info "help" ~doc ~man
 
 let default_cmd =
-  let doc = "VMM local client" in
+  let doc = "Albatross provisioning request" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) connects to vmmd via a local socket" ]
+    `P "$(tname) creates a certificate signing request for Albatross" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "vmmp_request" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_provision_request" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

@@ -1,7 +1,7 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
 open Lwt.Infix
-open Vmmd_tls_common
+open Albatross_tls_common
 
 let jump cacert cert priv_key =
   Sys.(set_signal sigpipe Signal_ignore) ;
@@ -29,6 +29,6 @@ open Cmdliner
 
 let cmd =
   Term.(ret (const jump $ cacert $ cert $ key)),
-  Term.info "vmmd_tls_inetd" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_tls_inetd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

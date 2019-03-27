@@ -1,5 +1,5 @@
 open Vmm_core
-open Vmm_stats_pure
+open Albatross_stats_pure
 
 let timer pid vmmapi =
   let rusage = sysctl_rusage pid in
@@ -28,7 +28,7 @@ let jump _ pid name interval =
           None
         | Some vmctx ->
           Logs.info (fun m -> m "vmmapi_open succeeded for %s" name) ;
-          Vmm_stats_pure.fill_descr vmctx ;
+          fill_descr vmctx ;
           Some vmctx
     in
     let _ev = Lwt_engine.on_timer interval true (fun _e -> timer pid vmmapi) in
@@ -36,7 +36,7 @@ let jump _ pid name interval =
     t)
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in
@@ -52,6 +52,6 @@ let vmname =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ pid $ vmname $ interval)),
-  Term.info "vmmd_stats" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_stat_client" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

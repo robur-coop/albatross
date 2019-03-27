@@ -184,11 +184,10 @@ let jump _ file sock =
        Lwt.async (handle mvar ring cs addr) ;
        loop ()
      in
-     loop ()) ;
-  `Ok ()
+     loop ())
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let socket =
   let doc = "socket to use" in
@@ -200,6 +199,6 @@ let file =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ file $ socket)),
-  Term.info "vmm_log" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_log" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -174,7 +174,7 @@ let jump _ file =
 
 open Cmdliner
 
-open Vmm_cli
+open Albatross_cli
 
 let socket =
   let doc = "socket to use" in
@@ -182,6 +182,6 @@ let socket =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket)),
-  Term.info "vmmd_console" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_console" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

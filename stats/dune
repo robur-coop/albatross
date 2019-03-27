@@ -1,0 +1,32 @@
+(* -*- tuareg -*- *)
+
+let freebsd = try Sys.command "uname -s | grep -c FreeBSD > /dev/null" = 0 with _ -> false
+
+let () =
+  Jbuild_plugin.V1.send @@ Printf.sprintf {|
+(library
+  (name albatross_stats)
+  (public_name albatross.stats)
+  (libraries albatross)
+  (wrapped false)
+  (c_names albatross_stats_stubs)
+  (modules albatross_stats_pure))
+
+(executable
+  (name albatross_stats)
+  (public_name albatross-stats)
+  (package albatross)
+  (modules albatross_stats)
+  %s
+  (libraries albatross.cli albatross.stats albatross))
+
+(executable
+  (name albatross_stat_client)
+  (public_name albatross-stat-client)
+  (package albatross)
+  (modules albatross_stat_client)
+  %s
+  (libraries albatross.cli albatross.stats albatross)) |}
+  (if freebsd then "(link_flags (-ccopt \"-lvmmapi\"))" else "")
+  (if freebsd then "(link_flags (-ccopt \"-lvmmapi\"))" else "")
+

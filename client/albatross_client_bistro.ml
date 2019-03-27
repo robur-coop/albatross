@@ -11,7 +11,7 @@ let read fd =
     Vmm_tls_lwt.read_tls fd >>= function
     | Error _ -> Lwt.return ()
     | Ok wire ->
-      Vmm_cli.print_result version wire ;
+      Albatross_cli.print_result version wire ;
       loop ()
   in
   loop ()
@@ -76,7 +76,7 @@ let remove_policy _ endp cert key ca name =
   jump endp cert key ca name (`Policy_cmd `Policy_remove)
 
 let add_policy _ endp cert key ca name vms memory cpus block bridges =
-  let p = Vmm_cli.policy vms memory cpus block bridges in
+  let p = Albatross_cli.policy vms memory cpus block bridges in
   jump endp cert key ca name (`Policy_cmd (`Policy_add p))
 
 let info_ _ endp cert key ca name =
@@ -86,7 +86,7 @@ let destroy _ endp cert key ca name =
   jump endp cert key ca name (`Unikernel_cmd `Unikernel_destroy)
 
 let create _ endp cert key ca force name image cpuid memory argv block network compression =
-  match Vmm_cli.create_vm force image cpuid memory argv block network compression with
+  match Albatross_cli.create_vm force image cpuid memory argv block network compression with
   | Ok cmd -> jump endp cert key ca name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> `Error (false, msg)
 
@@ -114,7 +114,7 @@ let help _ _ man_format cmds = function
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let server_ca =
   let doc = "The certificate authority used to verify the remote server." in
@@ -254,13 +254,13 @@ let help_cmd =
   Term.info "help" ~doc ~man
 
 let default_cmd =
-  let doc = "VMM client and go to bistro" in
+  let doc = "Albatross client and go to bistro" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) executes the provided subcommand on a remote albatross" ]
   in
   Term.(ret (const help $ setup_log $ destination $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "vmmc_bistro" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_client_bistro" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

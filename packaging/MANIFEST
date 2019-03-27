@@ -41,8 +41,8 @@ EOD;
 mkdir -p /var/run/albatross/util /var/run/albatross/fifo
 chown albatross:albatross /var/run/albatross/util /var/run/albatross/fifo
 chmod 2760 /var/run/albatross/fifo
-chgrp albatross /usr/local/libexec/albatross/vmmd
-chmod 2700 /usr/local/libexec/albatross/vmmd
+chgrp albatross /usr/local/libexec/albatross/albatrossd
+chmod 2700 /usr/local/libexec/albatross/albatrossd
 
 EOD;
     post-deinstall = <<EOD
@@ -76,7 +76,7 @@ messages [
 	add path 'vmm/solo5*' mode 0660 group albatross
 
    * start TLS endpoint via inetd on port 1025, add to /etc/inetd.conf:
-blackjack  stream  tcp     nowait  albatross       /usr/local/libexec/albatross/vmmd_tls_inetd   vmmd_tls_inetd /usr/local/etc/albatross/cacert.pem /usr/local/etc/albatross/server.pem /usr/local/etc/albatross/server.key
+blackjack  stream  tcp     nowait  albatross       /usr/local/libexec/albatross/alabtross_tls_inetd   albatross_tls_inetd /usr/local/etc/albatross/cacert.pem /usr/local/etc/albatross/server.pem /usr/local/etc/albatross/server.key
 
      and add cacert.pem server.pem and server.key to /usr/local/etc/albatross
 

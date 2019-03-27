@@ -53,7 +53,7 @@ let sign_csr dbname cacert key csr days =
     in
     Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd) ;
     Ok (ext :: exts) >>= fun extensions ->
-    Vmm_provision.sign ~dbname extensions issuer key csr (Duration.of_day days)
+    Albatross_provision.sign ~dbname extensions issuer key csr (Duration.of_day days)
   | Error e -> Error e
 
 let sign _ db cacert cakey csrname days =
@@ -78,20 +78,20 @@ let help _ man_format cmds = function
 let generate _ name db days sname sdays =
   Nocrypto_entropy_unix.initialize () ;
   match
-    Vmm_provision.priv_key ~bits:4096 None name >>= fun key ->
+    Albatross_provision.priv_key ~bits:4096 None name >>= fun key ->
     let name = [ `CN name ] in
     let csr = X509.CA.request name key in
-    Vmm_provision.sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
-    Vmm_provision.priv_key None sname >>= fun skey ->
+    Albatross_provision.sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
+    Albatross_provision.priv_key None sname >>= fun skey ->
     let sname = [ `CN sname ] in
     let csr = X509.CA.request sname skey in
-    Vmm_provision.sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
+    Albatross_provision.sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
   with
   | Ok () -> `Ok ()
   | Error (`Msg e) -> `Error (false, e)
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let csr =
   let doc = "signing request" in
@@ -123,7 +123,7 @@ let generate_cmd =
     [`S "DESCRIPTION";
      `P "Generates a certificate authority."]
   in
-  Term.(ret (const generate $ setup_log $ Vmm_provision.nam $ db $ days $ sname $ sday)),
+  Term.(ret (const generate $ setup_log $ Albatross_provision.nam $ db $ days $ sname $ sday)),
   Term.info "generate" ~doc ~man
 
 let days =
@@ -148,7 +148,7 @@ let help_cmd =
     let doc = "The topic to get help on. `topics' lists the topics." in
     Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
   in
-  let doc = "display help about vmmp_sign" in
+  let doc = "display help about albatross_priviion_ca" in
   let man =
     [`S "DESCRIPTION";
      `P "Prints help about commands and subcommands"]
@@ -157,13 +157,13 @@ let help_cmd =
   Term.info "help" ~doc ~man
 
 let default_cmd =
-  let doc = "VMM " in
+  let doc = "Albatross CA provisioning" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) executes the provided subcommand on a remote albatross" ]
+    `P "$(tname) does CA operations (creation, sign, etc.)" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "vmmp_ca" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_provision_ca" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let cmds = [ help_cmd ; sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)]
 

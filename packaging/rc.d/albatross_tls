@@ -31,7 +31,7 @@ start_precmd="albatross_tls_precmd"
 : ${albatross_tls_user:="albatross"}
 
 pidfile="/var/run/albatross_tls.pid"
-procname="/usr/local/libexec/albatross/vmmd_tls"
+procname="/usr/local/libexec/albatross/albatross_tls_endpoint"
 
 #
 # force_depend script [rcvar]

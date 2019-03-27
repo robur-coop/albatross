@@ -29,7 +29,7 @@ start_cmd="albatross_stat_start"
 : ${albatross_stat_user:="albatross"}
 
 pidfile="/var/run/albatross_stat.pid"
-procname="/usr/local/libexec/albatross/vmmd_stats"
+procname="/usr/local/libexec/albatross/albatross_stats"
 
 albatross_stat_start () {
     echo "Starting ${name}."

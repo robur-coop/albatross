@@ -293,7 +293,7 @@ let run_client _ socket (influxhost, influxport) vm =
   Lwt_main.run (client socket influxhost influxport vm)
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let socket =
   let doc = "socket to use" in
@@ -304,13 +304,13 @@ let influx =
          ~doc:"the influx hostname:port to connect to")
 
 let cmd =
-  let doc = "VMM InfluxDB connector" in
+  let doc = "Albatross Influx connector" in
   let man = [
     `S "DESCRIPTION" ;
-    `P "$(tname) connects to a vmm stats socket, pulls statistics and pushes them via TCP to influxdb" ]
+    `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
   Term.(pure run_client $ setup_log $ socket $ influx $ opt_vm_name),
-  Term.info "vmmd_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd

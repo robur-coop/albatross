@@ -14,7 +14,7 @@
 
 open Lwt.Infix
 
-open Vmm_stats_pure
+open Albatross_stats_pure
 
 let t = ref (empty ())
 
@@ -83,7 +83,7 @@ let jump _ file interval =
      loop ())
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let socket =
   let doc = "socket to use" in
@@ -95,6 +95,6 @@ let interval =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ socket $ interval)),
-  Term.info "vmmd_stats" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_stats" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

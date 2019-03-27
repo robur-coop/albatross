@@ -40,7 +40,7 @@ albatross_x_start () {
             echo "Starting albatross VMs: ${albatross_x_vms}."
 	    for _vm in $albatross_x_vms; do
 		eval _create_args=\"\$albatross_x_args_${_vm}\"
-		/usr/local/sbin/vmmc_local create $_vm $_create_args
+		/usr/local/sbin/albatross_client_local create $_vm $_create_args
 	    done
 	    return
 	    ;;
@@ -48,7 +48,7 @@ albatross_x_start () {
     echo "Starting albatross VMs: ${@}."
     for _vm in $@; do
 	eval _create_args=\"\$albatross_x_args_${_vm}\"
-	/usr/local/sbin/vmmc_local create $_vm $_create_args
+	/usr/local/sbin/albatross_client_local create $_vm $_create_args
     done
 }
 
@@ -57,16 +57,16 @@ albatross_x_stop () {
 	_ALL)
             echo "Stopping albatross VMs: ${albatross_x_vms}."
 	    for _vm in $albatross_x_vms
-	    do /usr/local/sbin/vmmc_local destroy $_vm; done
+	    do /usr/local/sbin/albatross_client_local destroy $_vm; done
 	    return
     esac
     echo "Stopping albatross VMs: ${@}."
     for _vm in $@
-    do /usr/local/sbin/vmmc_local destroy $_vm; done
+    do /usr/local/sbin/albatross_client_local destroy $_vm; done
 }
 
 albatross_x_status () {
-    /usr/local/sbin/vmmc_local info
+    /usr/local/sbin/albatross_client_local info
 }
 
 case $# in

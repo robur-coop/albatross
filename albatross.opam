@@ -7,9 +7,7 @@ bug-reports: "https://github.com/hannesm/albatross/issues"
 
 depends: [
   "ocaml" {>= "4.05.0"}
-  "ocamlfind" {build}
-  "ocamlbuild" {build}
-  "topkg" {build}
+  "dune" {build}
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "2.9.0"}
   "hex"
@@ -31,6 +29,7 @@ depends: [
 ]
 
 build: [
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"

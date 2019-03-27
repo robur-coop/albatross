@@ -27,46 +27,46 @@ access is done on a name basis - if access to `foo` is granted, `foo.hello`,
 
 Albatross consists of a set of binaries. Several daemons, which communicate in a
 request-response style over Unix domain sockets, are run in the host system:
-- `vmmd`: privileged to create and destroy unikernels
-- `vmmd_console`: reads the console output of unikernels
-- `vmmd_log`: event log
-- `vmmd_stats`: statistics gathering (rusage, ifstat, BHyve debug counters)
-- `vmmd_tls`: remote deployment via TLS with client certificate, and proxies to local daemons
-- `vmmd_tls_inetd`: remote deployment via TLS and inetd (alternative to `vmmd_tls`)
-- `vmmd_influx`: statistic reporting from `vmmd_stats` to influx
+- `albatrossd`: privileged to create and destroy unikernels
+- `albatross_console`: reads the console output of unikernels
+- `albatross_log`: event log
+- `albatross_stats`: statistics gathering (rusage, ifstat, BHyve debug counters)
+- `albatross_tls_endpoint`: remote deployment via TLS with client certificate, and proxies to local daemons
+- `albatross_tls_inetd`: remote deployment via TLS and inetd (alternative to `albatross_tls_endpoint`)
+- `albatross_influx`: statistic reporting from `albatross_stats` to influx
 
-The main daemon is the privileged `vmmd`, which supervises unikernels. It opens
+The main daemon is the privileged `albatrossd`, which supervises unikernels. It opens
 a listening Unix domain socket, reads the persisted unikernel configuration,
 starts these unikernels, and awaits commands. Access can be regulated by Unix
 file permissions, only those users who can write to that socket can send
 commands.
 
-`Vmmd_console` does not keep any persistent state, but a ring buffer of console
+`Albatross_console` does not keep any persistent state, but a ring buffer of console
 output from each unikernel. These messages can be retrieved by a client, as a
 stream of messages (history, and whenever a new line is output, it is send to
 the interested client). Each unikernel output can only be read by a single
 client, to avoid amplification of traffic if lots of clients are connected.
-`Vmmd` sends a message to `vmmd_console` whenever a new unikernel is started,
-upon reception `Vmmd_console` opens and reads the fifo which the unikernel will
+`Albatrossd` sends a message to `albatross_console` whenever a new unikernel is started,
+upon reception `albatross_console` opens and reads the fifo which the unikernel will
 write their standard output to.
 
-`Vmmd_log` keeps a persistent event log for albatross, can be read by clients.
+`Albatross_log` keeps a persistent event log for albatross, can be read by clients.
 
-`Vmmd_stats` gathers periodically statistics (memory, CPU, network, hypervisor)
+`Albatross_stats` gathers periodically statistics (memory, CPU, network, hypervisor)
 from all running unikernels.
 
-`Vmmd_tls` and `vmmd_tls_inetd` listen on a TCP port, and proxy requests from
+`Albatross_tls_endpoint` and `albatross_tls_inetd` listen on a TCP port, and proxy requests from
 remote clients to the respective daemons described above. They enforce client
 authentication, and use the commen names of the client certificate chain as
 administrative domain. The policies are embedded in CA certificates, the command
 is embedded in the leaf certificate.
 
 The following command-line applications for local and remote management are provided:
-- `vmmc_local`: sends a command locally to the Unix domain sockets
-- `vmmc_remote`: connects to a remote TLS endpoint and sends a command
-- `vmmp_request`: creates a certificate signing request containing a command
-- `vmmp_ca`: certificate authority operations: sign, generate, and revoke (NYI)
-- `vmmc_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key locally)
+- `albatross_client_local`: sends a command locally to the Unix domain sockets
+- `albatross_client_remote_tls`: connects to a remote TLS endpoint and sends a command
+- `albatross_provision_request`: creates a certificate signing request containing a command
+- `albatross_provision_ca`: certificate authority operations: sign, generate, and revoke (NYI)
+- `albatross_client_bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key locally)
 
 ## Installation
 

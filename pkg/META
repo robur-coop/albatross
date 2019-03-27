@@ -1,3 +1,0 @@
-description = "VM Manager"
-version = "%%VERSION_NUM%%"
-requires = ""

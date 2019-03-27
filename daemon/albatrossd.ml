@@ -1,6 +1,6 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-open Vmm_cli
+open Albatross_cli
 
 open Vmm_core
 
@@ -246,6 +246,6 @@ open Cmdliner
 
 let cmd =
   Term.(const jump $ setup_log),
-  Term.info "vmmd" ~version:"%%VERSION_NUM%%"
+  Term.info "albatrossd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

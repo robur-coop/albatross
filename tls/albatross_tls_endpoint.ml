@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-open Vmmd_tls_common
+open Albatross_tls_common
 
 let server_socket port =
   let open Lwt_unix in
@@ -21,7 +21,7 @@ let jump _ cacert cert priv_key port =
      tls_config cacert cert priv_key >>= fun (config, ca) ->
      let rec loop () =
        Lwt.catch (fun () ->
-           Lwt_unix.accept socket >>= fun (fd, addr) ->
+           Lwt_unix.accept socket >>= fun (fd, _addr) ->
            Lwt.catch
              (fun () -> Tls_lwt.Unix.server_of_fd config fd)
              (fun exn ->
@@ -52,7 +52,7 @@ let jump _ cacert cert priv_key port =
      loop ())
 
 open Cmdliner
-open Vmm_cli
+open Albatross_cli
 
 let port =
   let doc = "TCP listen port" in
@@ -60,6 +60,6 @@ let port =
 
 let cmd =
   Term.(ret (const jump $ setup_log $ cacert $ cert $ key $ port)),
-  Term.info "vmmd_tls" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_tls_endpoint" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
