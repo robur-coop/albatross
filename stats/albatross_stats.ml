@@ -94,7 +94,7 @@ let interval =
   Arg.(value & opt int 10 & info [ "interval" ] ~doc)
 
 let cmd =
-  Term.(ret (const jump $ setup_log $ socket $ interval)),
+  Term.(term_result (const jump $ setup_log $ socket $ interval)),
   Term.info "albatross_stats" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

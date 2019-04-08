@@ -22,13 +22,12 @@ let jump cacert cert priv_key =
           Vmm_tls_lwt.close t)
        (fun e ->
           Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
-          Vmm_tls_lwt.close t)) ;
-  `Ok ()
+          Vmm_tls_lwt.close t))
 
 open Cmdliner
 
 let cmd =
-  Term.(ret (const jump $ cacert $ cert $ key)),
+  Term.(const jump $ cacert $ cert $ key),
   Term.info "albatross_tls_inetd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

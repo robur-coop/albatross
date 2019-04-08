@@ -67,7 +67,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   read t
 
 let jump endp cert key ca name cmd =
-  `Ok (Lwt_main.run (handle endp cert key ca name cmd))
+  Ok (Lwt_main.run (handle endp cert key ca name cmd))
 
 let info_policy _ endp cert key ca name =
   jump endp cert key ca name (`Policy_cmd `Policy_info)
@@ -88,7 +88,7 @@ let destroy _ endp cert key ca name =
 let create _ endp cert key ca force name image cpuid memory argv block network compression =
   match Albatross_cli.create_vm force image cpuid memory argv block network compression with
   | Ok cmd -> jump endp cert key ca name (`Unikernel_cmd cmd)
-  | Error (`Msg msg) -> `Error (false, msg)
+  | Error (`Msg msg) -> Error (`Msg msg)
 
 let console _ endp cert key ca name since =
   jump endp cert key ca name (`Console_cmd (`Console_subscribe since))
@@ -138,7 +138,7 @@ let destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroy a virtual machine."]
   in
-  Term.(ret (const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name)),
+  Term.(term_result (const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name)),
   Term.info "destroy" ~doc ~man
 
 let remove_policy_cmd =
@@ -147,7 +147,7 @@ let remove_policy_cmd =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
-  Term.(ret (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "remove_policy" ~doc ~man
 
 let info_cmd =
@@ -156,7 +156,7 @@ let info_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(ret (const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "info" ~doc ~man
 
 let policy_cmd =
@@ -165,7 +165,7 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(ret (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "policy" ~doc ~man
 
 let add_policy_cmd =
@@ -174,7 +174,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(ret (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
+  Term.(term_result (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
   Term.info "add_policy" ~doc ~man
 
 let create_cmd =
@@ -183,7 +183,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(ret (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level)),
+  Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level)),
   Term.info "create" ~doc ~man
 
 let console_cmd =
@@ -192,7 +192,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(ret (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since)),
+  Term.(term_result (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since)),
   Term.info "console" ~doc ~man
 
 let stats_cmd =
@@ -201,7 +201,7 @@ let stats_cmd =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(ret (const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "stats" ~doc ~man
 
 let log_cmd =
@@ -210,7 +210,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(ret (const event_log $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ since)),
+  Term.(term_result (const event_log $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ since)),
   Term.info "log" ~doc ~man
 
 let block_info_cmd =
@@ -219,7 +219,7 @@ let block_info_cmd =
     [`S "DESCRIPTION";
      `P "Block device information."]
   in
-  Term.(ret (const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_block_name)),
+  Term.(term_result (const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_block_name)),
   Term.info "block" ~doc ~man
 
 let block_create_cmd =
@@ -228,7 +228,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(ret (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size)),
+  Term.(term_result (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size)),
   Term.info "create_block" ~doc ~man
 
 let block_destroy_cmd =
@@ -237,7 +237,7 @@ let block_destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroys a block device."]
   in
-  Term.(ret (const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name)),
+  Term.(term_result (const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name)),
   Term.info "destroy_block" ~doc ~man
 
 let help_cmd =

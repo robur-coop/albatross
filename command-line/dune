@@ -1,0 +1,6 @@
+(library
+  (name albatross_cli)
+  (public_name albatross.cli)
+  (wrapped false)
+  (modules albatross_cli)
+  (libraries checkseum.c albatross lwt.unix cmdliner logs.fmt logs.cli fmt.cli fmt.tty ipaddr.unix))

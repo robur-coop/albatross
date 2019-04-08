@@ -198,7 +198,7 @@ let file =
   Arg.(value & opt string "/var/log/albatross" & info [ "logfile" ] ~doc)
 
 let cmd =
-  Term.(ret (const jump $ setup_log $ file $ socket)),
+  Term.(term_result (const jump $ setup_log $ file $ socket)),
   Term.info "albatross_log" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

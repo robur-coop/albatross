@@ -58,17 +58,13 @@ let sign_csr dbname cacert key csr days =
 
 let sign _ db cacert cakey csrname days =
   Nocrypto_entropy_unix.initialize () ;
-  match
-    Bos.OS.File.read (Fpath.v cacert) >>= fun cacert ->
-    let cacert = X509.Encoding.Pem.Certificate.of_pem_cstruct1 (Cstruct.of_string cacert) in
-    Bos.OS.File.read (Fpath.v cakey) >>= fun pk ->
-    let cakey = X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string pk) in
-    Bos.OS.File.read (Fpath.v csrname) >>= fun enc ->
-    let csr = X509.Encoding.Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string enc) in
-    sign_csr (Fpath.v db) cacert cakey csr days
-  with
-  | Ok () -> `Ok ()
-  | Error (`Msg e) -> `Error (false, e)
+  Bos.OS.File.read (Fpath.v cacert) >>= fun cacert ->
+  let cacert = X509.Encoding.Pem.Certificate.of_pem_cstruct1 (Cstruct.of_string cacert) in
+  Bos.OS.File.read (Fpath.v cakey) >>= fun pk ->
+  let cakey = X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string pk) in
+  Bos.OS.File.read (Fpath.v csrname) >>= fun enc ->
+  let csr = X509.Encoding.Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string enc) in
+  sign_csr (Fpath.v db) cacert cakey csr days
 
 let help _ man_format cmds = function
   | None -> `Help (`Pager, None)
@@ -77,18 +73,14 @@ let help _ man_format cmds = function
 
 let generate _ name db days sname sdays =
   Nocrypto_entropy_unix.initialize () ;
-  match
-    Albatross_provision.priv_key ~bits:4096 None name >>= fun key ->
-    let name = [ `CN name ] in
-    let csr = X509.CA.request name key in
-    Albatross_provision.sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
-    Albatross_provision.priv_key None sname >>= fun skey ->
-    let sname = [ `CN sname ] in
-    let csr = X509.CA.request sname skey in
-    Albatross_provision.sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
-  with
-  | Ok () -> `Ok ()
-  | Error (`Msg e) -> `Error (false, e)
+  Albatross_provision.priv_key ~bits:4096 None name >>= fun key ->
+  let name = [ `CN name ] in
+  let csr = X509.CA.request name key in
+  Albatross_provision.sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
+  Albatross_provision.priv_key None sname >>= fun skey ->
+  let sname = [ `CN sname ] in
+  let csr = X509.CA.request sname skey in
+  Albatross_provision.sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
 
 open Cmdliner
 open Albatross_cli
@@ -123,7 +115,7 @@ let generate_cmd =
     [`S "DESCRIPTION";
      `P "Generates a certificate authority."]
   in
-  Term.(ret (const generate $ setup_log $ Albatross_provision.nam $ db $ days $ sname $ sday)),
+  Term.(term_result (const generate $ setup_log $ Albatross_provision.nam $ db $ days $ sname $ sday)),
   Term.info "generate" ~doc ~man
 
 let days =
@@ -140,7 +132,7 @@ let sign_cmd =
     [`S "DESCRIPTION";
      `P "Signs the certificate signing request."]
   in
-  Term.(ret (const sign $ setup_log $ db $ cacert $ key $ csr $ days)),
+  Term.(term_result (const sign $ setup_log $ db $ cacert $ key $ csr $ days)),
   Term.info "sign" ~doc ~man
 
 let help_cmd =
