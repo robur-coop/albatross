@@ -8,17 +8,20 @@ open Rresult.R.Infix
 let version = `AV3
 
 let csr priv name cmd =
-  let exts = [ (false, `Unsupported (oid, cert_extension_to_cstruct (version, cmd))) ]
-  and name = [ `CN name ]
+  let ext =
+    let v = cert_extension_to_cstruct (version, cmd) in
+    X509.Extension.(singleton (Unsupported oid) (false, v))
+  and name = X509.Distinguished_name.(singleton CN name)
   in
-  X509.CA.request name ~extensions:[`Extensions exts] priv
+  let extensions = X509.Signing_request.Ext.(singleton Extensions ext) in
+  X509.Signing_request.create name ~extensions priv
 
 let jump id cmd =
   Nocrypto_entropy_unix.initialize () ;
   let name = Vmm_core.Name.to_string id in
   priv_key None name >>= fun priv ->
   let csr = csr priv name cmd in
-  let enc = X509.Encoding.Pem.Certificate_signing_request.to_pem_cstruct1 csr in
+  let enc = X509.Signing_request.encode_pem csr in
   Bos.OS.File.write Fpath.(v name + ".req") (Cstruct.to_string enc)
 
 let info_policy _ name =

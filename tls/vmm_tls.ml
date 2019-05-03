@@ -2,15 +2,16 @@
 
 open Rresult
 open Rresult.R.Infix
+open X509
 
 (* we skip all non-albatross certificates *)
 let cert_name cert =
-  match X509.Extension.unsupported cert Vmm_asn.oid with
+  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
   | None -> Ok None
   | Some (_, data) ->
-    let name = X509.common_name_to_string cert in
-    if name = "" then
-      match Vmm_asn.cert_extension_of_cstruct data with
+    match Distinguished_name.(find CN (Certificate.subject cert)) with
+    | Some name -> Ok (Some name)
+    | None -> match Vmm_asn.cert_extension_of_cstruct data with
       | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension")
       | Ok (_, `Policy_cmd pc) ->
         begin match pc with
@@ -25,7 +26,6 @@ let cert_name cert =
           | `Block_info -> Ok None
         end
       | _ -> Ok None
-    else Ok (Some name)
 
 let name chain =
   List.fold_left (fun acc cert ->
@@ -49,23 +49,21 @@ let separate_chain = function
   | leaf :: xs -> Ok (leaf, List.rev xs)
 
 let wire_command_of_cert version cert =
-  match X509.Extension.unsupported cert Vmm_asn.oid with
+  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
   | None -> Error `Not_present
   | Some (_, data) ->
-    match Vmm_asn.cert_extension_of_cstruct data with
-    | Error (`Msg p) -> Error (`Parse p)
-    | Ok (v, wire) ->
-      if not (Vmm_commands.version_eq v version) then
-        Error (`Version v)
-      else
-        Ok wire
+    Vmm_asn.cert_extension_of_cstruct data >>= fun (v, wire) ->
+    if not (Vmm_commands.version_eq v version) then
+      Error (`Version v)
+    else
+      Ok wire
 
 let extract_policies version chain =
   List.fold_left (fun acc cert ->
       match acc, wire_command_of_cert version cert with
       | Error e, _ -> Error e
       | Ok acc, Error `Not_present -> Ok acc
-      | Ok _, Error (`Parse msg) -> Error (`Msg msg)
+      | Ok _, Error (`Msg msg) -> Error (`Msg msg)
       | Ok _, Error (`Version received) ->
         R.error_msgf "unexpected version %a (expected %a)"
           Vmm_commands.pp_version received
@@ -82,14 +80,13 @@ let extract_policies version chain =
 let handle version chain =
   separate_chain chain >>= fun (leaf, rest) ->
   name chain >>= fun name ->
-  Logs.debug (fun m -> m "leaf is %s, chain %a"
-                 (X509.common_name_to_string leaf)
-                 Fmt.(list ~sep:(unit " -> ") string)
-                 (List.map X509.common_name_to_string rest)) ;
+  Logs.debug (fun m -> m "leaf is %a, chain %a"
+                 Certificate.pp leaf
+                 Fmt.(list ~sep:(unit " -> ") Certificate.pp) rest);
   extract_policies version rest >>= fun (_, policies) ->
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   match wire_command_of_cert version leaf with
-  | Error (`Parse p) -> Error (`Msg p)
+  | Error (`Msg p) -> Error (`Msg p)
   | Error (`Not_present) ->
     Error (`Msg "leaf certificate does not contain an albatross extension")
   | Error (`Version received) ->

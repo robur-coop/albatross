@@ -29,19 +29,19 @@ let append name data =
   go 0 >>= fun () ->
   safe Unix.close fd
 
-let key_ids pub issuer =
-  let auth = (Some (X509.key_id issuer), [], None) in
-  [ (false, `Subject_key_id (X509.key_id pub)) ; (false, `Authority_key_id auth) ]
+let key_ids exts pub issuer =
+  let auth = Some (X509.Public_key.id issuer), X509.General_name.empty, None in
+  X509.Extension.(add Subject_key_id (false, X509.Public_key.id pub)
+                    (add Authority_key_id (false, auth) exts))
 
 let sign ?dbname ?certname extensions issuer key csr delta =
   let open Rresult.R.Infix in
   (match certname with
    | Some x -> Ok x
    | None ->
-     (try Ok (List.find (function `CN _ -> true | _ -> false) (X509.CA.info csr).X509.CA.subject)
-      with Not_found -> Error (`Msg "unable to discover certificate name")) >>= function
-     | `CN name -> Ok name
-     | _ -> Error (`Msg "cannot happen")) >>= fun certname ->
+     match X509.(Distinguished_name.find CN Signing_request.((info csr).subject)) with
+     | Some name -> Ok name
+     | None -> Error (`Msg "couldn't find name (no common name in CSR subject)")) >>= fun certname ->
   timestamps delta >>= fun (valid_from, valid_until) ->
   let extensions =
     match dbname with
@@ -50,14 +50,14 @@ let sign ?dbname ?certname extensions issuer key csr delta =
       match key with
       | `RSA priv ->
         let capub = `RSA (Nocrypto.Rsa.pub_of_priv priv) in
-        extensions @ key_ids (X509.CA.info csr).X509.CA.public_key capub
+        key_ids extensions X509.Signing_request.((info csr).public_key) capub
   in
-  let cert = X509.CA.sign csr ~valid_from ~valid_until ~extensions key issuer in
+  let cert = X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer in
   (match dbname with
    | None -> Ok () (* no DB! *)
    | Some dbname ->
-     append dbname (Printf.sprintf "%s %s\n" (Z.to_string (X509.serial cert)) certname)) >>= fun () ->
-  let enc = X509.Encoding.Pem.Certificate.to_pem_cstruct1 cert in
+     append dbname (Printf.sprintf "%s %s\n" (Z.to_string (X509.Certificate.serial cert)) certname)) >>= fun () ->
+  let enc = X509.Certificate.encode_pem cert in
   Bos.OS.File.write Fpath.(v certname + "pem") (Cstruct.to_string enc)
 
 let priv_key ?(bits = 2048) fn name =
@@ -70,11 +70,11 @@ let priv_key ?(bits = 2048) fn name =
   | false ->
     Logs.info (fun m -> m "creating new RSA key %a" Fpath.pp file) ;
     let priv = `RSA (Nocrypto.Rsa.generate bits) in
-    Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string (X509.Encoding.Pem.Private_key.to_pem_cstruct1 priv)) >>= fun () ->
+    Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string (X509.Private_key.encode_pem priv)) >>= fun () ->
     Ok priv
   | true ->
     Bos.OS.File.read file >>= fun s ->
-    Ok (X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string s))
+    X509.Private_key.decode_pem (Cstruct.of_string s)
 
 open Cmdliner
 

@@ -1,6 +1,7 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
 open Lwt.Infix
+open X509
 
 let version = `AV3
 
@@ -16,13 +17,16 @@ let read fd =
   in
   loop ()
 
-let key_ids pub issuer =
-  let auth = (Some (X509.key_id issuer), [], None) in
-  [ (false, `Subject_key_id (X509.key_id pub)) ; (false, `Authority_key_id auth) ]
+let key_ids exts pub issuer =
+  let auth = (Some (Public_key.id issuer), General_name.empty, None) in
+  Extension.(add Subject_key_id (false, (Public_key.id pub))
+               (add Authority_key_id (false, auth) exts))
 
 let timestamps validity =
   let now = Ptime_clock.now () in
   match
+    (* subtracting some seconds here to not require perfectly synchronised
+       clocks on client and server *)
     Ptime.sub_span now (Ptime.Span.of_int_s 10),
     Ptime.add_span now (Ptime.Span.of_int_s validity)
   with
@@ -31,40 +35,50 @@ let timestamps validity =
 
 let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Vmm_lwt.read_from_file cert >>= fun cert_cs ->
-  let cert = X509.Encoding.Pem.Certificate.of_pem_cstruct1 cert_cs in
   Vmm_lwt.read_from_file key >>= fun key_cs ->
-  let key = X509.Encoding.Pem.Private_key.of_pem_cstruct1 key_cs in
-  let tmpkey = Nocrypto.Rsa.generate 4096 in
-  let name = Vmm_core.Name.to_string id in
-  let extensions =
-    [ (true, `Key_usage [ `Digital_signature ; `Key_encipherment ])
-    ; (true, `Basic_constraints (false, None))
-    ; (true, `Ext_key_usage [`Client_auth]) ;
-      (false, `Unsupported (Vmm_asn.oid, Vmm_asn.cert_extension_to_cstruct (version, cmd))) ] in
-  let csr =
-    let name = [ `CN name ] in
-    X509.CA.request name ~extensions:[`Extensions extensions] (`RSA tmpkey)
-  in
-  let mycert =
-    let valid_from, valid_until = timestamps 300 in
+  match Certificate.decode_pem cert_cs, Private_key.decode_pem key_cs with
+  | Error (`Msg e), _ ->
+    Lwt.fail_with ("couldn't parse certificate (" ^ cert ^ "): "  ^ e)
+  | _, Error (`Msg e) ->
+    Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
+  | Ok cert, Ok key ->
+    let tmpkey = Nocrypto.Rsa.generate 4096 in
+    let name = Vmm_core.Name.to_string id in
     let extensions =
-      let capub = match key with `RSA key -> Nocrypto.Rsa.pub_of_priv key in
-      extensions @ key_ids (X509.CA.info csr).X509.CA.public_key (`RSA capub)
+      let v = Vmm_asn.cert_extension_to_cstruct (version, cmd) in
+      Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
+                   (add Basic_constraints (true, (false, None))
+                      (add Ext_key_usage (true, [ `Client_auth ])
+                         (singleton (Unsupported Vmm_asn.oid) (false, v)))))
     in
-    let issuer = X509.subject cert in
-    X509.CA.sign csr ~valid_from ~valid_until ~extensions key issuer
-  in
-  let certificates = `Single ([ mycert ; cert ], tmpkey) in
-  X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-  Lwt_unix.gethostbyname host >>= fun host_entry ->
-  let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-  let fd = Lwt_unix.socket host_entry.Lwt_unix.h_addrtype Lwt_unix.SOCK_STREAM 0 in
-  Logs.debug (fun m -> m "connecting to remote host") ;
-  Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun () ->
-  let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-  Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
-  Logs.debug (fun m -> m "finished tls handshake") ;
-  read t
+    let csr =
+      let name = Distinguished_name.(singleton CN name) in
+      let extensions = Signing_request.Ext.(singleton Extensions extensions) in
+      Signing_request.create name ~extensions (`RSA tmpkey)
+    in
+    let mycert =
+      let valid_from, valid_until = timestamps 300 in
+      let extensions =
+        let capub = match key with `RSA key -> Nocrypto.Rsa.pub_of_priv key in
+        key_ids extensions Signing_request.((info csr).public_key) (`RSA capub)
+      in
+      let issuer = Certificate.subject cert in
+      Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer
+    in
+    let certificates = `Single ([ mycert ; cert ], tmpkey) in
+    X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
+    Lwt_unix.gethostbyname host >>= fun host_entry ->
+    let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
+    let fd = Lwt_unix.(socket host_entry.h_addrtype SOCK_STREAM 0) in
+    Logs.debug (fun m -> m "connecting to remote host") ;
+    Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun () ->
+    (* reneg true to allow re-negotiation over the server-authenticated TLS
+       channel (to transport client certificate encrypted), once TLS 1.3 is in
+       (and required) be removed! *)
+    let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+    Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
+    Logs.debug (fun m -> m "finished tls handshake") ;
+    read t
 
 let jump endp cert key ca name cmd =
   Ok (Lwt_main.run (handle endp cert key ca name cmd))
