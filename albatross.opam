@@ -9,7 +9,7 @@ depends: [
   "ocaml" {>= "4.05.0"}
   "dune" {build}
   "lwt" {>= "3.0.0"}
-  "ipaddr" {>= "2.9.0"}
+  "ipaddr" {>= "4.0.0"}
   "hex"
   "cstruct"
   "logs"
@@ -24,7 +24,7 @@ depends: [
   "nocrypto"
   "asn1-combinators" {>= "0.2.0"}
   "duration"
-  "decompress" {>= "0.8.1"}
+  "decompress" {>= "0.9.0"}
   "checkseum"
 ]
 
