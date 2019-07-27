@@ -24,8 +24,8 @@ let projections_of asn =
   (decode_strict c, Asn.encode c)
 
 let ipv4 =
-  let f cs = Ipaddr.V4.of_bytes_exn (Cstruct.to_string cs)
-  and g ip = Cstruct.of_string (Ipaddr.V4.to_bytes ip)
+  let f cs = Ipaddr.V4.of_octets_exn (Cstruct.to_string cs)
+  and g ip = Cstruct.of_string (Ipaddr.V4.to_octets ip)
   in
   Asn.S.map f g Asn.S.octet_string
 
