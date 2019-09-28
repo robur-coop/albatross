@@ -57,17 +57,17 @@ let set_block_usage t name active =
     then invalid_arg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive"))
     else fst (Vmm_trie.insert name (size, active) t)
 
-let use_block t name vm active =
-  match vm.Unikernel.config.Unikernel.block_device with
-  | None -> t
-  | Some block ->
-    let block_name = Name.block_name name block in
-    set_block_usage t block_name active
+let use_blocks t name vm active =
+  match vm.Unikernel.config.Unikernel.block_devices with
+  | [] -> t
+  | blocks ->
+    let block_names = List.map (Name.block_name name) blocks in
+    List.fold_left (fun t' n -> set_block_usage t' n active) t block_names
 
 let remove_vm t name = match find_vm t name with
   | None -> Error (`Msg "unknown vm")
   | Some vm ->
-    let block_devices = use_block t.block_devices name vm false in
+    let block_devices = use_blocks t.block_devices name vm false in
     let unikernels = Vmm_trie.remove name t.unikernels in
     Ok { t with block_devices ; unikernels }
 
@@ -93,7 +93,7 @@ let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.confi
     Error (`Msg "maximum allowed memory reached")
   else if not (IS.mem vm.Unikernel.cpuid p.Policy.cpuids) then
     Error (`Msg "CPUid is not allowed by policy")
-  else if not (List.for_all (flipped_set_mem p.Policy.bridges) vm.Unikernel.network_interfaces) then
+  else if not (List.for_all (flipped_set_mem p.Policy.bridges) vm.Unikernel.bridges) then
     Error (`Msg "network not allowed by policy")
   else Ok ()
 
@@ -105,17 +105,18 @@ let check_vm t name vm =
     | Some p ->
       let used = vm_usage t dom in
       check_policy p used vm
-  and block_ok = match vm.Unikernel.block_device with
-    | None -> Ok ()
-    | Some block ->
-       let block_name = Name.block_name name block in
-       match find_block t block_name with
-       | None -> Error (`Msg "block device not found")
-       | Some (_, active) ->
-         if active then
-           Error (`Msg "block device already in use")
-         else
-           Ok ()
+  and block_ok =
+    List.fold_left (fun r block ->
+        r >>= fun () ->
+        let block_name = Name.block_name name block in
+        match find_block t block_name with
+        | None -> Error (`Msg "block device not found")
+        | Some (_, active) ->
+          if active then
+            Error (`Msg "block device already in use")
+          else
+            Ok ())
+      (Ok ()) vm.block_devices
   and vm_ok = match find_vm t name with
     | None -> Ok ()
     | Some _ -> Error (`Msg "vm with same name already exists")
@@ -127,7 +128,7 @@ let check_vm t name vm =
 let insert_vm t name vm =
   let unikernels, old = Vmm_trie.insert name vm t.unikernels in
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
-  let block_devices = use_block t.block_devices name vm true in
+  let block_devices = use_blocks t.block_devices name vm true in
   { t with unikernels ; block_devices }
 
 let check_block t name size =
@@ -207,7 +208,7 @@ let check_vms t name p =
     Vmm_trie.fold name t.unikernels
       (fun _ vm (bridges, cpuids) ->
          let config = vm.Unikernel.config in
-         (String.Set.(union (of_list config.Unikernel.network_interfaces) bridges),
+         (String.Set.(union (of_list config.Unikernel.bridges) bridges),
           IS.add config.Unikernel.cpuid cpuids))
       (String.Set.empty, IS.empty)
   in

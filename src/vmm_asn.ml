@@ -207,7 +207,13 @@ let log_event =
     | `C1 () -> `Startup
     | `C2 (name, ip, port) -> `Login (to_name name, ip, port)
     | `C3 (name, ip, port) -> `Logout (to_name name, ip, port)
-    | `C4 (name, pid, taps, block) -> `Unikernel_start (to_name name, pid, taps, block)
+    | `C4 (name, pid, taps, blocks) ->
+      let blocks = List.map (fun (name, dev) ->
+          name, match Name.of_string dev with
+          | Error _ -> Name.append_exn "name" Name.(append_exn "invalid" root)
+          | Ok id -> id) blocks
+      in
+      `Unikernel_start (to_name name, pid, taps, blocks)
     | `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
@@ -220,7 +226,11 @@ let log_event =
     | `Startup -> `C1 ()
     | `Login (name, ip, port) -> `C2 (of_name name, ip, port)
     | `Logout (name, ip, port) -> `C3 (of_name name, ip, port)
-    | `Unikernel_start (name, pid, taps, block) -> `C4 (of_name name, pid, taps, block)
+    | `Unikernel_start (name, pid, taps, blocks) ->
+      let blocks =
+        List.map (fun (name, dev) -> name, Name.to_string dev) blocks
+      in
+      `C4 (of_name name, pid, taps, blocks)
     | `Unikernel_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
@@ -244,8 +254,16 @@ let log_event =
            (explicit 3 (sequence4
                          (required ~label:"name" (sequence_of utf8_string))
                          (required ~label:"pid" int)
-                         (required ~label:"taps" (sequence_of utf8_string))
-                         (optional ~label:"block" utf8_string)))
+                         (required ~label:"taps"
+                            (sequence_of
+                               (sequence2
+                                  (required ~label:"bridge" utf8_string)
+                                  (required ~label:"tap" utf8_string))))
+                         (required ~label:"blocks"
+                            (sequence_of
+                               (sequence2
+                                  (required ~label:"name" utf8_string)
+                                  (required ~label:"device" utf8_string))))))
            (explicit 4 (sequence3
                           (required ~label:"name" (sequence_of utf8_string))
                           (required ~label:"pid" int)
@@ -266,21 +284,25 @@ let log_cmd =
 
 let unikernel_config =
   let open Unikernel in
-  let f (cpuid, memory, block_device, network_interfaces, image, argv) =
-    let network_interfaces = match network_interfaces with None -> [] | Some xs -> xs in
-    { cpuid ; memory ; block_device ; network_interfaces ; image ; argv }
+  let f (image, cpuid, memory, blocks, bridges, argv) =
+    let bridges = match bridges with None -> [] | Some xs -> xs
+    and block_devices = match blocks with None -> [] | Some xs -> xs
+    in
+    { cpuid ; memory ; block_devices ; bridges ; image ; argv }
   and g vm =
-    let network_interfaces = match vm.network_interfaces with [] -> None | xs -> Some xs in
-    (vm.cpuid, vm.memory, vm.block_device, network_interfaces, vm.image, vm.argv)
+    let bridges = match vm.bridges with [] -> None | xs -> Some xs
+    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
+    in
+    (vm.image, vm.cpuid, vm.memory, blocks, bridges, vm.argv)
   in
   Asn.S.map f g @@
   Asn.S.(sequence6
+           (required ~label:"image" image)
            (required ~label:"cpu" int)
            (required ~label:"memory" int)
-           (optional ~label:"block" utf8_string)
-           (optional ~label:"network_interfaces" (sequence_of utf8_string))
-           (required ~label:"image" image)
-           (optional ~label:"arguments" (sequence_of utf8_string)))
+           (optional ~label:"blocks" (explicit 0 (sequence_of utf8_string)))
+           (optional ~label:"bridges" (explicit 1 (sequence_of utf8_string)))
+           (optional ~label:"arguments"(explicit 2 (sequence_of utf8_string))))
 
 let unikernel_cmd =
   let f = function

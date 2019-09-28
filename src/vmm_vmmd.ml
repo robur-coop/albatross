@@ -105,7 +105,7 @@ let setup_stats t name vm =
     let name = match Vmm_unix.vm_device vm with
       | Error _ -> ""
       | Ok name -> name
-    and ifs = Unikernel.(List.combine vm.config.network_interfaces vm.taps)
+    and ifs = Unikernel.(List.combine vm.config.bridges vm.taps)
     in
     `Stats_add (name, vm.Unikernel.pid, ifs)
   in
@@ -138,17 +138,23 @@ let handle_create t hdr name vm_config =
        - update resources
        --> if either the first or second fails, then the fail continuation
            below needs to be called *)
-    let block_device = match vm_config.Unikernel.block_device with
-      | None -> None
-      | Some block -> Some (Name.block_name name block)
-    in
     Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
-    Vmm_unix.exec name vm_config taps block_device >>| fun vm ->
+    let ifs = List.combine vm_config.bridges taps
+    and block_devices =
+      List.map (fun d -> d, Name.block_name name d)
+        vm_config.Unikernel.block_devices
+    in
+    Vmm_unix.exec name vm_config ifs block_devices >>| fun vm ->
     Logs.debug (fun m -> m "exec()ed vm") ;
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
     dump_unikernels t ;
-    let t, log_out = log t name (`Unikernel_start (name, vm.Unikernel.pid, vm.Unikernel.taps, None)) in
+    let t, log_out =
+      let start =
+        `Unikernel_start (name, vm.Unikernel.pid, ifs, block_devices)
+      in
+      log t name start
+    in
     let t, stat_out = setup_stats t name vm in
     (t, stat_out, log_out, (hdr, `Success (`String "created VM")), name, vm)
   and fail () =

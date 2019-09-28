@@ -146,7 +146,7 @@ let prepare name vm =
       acc >>= fun acc ->
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
-    (Ok []) vm.Unikernel.network_interfaces >>= fun taps ->
+    (Ok []) vm.Unikernel.bridges >>= fun taps ->
   Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
@@ -170,22 +170,16 @@ let cpuset cpu =
     Ok ([ "taskset" ; "-c" ; cpustring ])
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
-let exec name config taps block =
-  (match taps, block with
-   | [], None -> Ok "none"
-   | [_], None -> Ok "net"
-   | [], Some _ -> Ok "block"
-   | [_], Some _ -> Ok "block-net"
-   | _, _ -> Error (`Msg "cannot handle multiple network interfaces")) >>= fun bin ->
-  let net = List.map (fun t -> "--net=" ^ t) taps
-  and block = match block with None -> [] | Some dev -> [ "--disk=" ^ Fpath.to_string (block_file dev) ]
+let exec name config bridge_taps blocks =
+  let net = List.map (fun (bridge, tap) -> "--net:" ^ bridge ^ "=" ^ tap) bridge_taps
+  and blocks = List.map (fun (name, dev) -> "--disk:" ^ name ^ "=" ^ Fpath.to_string (block_file dev)) blocks
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   cpuset config.Unikernel.cpuid >>= fun cpuset ->
   let cmd =
-    Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt" + bin) % mem %%
-             of_list net %% of_list block %
+    Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt") % mem %%
+             of_list net %% of_list blocks %
              "--" % p (Name.image_file name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
@@ -202,6 +196,7 @@ let exec name config taps block =
     (* we gave a copy (well, two copies) of that file descriptor to the solo5
        process and don't really need it here anymore... *)
     close_no_err stdout ;
+    let taps = snd (List.split bridge_taps) in
     Ok Unikernel.{ config ; cmd ; pid ; taps }
   with
     Unix.Unix_error (e, _, _) ->

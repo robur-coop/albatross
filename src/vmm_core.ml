@@ -157,8 +157,8 @@ module Unikernel = struct
   type config = {
     cpuid : int ;
     memory : int ;
-    block_device : string option ;
-    network_interfaces : string list ;
+    block_devices : string list ;
+    bridges : string list ;
     image : typ * Cstruct.t ;
     argv : string list option ;
   }
@@ -168,10 +168,10 @@ module Unikernel = struct
     Fmt.pf ppf "%a: %d bytes" pp_typ typ l
 
   let pp_config ppf (vm : config) =
-    Fmt.pf ppf "cpu %d, %d MB memory, block device %a@ bridge %a, image %a, argv %a"
+    Fmt.pf ppf "cpu %d, %d MB memory, block devices %a@ bridge %a, image %a, argv %a"
       vm.cpuid vm.memory
-      Fmt.(option ~none:(unit "no") string) vm.block_device
-      Fmt.(list ~sep:(unit ", ") string) vm.network_interfaces
+      Fmt.(list ~sep:(unit ", ") string) vm.block_devices
+      Fmt.(list ~sep:(unit ", ") string) vm.bridges
       pp_image vm.image
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
@@ -184,8 +184,9 @@ module Unikernel = struct
 
   let pp ppf vm =
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a"
-      vm.pid Fmt.(list ~sep:(unit ", ") string) vm.taps
-      Fmt.(option ~none:(unit "no") string) vm.config.block_device
+      vm.pid
+      Fmt.(list ~sep:(unit ", ") string) vm.taps
+      Fmt.(list ~sep:(unit ", ") string) vm.config.block_devices
       Bos.Cmd.pp vm.cmd
 end
 
@@ -284,7 +285,7 @@ module Log = struct
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Unikernel_start of Name.t * int * string list * string option
+    | `Unikernel_start of Name.t * int * (string * string) list * (string * Name.t) list
     | `Unikernel_stop of Name.t * int * process_exit
     | `Hup
   ]
@@ -301,10 +302,10 @@ module Log = struct
     | `Startup -> Fmt.string ppf "startup"
     | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp ip port
     | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp ip port
-    | `Unikernel_start (name, pid, taps, block) ->
-      Fmt.pf ppf "%a started %d (tap %a, block %a)"
-        Name.pp name pid Fmt.(list ~sep:(unit "; ") string) taps
-        Fmt.(option ~none:(unit "no") string) block
+    | `Unikernel_start (name, pid, taps, blocks) ->
+      Fmt.pf ppf "%a started %d (taps %a, block %a)"
+        Name.pp name pid Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string string)) taps
+        Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string Name.pp)) blocks
     | `Unikernel_stop (name, pid, code) ->
       Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code
     | `Hup -> Fmt.string ppf "hup"

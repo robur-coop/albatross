@@ -60,8 +60,8 @@ module Unikernel : sig
   type config = {
     cpuid : int;
     memory : int;
-    block_device : string option;
-    network_interfaces : string list;
+    block_devices : string list;
+    bridges : string list;
     image : typ * Cstruct.t;
     argv : string list option;
   }
@@ -154,7 +154,7 @@ module Log : sig
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Unikernel_start of Name.t * int * string list * string option
+    | `Unikernel_start of Name.t * int * (string * string) list * (string * Name.t) list
     | `Unikernel_stop of Name.t * int * process_exit
     | `Hup
   ]

@@ -17,7 +17,7 @@ let setup_log style_renderer level =
   Logs.set_level level;
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
-let create_vm force image cpuid memory argv block_device network_interfaces compression =
+let create_vm force image cpuid memory argv block_devices bridges compression =
   let open Rresult.R.Infix in
   Bos.OS.File.read (Fpath.v image) >>| fun image ->
   let image = match compression with
@@ -27,7 +27,7 @@ let create_vm force image cpuid memory argv block_device network_interfaces comp
       `Hvt_amd64_compressed, Cstruct.of_string img
   and argv = match argv with [] -> None | xs -> Some xs
   in
-  let config = Unikernel.{ cpuid ; memory ; block_device ; network_interfaces ; argv ; image } in
+  let config = Unikernel.{ cpuid ; memory ; block_devices ; bridges ; argv ; image } in
   if force then `Unikernel_force_create config else `Unikernel_create config
 
 let policy vms memory cpus block bridges =
@@ -148,7 +148,7 @@ let args =
 
 let block =
   let doc = "Block device name" in
-  Arg.(value & opt (some string) None & info [ "block" ] ~doc)
+  Arg.(value & opt_all string [] & info [ "block" ] ~doc)
 
 let net =
   let doc = "Network device names" in

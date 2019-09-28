@@ -6,8 +6,8 @@ open Vmm_core
 
 val prepare : Name.t -> Unikernel.config -> (string list, [> R.msg ]) result
 
-val exec : Name.t -> Unikernel.config -> string list -> Name.t option ->
-  (Unikernel.t, [> R.msg ]) result
+val exec : Name.t -> Unikernel.config -> (string * string) list ->
+  (string * Name.t) list -> (Unikernel.t, [> R.msg ]) result
 
 val free_system_resources : Name.t -> string list -> (unit, [> R.msg ]) result
 
