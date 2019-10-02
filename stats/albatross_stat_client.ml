@@ -1,11 +1,28 @@
 open Vmm_core
 open Albatross_stats_pure
 
-let timer pid vmmapi =
+let old_rt = ref 0L
+
+let timer pid vmmapi interval =
   let rusage = sysctl_rusage pid in
   Logs.app (fun m -> m "sysctl rusage: %a" Stats.pp_rusage_mem rusage) ;
   let kinfo_mem = sysctl_kinfo_mem pid in
   Logs.app (fun m -> m "kinfo mem: %a" Stats.pp_kinfo_mem kinfo_mem) ;
+  let delta, pct =
+    if !old_rt = 0L then
+      let delta = kinfo_mem.Stats.runtime in
+      let now = Unix.gettimeofday () in
+      let start =
+        Int64.to_float (fst kinfo_mem.start) +.
+        ((float_of_int (snd kinfo_mem.start)) /. 1_000_000_000.)
+      in
+      delta, Int64.to_float delta /. ((now -. start) *. 1_000_000.)
+    else
+      let delta = Int64.sub kinfo_mem.Stats.runtime !old_rt in
+      delta, Int64.to_float delta /. (interval *. 1_000_000.)
+  in
+  Logs.app (fun m -> m "delta %Lu pct %f" delta pct) ;
+  old_rt := kinfo_mem.Stats.runtime;
   match vmmapi with
   | None -> ()
   | Some vmctx -> match wrap vmmapi_stats vmctx with
@@ -31,7 +48,7 @@ let jump _ pid name interval =
           fill_descr vmctx ;
           Some vmctx
     in
-    let _ev = Lwt_engine.on_timer interval true (fun _e -> timer pid vmmapi) in
+    let _ev = Lwt_engine.on_timer interval true (fun _e -> timer pid vmmapi interval) in
     let t, _u = Lwt.task () in
     t)
 

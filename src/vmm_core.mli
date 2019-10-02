@@ -108,6 +108,9 @@ module Stats : sig
     tsize : int64 ;
     dsize : int64 ;
     ssize : int64 ;
+    runtime : int64 ;
+    cow : int ;
+    start : (int64 * int) ;
   }
 
   val pp_kinfo_mem : kinfo_mem Fmt.t

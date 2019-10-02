@@ -222,11 +222,14 @@ module Stats = struct
     tsize : int64 ;
     dsize : int64 ;
     ssize : int64 ;
+    runtime : int64 ;
+    cow : int ;
+    start : (int64 * int) ;
   }
 
   let pp_kinfo_mem ppf t =
-    Fmt.pf ppf "virtual-size %Lu rss %Lu text-size %Lu data-size %Lu stack-size %Lu"
-      t.vsize t.rss t.tsize t.dsize t.ssize
+    Fmt.pf ppf "virtual-size %Lu rss %Lu text-size %Lu data-size %Lu stack-size %Lu runtime %Lu cow %u start %Lu.%d"
+      t.vsize t.rss t.tsize t.dsize t.ssize t.runtime t.cow (fst t.start) (snd t.start)
 
   type vmm = (string * int64) list
   let pp_vmm ppf vmm =

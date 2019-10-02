@@ -107,6 +107,9 @@ module P = struct
         "tsize", i64 mem.tsize ;
         "dsize", i64 mem.dsize ;
         "ssize", i64 mem.ssize ;
+        "cow_fauls", string_of_int mem.cow ;
+        "runtime", i64 mem.runtime ;
+        "start", tv mem.start ;
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in

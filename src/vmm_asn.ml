@@ -122,18 +122,21 @@ let ru =
 
 let kinfo_mem =
   let open Stats in
-  let f (vsize, rss, tsize, dsize, ssize) =
-    { vsize ; rss ; tsize ; dsize ; ssize }
+  let f (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))) =
+    { vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
   and g t =
-    (t.vsize, t.rss, t.tsize, t.dsize, t.ssize)
+    (t.vsize, (t.rss, (t.tsize, (t.dsize, (t.ssize, (t.runtime, (t.cow, t.start)))))))
   in
   Asn.S.map f g @@
-  Asn.S.(sequence5
-         (required ~label:"bsize" int64)
-         (required ~label:"rss" int64)
-         (required ~label:"tsize" int64)
-         (required ~label:"dsize" int64)
-         (required ~label:"ssize" int64))
+  Asn.S.(sequence @@
+           (required ~label:"bsize" int64)
+         @ (required ~label:"rss" int64)
+         @ (required ~label:"tsize" int64)
+         @ (required ~label:"dsize" int64)
+         @ (required ~label:"ssize" int64)
+         @ (required ~label:"runtime" int64)
+         @ (required ~label:"cow" int)
+        -@ (required ~label:"start" timeval))
 
 (* TODO is this good? *)
 let int32 =

@@ -23,7 +23,7 @@
 
 CAMLprim value vmmanage_sysctl_kinfo_mem (value pid_r) {
   CAMLparam1(pid_r);
-  CAMLlocal3(res, utime, stime);
+  CAMLlocal2(res, start);
   int name[4];
   int error;
   size_t len;
@@ -39,12 +39,18 @@ CAMLprim value vmmanage_sysctl_kinfo_mem (value pid_r) {
   if (error < 0)
     uerror("sysctl", Nothing);
 
-  res = caml_alloc(5, 0);
+  res = caml_alloc(8, 0);
   Store_field (res, 0, Val64(p.ki_size));
   Store_field (res, 1, Val64(p.ki_rssize));
   Store_field (res, 2, Val64(p.ki_tsize));
   Store_field (res, 3, Val64(p.ki_dsize));
   Store_field (res, 4, Val64(p.ki_ssize));
+  Store_field (res, 5, Val64(p.ki_runtime));
+  Store_field (res, 6, Val_int(p.ki_cow));
+  start = caml_alloc(2, 0);
+  Store_field (start, 0, Val64(p.ki_start.tv_sec));
+  Store_field (start, 1, Val_int(p.ki_start.tv_usec));
+  Store_field (res, 7, start);
 
   CAMLreturn(res);
 }
