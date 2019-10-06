@@ -20,8 +20,7 @@ for f in albatross_log \
 	 albatross_console \
 	 albatross_daemon \
 	 albatross_influx \
-	 albatross_tls \
-	 albatross_x
+	 albatross_tls
 do install -U $basedir/packaging/rc.d/$f $rootdir/usr/local/etc/rc.d/$f; done
 
 # stage albatross app binaries
