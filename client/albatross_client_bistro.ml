@@ -52,7 +52,9 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
                          (singleton (Unsupported Vmm_asn.oid) (false, v)))))
     in
     let csr =
-      let name = Distinguished_name.(singleton CN name) in
+      let name =
+        [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
+      in
       let extensions = Signing_request.Ext.(singleton Extensions extensions) in
       Signing_request.create name ~extensions (`RSA tmpkey)
     in

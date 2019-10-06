@@ -39,7 +39,9 @@ let sign ?dbname ?certname extensions issuer key csr delta =
   (match certname with
    | Some x -> Ok x
    | None ->
-     match X509.(Distinguished_name.find CN Signing_request.((info csr).subject)) with
+     match
+       X509.Distinguished_name.common_name X509.Signing_request.((info csr).subject)
+     with
      | Some name -> Ok name
      | None -> Error (`Msg "couldn't find name (no common name in CSR subject)")) >>= fun certname ->
   timestamps delta >>= fun (valid_from, valid_until) ->

@@ -75,11 +75,11 @@ let help _ man_format cmds = function
 let generate _ name db days sname sdays =
   Nocrypto_entropy_unix.initialize () ;
   priv_key ~bits:4096 None name >>= fun key ->
-  let name = Distinguished_name.(singleton CN name) in
+  let name = [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
   let csr = Signing_request.create name key in
   sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
   priv_key None sname >>= fun skey ->
-  let sname = Distinguished_name.(singleton CN sname) in
+  let sname = [ Distinguished_name.(Relative_distinguished_name.singleton (CN sname)) ] in
   let csr = Signing_request.create sname skey in
   sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
 

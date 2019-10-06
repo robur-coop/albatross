@@ -11,7 +11,8 @@ let csr priv name cmd =
   let ext =
     let v = cert_extension_to_cstruct (version, cmd) in
     X509.Extension.(singleton (Unsupported oid) (false, v))
-  and name = X509.Distinguished_name.(singleton CN name)
+  and name =
+    [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
   in
   let extensions = X509.Signing_request.Ext.(singleton Extensions ext) in
   X509.Signing_request.create name ~extensions priv

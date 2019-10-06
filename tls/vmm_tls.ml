@@ -9,7 +9,7 @@ let cert_name cert =
   match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
   | None -> Ok None
   | Some (_, data) ->
-    match Distinguished_name.(find CN (Certificate.subject cert)) with
+    match X509.(Distinguished_name.common_name (Certificate.subject cert)) with
     | Some name -> Ok (Some name)
     | None -> match Vmm_asn.cert_extension_of_cstruct data with
       | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension")
