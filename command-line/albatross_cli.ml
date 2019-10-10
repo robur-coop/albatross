@@ -86,9 +86,9 @@ let opt_vm_name =
   let doc = "name of virtual machine." in
   Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
 
-let compress_level =
+let compress_level default =
   let doc = "Compression level (0 for no compression, 1-3 fixed with static huffman, 4-9 dynamic with canonic huffman)" in
-  Arg.(value & opt int 9 & info [ "compression-level" ] ~doc)
+  Arg.(value & opt int default & info [ "compression-level" ] ~doc)
 
 let force =
   let doc = "force VM creation." in
