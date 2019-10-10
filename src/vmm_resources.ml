@@ -31,17 +31,61 @@ let empty = {
   unikernels = Vmm_trie.empty
 }
 
+let policy_metrics =
+  let open Metrics in
+  let doc = "VMM resource policies" in
+  let data policy =
+    Data.v [
+      uint "maximum unikernels" policy.Policy.vms ;
+      uint "maximum memory" policy.Policy.memory ;
+      uint "maximum block" (match policy.Policy.block with None -> 0 | Some x -> x)
+    ]
+  in
+  let tag = Tags.string "domain" in
+  Src.v ~doc ~tags:Tags.[tag] ~data "vmm-policies"
+
+let no_policy = Policy.{ vms = 0 ; cpuids = IS.empty ; memory = 0 ; block = None ; bridges = Astring.String.Set.empty }
+
 (* we should confirm the following invariant: Vm or Block have no siblings *)
 
 let block_usage t name =
   Vmm_trie.fold name t.block_devices
-    (fun _ (size, _) blockspace -> blockspace + size)
-    0
+    (fun _ (size, act) (active, inactive) ->
+       if act then active + size, inactive else active, inactive + size)
+    (0, 0)
+
+let total_block_usage t name =
+  let act, inact = block_usage t name in
+  act + inact
 
 let vm_usage t name =
   Vmm_trie.fold name t.unikernels
     (fun _ vm (vms, memory) -> (succ vms, memory + vm.Unikernel.config.Unikernel.memory))
     (0, 0)
+
+let unikernel_metrics =
+  let open Metrics in
+  let doc = "VMM unikernels" in
+  let data (t, name) =
+    let vms, memory = vm_usage t name
+    and act, inact = block_usage t name
+    in
+    Data.v [
+      uint "attached used block" act ;
+      uint "unattached used block" inact ;
+      uint "total used block" (act + inact) ;
+      uint "running unikernels" vms ;
+      uint "used memory" memory
+    ]
+  in
+  let tag = Tags.string "domain" in
+  Src.v ~doc ~tags:Tags.[tag] ~data "vmm-unikernels"
+
+let rec report_vms t name =
+  let name' = Name.drop name in
+  let str = if Name.is_root name' then "." else Name.to_string name' in
+  Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, name'));
+  if Name.is_root name' then () else report_vms t name'
 
 let find_vm t name = Vmm_trie.find name t.unikernels
 
@@ -69,12 +113,15 @@ let remove_vm t name = match find_vm t name with
   | Some vm ->
     let block_devices = use_blocks t.block_devices name vm false in
     let unikernels = Vmm_trie.remove name t.unikernels in
-    Ok { t with block_devices ; unikernels }
+    let t' = { t with block_devices ; unikernels } in
+    report_vms t' name;
+    Ok t'
 
 let remove_policy t name = match find_policy t name with
   | None -> Error (`Msg "unknown policy")
   | Some _ ->
     let policies = Vmm_trie.remove name t.policies in
+    Metrics.add policy_metrics (fun x -> x (Name.to_string name)) (fun d -> d no_policy);
     Ok { t with policies }
 
 let remove_block t name = match find_block t name with
@@ -84,7 +131,9 @@ let remove_block t name = match find_block t name with
       Error (`Msg "block device in use")
     else
       let block_devices = Vmm_trie.remove name t.block_devices in
-      Ok { t with block_devices }
+      let t' = { t with block_devices } in
+      report_vms t' name;
+      Ok t'
 
 let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.config) =
   if succ running_vms > p.Policy.vms then
@@ -129,7 +178,9 @@ let insert_vm t name vm =
   let unikernels, old = Vmm_trie.insert name vm t.unikernels in
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
   let block_devices = use_blocks t.block_devices name vm true in
-  { t with unikernels ; block_devices }
+  let t' = { t with unikernels ; block_devices } in
+  report_vms t' name;
+  t'
 
 let check_block t name size =
   let block_ok = match find_block t name with
@@ -140,7 +191,7 @@ let check_block t name size =
     match find_policy t dom with
     | None -> Ok ()
     | Some p ->
-      let used = block_usage t dom in
+      let used = total_block_usage t dom in
       match p.Policy.block with
       | None -> Error (`Msg "no block devices are allowed by policy")
       | Some limit ->
@@ -155,7 +206,9 @@ let check_block t name size =
 let insert_block t name size =
   check_block t name size >>= fun () ->
   let block_devices = fst (Vmm_trie.insert name (size, false) t.block_devices) in
-  Ok { t with block_devices }
+  let t' = { t with block_devices } in
+  report_vms t' name;
+  Ok t'
 
 let sub_policy ~super ~sub =
   let sub_block sub super =
@@ -202,7 +255,7 @@ let check_policies_below t curname super =
 
 let check_vms t name p =
   let (vms, used_memory) = vm_usage t name
-  and block = block_usage t name
+  and block = total_block_usage t name
   in
   let bridges, cpuids =
     Vmm_trie.fold name t.unikernels
@@ -231,4 +284,5 @@ let insert_policy t name p =
   check_policies_below t name p >>= fun () ->
   check_vms t name p >>= fun () ->
   let policies = fst (Vmm_trie.insert name p t.policies) in
+  Metrics.add policy_metrics (fun x -> x (Name.to_string name)) (fun d -> d p);
   Ok { t with policies }

@@ -41,8 +41,6 @@ EOD;
 mkdir -p /var/run/albatross/util /var/run/albatross/fifo
 chown albatross:albatross /var/run/albatross/util /var/run/albatross/fifo
 chmod 2760 /var/run/albatross/fifo
-chgrp albatross /usr/local/libexec/albatross/albatrossd
-chmod 2750 /usr/local/libexec/albatross/albatrossd
 
 EOD;
     post-deinstall = <<EOD

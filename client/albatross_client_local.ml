@@ -8,12 +8,6 @@ let socket t = function
   | Some x -> x
   | None -> Vmm_core.socket_path t
 
-let connect socket_path =
-  let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-  Lwt_unix.set_close_on_exec c ;
-  Lwt_unix.connect c (Lwt_unix.ADDR_UNIX socket_path) >|= fun () ->
-  c
-
 let process fd =
   Vmm_lwt.read_wire fd >|= function
   | Error _ -> Error ()
@@ -30,18 +24,26 @@ let read fd =
 
 let handle opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
-  connect (socket sock opt_socket) >>= fun fd ->
-  let header = Vmm_commands.{ version ; sequence = 0L ; name } in
-  Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
-  | Error `Exception -> Lwt.return ()
-  | Ok () ->
-    (match next with
-     | `Read -> read fd
-     | `End -> process fd >|= ignore) >>= fun () ->
-    Vmm_lwt.safe_close fd
+  let sockaddr = Lwt_unix.ADDR_UNIX (socket sock opt_socket) in
+  Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
+  | None ->
+    let err =
+      Rresult.R.error_msgf "couldn't connect to %a" Vmm_lwt.pp_sockaddr sockaddr
+    in
+    Lwt.return err
+  | Some fd ->
+    let header = Vmm_commands.{ version ; sequence = 0L ; name } in
+    Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
+    | Error `Exception -> Lwt.return (Error (`Msg "exception"))
+    | Ok () ->
+      (match next with
+       | `Read -> read fd
+       | `End -> process fd >|= ignore) >>= fun () ->
+      Vmm_lwt.safe_close fd >|= fun () ->
+      Ok ()
 
 let jump opt_socket name cmd =
-  Ok (Lwt_main.run (handle opt_socket name cmd))
+  Lwt_main.run (handle opt_socket name cmd)
 
 let info_policy _ opt_socket name =
   jump opt_socket name (`Policy_cmd `Policy_info)

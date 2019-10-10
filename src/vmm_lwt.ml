@@ -7,6 +7,38 @@ let pp_sockaddr ppf = function
   | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
                                          (Unix.string_of_inet_addr addr) port
 
+let safe_close fd =
+  Lwt.catch
+    (fun () -> Lwt_unix.close fd)
+    (fun _ -> Lwt.return_unit)
+
+let server_socket sock =
+  let name = Vmm_core.socket_path sock in
+  (Lwt_unix.file_exists name >>= function
+    | true -> Lwt_unix.unlink name
+    | false -> Lwt.return_unit) >>= fun () ->
+  let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  Lwt_unix.set_close_on_exec s ;
+  let old_umask = Unix.umask 0 in
+  let _ = Unix.umask (old_umask land 0o707) in
+  Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
+  Logs.app (fun m -> m "listening on %s" name);
+  let _ = Unix.umask old_umask in
+  Lwt_unix.listen s 1 ;
+  s
+
+let connect addrtype sockaddr =
+  let c = Lwt_unix.(socket addrtype SOCK_STREAM 0) in
+  Lwt_unix.set_close_on_exec c ;
+  Lwt.catch (fun () ->
+      Lwt_unix.(connect c sockaddr) >|= fun () ->
+      Some c)
+    (fun e ->
+       Logs.warn (fun m -> m "error %s connecting to socket %a"
+                     (Printexc.to_string e) pp_sockaddr sockaddr);
+       safe_close c >|= fun () ->
+       None)
+
 let pp_process_status ppf = function
   | Unix.WEXITED c -> Fmt.pf ppf "exited with %d" c
   | Unix.WSIGNALED s -> Fmt.pf ppf "killed by signal %a" Fmt.Dump.signal s
@@ -100,11 +132,6 @@ let write_wire s wire =
   Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.len data)) ;
   let buf = Cstruct.(to_bytes (append dlen data)) in
   write_raw s buf
-
-let safe_close fd =
-  Lwt.catch
-    (fun () -> Lwt_unix.close fd)
-    (fun _ -> Lwt.return_unit)
 
 let read_from_file file =
   Lwt.catch (fun () ->

@@ -9,12 +9,12 @@ type service = [ `Console | `Log | `Stats | `Vmmd ]
 
 let socket_path t =
   let path = match t with
-    | `Console -> Fpath.(sockdir / "console" + "sock")
-    | `Vmmd -> Fpath.(tmpdir / "vmmd" + "sock")
-    | `Stats -> Fpath.(sockdir / "stat" + "sock")
-    | `Log -> Fpath.(sockdir / "log" + "sock")
+    | `Console -> "console"
+    | `Vmmd -> "vmmd"
+    | `Stats -> "stat"
+    | `Log -> "log"
   in
-  Fpath.to_string path
+  Fpath.to_string Fpath.(sockdir / path + "sock")
 
 let pp_socket ppf t =
   let name = socket_path t in
@@ -52,6 +52,10 @@ module Name = struct
   let to_string ids = String.concat ~sep:"." ids
 
   let to_list x = x
+
+  let drop x = match List.rev x with
+    | [] -> []
+    | _::tl -> List.rev tl
 
   let append_exn lbl x =
     if valid_label lbl then

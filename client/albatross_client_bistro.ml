@@ -10,7 +10,10 @@ let read fd =
   Logs.debug (fun m -> m "reading tls stream") ;
   let rec loop () =
     Vmm_tls_lwt.read_tls fd >>= function
-    | Error _ -> Lwt.return ()
+    | Error `Eof ->
+      Logs.warn (fun m -> m "eof from server");
+      Lwt.return (Ok ())
+    | Error _ -> Lwt.return (Error (`Msg ("read failure")))
     | Ok wire ->
       Albatross_cli.print_result version wire ;
       loop ()
@@ -71,19 +74,25 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
     X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
     Lwt_unix.gethostbyname host >>= fun host_entry ->
     let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-    let fd = Lwt_unix.(socket host_entry.h_addrtype SOCK_STREAM 0) in
-    Logs.debug (fun m -> m "connecting to remote host") ;
-    Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun () ->
-    (* reneg true to allow re-negotiation over the server-authenticated TLS
-       channel (to transport client certificate encrypted), once TLS 1.3 is in
-       (and required) be removed! *)
-    let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-    Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
-    Logs.debug (fun m -> m "finished tls handshake") ;
-    read t
+    let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
+    Vmm_lwt.connect host_entry.h_addrtype sockaddr >>= function
+    | None ->
+      let err =
+        Rresult.R.error_msgf "connection failed to %a" Vmm_lwt.pp_sockaddr sockaddr
+      in
+      Lwt.return err
+    | Some fd ->
+      Logs.debug (fun m -> m "connecting to remote host") ;
+      (* reneg true to allow re-negotiation over the server-authenticated TLS
+         channel (to transport client certificate encrypted), once TLS 1.3 is in
+         (and required) be removed! *)
+      let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+      Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
+      Logs.debug (fun m -> m "finished tls handshake") ;
+      read t
 
 let jump endp cert key ca name cmd =
-  Ok (Lwt_main.run (handle endp cert key ca name cmd))
+  Lwt_main.run (handle endp cert key ca name cmd)
 
 let info_policy _ endp cert key ca name =
   jump endp cert key ca name (`Policy_cmd `Policy_info)

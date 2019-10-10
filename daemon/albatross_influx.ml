@@ -174,28 +174,21 @@ let safe_close s =
        Logs.err (fun m -> m "exception %s while closing" (Printexc.to_string e)) ;
        Lwt.return_unit)
 
-let rec read_sock_write_tcp c ?fd addr addrtype =
+let rec read_sock_write_tcp c ?fd addr =
   match fd with
   | None ->
-    Logs.debug (fun m -> m "new connection to TCP") ;
-    let fd = Lwt_unix.socket addrtype Lwt_unix.SOCK_STREAM 0 in
-    Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
-    Lwt.catch
-      (fun () ->
-         Lwt_unix.connect fd addr >|= fun () ->
-         Logs.debug (fun m -> m "connected to TCP") ;
-         Some fd)
-      (fun e ->
-         let addr', port = match addr with
-           | Lwt_unix.ADDR_INET (ip, port) -> Unix.string_of_inet_addr ip, port
-           | Lwt_unix.ADDR_UNIX addr -> addr, 0
-         in
-         Logs.warn (fun m -> m "error %s connecting to influxd %s:%d, retrying in 5s"
-                       (Printexc.to_string e) addr' port) ;
-         safe_close fd >>= fun () ->
-         Lwt_unix.sleep 5.0 >|= fun () ->
-         None) >>= fun fd ->
-    read_sock_write_tcp c ?fd addr addrtype
+    begin
+      Logs.debug (fun m -> m "new connection to TCP") ;
+      Vmm_lwt.connect Lwt_unix.PF_INET addr >>= function
+      | None ->
+        Logs.warn (fun m -> m "error connecting to influxd %a, retrying in 5s"
+                      Vmm_lwt.pp_sockaddr addr);
+        Lwt_unix.sleep 5.0 >>= fun () ->
+        read_sock_write_tcp c addr
+      | Some fd ->
+        Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
+        read_sock_write_tcp c ~fd addr
+    end
   | Some fd ->
     Logs.debug (fun m -> m "reading from unix socket") ;
     Vmm_lwt.read_wire c >>= function
@@ -223,7 +216,7 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
           Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
           | Ok () ->
             Logs.debug (fun m -> m "wrote successfully") ;
-            read_sock_write_tcp c ~fd addr addrtype
+            read_sock_write_tcp c ~fd addr
           | Error e ->
             Logs.err (fun m -> m "error %s while writing to tcp (%s)"
                          (str_of_e e) name) ;
@@ -233,7 +226,7 @@ let rec read_sock_write_tcp c ?fd addr addrtype =
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
       Lwt.return (Some fd) >>= fun fd ->
-      read_sock_write_tcp c ?fd addr addrtype
+      read_sock_write_tcp c ?fd addr
 
 let query_sock vm c =
   let header = Vmm_commands.{ version = my_version ; sequence = !command ; name = vm } in
@@ -241,70 +234,59 @@ let query_sock vm c =
   Logs.debug (fun m -> m "%Lu requesting %a via socket" !command Name.pp vm) ;
   Vmm_lwt.write_wire c (header, `Command (`Stats_cmd `Stats_subscribe))
 
-let rec maybe_connect stat_socket =
-  let c = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-  Lwt.catch
-    (fun () ->
-       Logs.debug (fun m -> m "connecting to %s" stat_socket) ;
-       Lwt_unix.(connect c (ADDR_UNIX stat_socket)) >>= fun () ->
-       Logs.debug (fun m -> m "connected") ;
-       Lwt.return c)
-    (fun e ->
-       Logs.warn (fun m -> m "error %s connecting to socket %s"
-                     (Printexc.to_string e) stat_socket) ;
-       safe_close c >>= fun () ->
-       Lwt_unix.sleep (float_of_int 5) >>= fun () ->
-       maybe_connect stat_socket)
+let rec maybe_connect () =
+  let sockaddr = Lwt_unix.ADDR_UNIX (socket_path `Stats) in
+  Logs.debug (fun m -> m "connecting to %a" Vmm_lwt.pp_sockaddr sockaddr);
+  Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
+  | None ->
+    Logs.warn (fun m -> m "error connecting to socket %a" Vmm_lwt.pp_sockaddr sockaddr);
+    Lwt_unix.sleep 5. >>= fun () ->
+    maybe_connect ()
+  | Some c ->
+    Logs.debug (fun m -> m "connected");
+    Lwt.return c
 
-let client stat_socket influxhost influxport vm =
-  (* figure out address of influx *)
-  Lwt_unix.gethostbyname influxhost >>= fun host_entry ->
-  let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-  let addr = Lwt_unix.ADDR_INET (host_inet_addr, influxport)
-  and addrtype = host_entry.Lwt_unix.h_addrtype
-  in
+let client influx vm =
+  match influx with
+  | None -> Lwt.return (Error (`Msg "influx host not provided"))
+  | Some (ip, port) ->
+    let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.V4.to_inet_addr ip, port) in
 
-  (* loop *)
-  (* the query task queries the stat_socket at each
-     - if this fails, closing is set to true (and unit is returned)
+    (* loop *)
+    (* the query task queries the stat_socket at each
+       - if this fails, closing is set to true (and unit is returned)
 
-     the read_sock reads the stat_socket, and forwards to a TCP socket
-     - if closing is true, the TCP socket is closed and unit is returned
-     - if read on the unix domain socket fails, closing is set to true
+       the read_sock reads the stat_socket, and forwards to a TCP socket
+       - if closing is true, the TCP socket is closed and unit is returned
+       - if read on the unix domain socket fails, closing is set to true
        (and unit is returned) *)
-  (* connection to the unix domain socket is managed in this loop only:
-     - maybe_connect attempts to establishes to it
-     - query_sock/read_sock_write_tcp write an read from it
-     - on failure in read or write, the TCP connection is closed, and loop
+    (* connection to the unix domain socket is managed in this loop only:
+       - maybe_connect attempts to establishes to it
+       - query_sock/read_sock_write_tcp write an read from it
+       - on failure in read or write, the TCP connection is closed, and loop
        takes control: safe_close, maybe_connect, rinse, repeat *)
 
   let rec loop () =
     (* start a socket connection to vmm_stats *)
-    maybe_connect stat_socket >>= fun c ->
+    maybe_connect () >>= fun c ->
     query_sock vm c >>= function
     | Error e ->
-      Logs.err (fun m -> m "error %s while writing to stat socket" (str_of_e e)) ;
-      Lwt.return_unit
+      let err =
+        Rresult.R.error_msgf "error %s while writing to stat socket" (str_of_e e)
+      in
+      Lwt.return err
     | Ok () ->
-      read_sock_write_tcp c addr addrtype >>= fun restart ->
-      if restart then loop () else Lwt.return_unit
+      read_sock_write_tcp c addr >>= fun restart ->
+      if restart then loop () else Lwt.return (Ok ())
   in
   loop ()
 
-let run_client _ socket (influxhost, influxport) vm =
+let run_client _ influx vm =
   Sys.(set_signal sigpipe Signal_ignore) ;
-  Lwt_main.run (client socket influxhost influxport vm)
+  Lwt_main.run (client influx vm)
 
 open Cmdliner
 open Albatross_cli
-
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Stats) & info [ "socket" ] ~doc)
-
-let influx =
-  Arg.(required & pos 0 (some host_port) None & info [] ~docv:"INFLUXHOST:INFLUXPORT"
-         ~doc:"the influx hostname:port to connect to")
 
 let cmd =
   let doc = "Albatross Influx connector" in
@@ -312,7 +294,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(pure run_client $ setup_log $ socket $ influx $ opt_vm_name),
+  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name)),
   Term.info "albatross_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =

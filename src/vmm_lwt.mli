@@ -2,6 +2,10 @@
 
 val pp_sockaddr : Format.formatter -> Lwt_unix.sockaddr -> unit
 
+val server_socket : Vmm_core.service -> Lwt_unix.file_descr Lwt.t
+
+val connect : Lwt_unix.socket_domain -> Lwt_unix.sockaddr -> Lwt_unix.file_descr option Lwt.t
+
 val pp_process_status : Format.formatter -> Unix.process_status -> unit
 
 val ret : Unix.process_status -> Vmm_core.process_exit

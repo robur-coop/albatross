@@ -46,6 +46,8 @@ let rec wrap f arg =
     Logs.err (fun m -> m "exception %s" (Printexc.to_string e)) ;
     None
 
+let vmmapi = Albatross_cli.conn_metrics "vmmapi"
+
 let remove_vmid t vmid =
   Logs.info (fun m -> m "removing vmid %a" Vmm_core.Name.pp vmid) ;
   match Vmm_trie.find vmid t.vmid_pid with
@@ -53,7 +55,7 @@ let remove_vmid t vmid =
   | Some pid ->
     Logs.info (fun m -> m "removing pid %d" pid) ;
     (match IM.find_opt pid t.pid_nic with
-     | Some (Ok vmctx, _, _) -> ignore (wrap vmmapi_close vmctx)
+     | Some (Ok vmctx, _, _) -> ignore (wrap vmmapi_close vmctx) ; vmmapi `Close
      | _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
     and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
@@ -84,6 +86,7 @@ let open_vmmapi ~retries name =
       Logs.warn (fun m -> m "(ignored, %d attempts left) vmmapi_open failed for %s" left name) ;
       Error left
     | Some vmctx ->
+      vmmapi `Open;
       Logs.info (fun m -> m "vmmapi_open succeeded for %s" name) ;
       fill_descr vmctx ;
       Ok vmctx

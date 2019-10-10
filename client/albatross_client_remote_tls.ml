@@ -6,7 +6,11 @@ let version = `AV3
 
 let rec read_tls_write_cons t =
   Vmm_tls_lwt.read_tls t >>= function
-  | Error _ -> Lwt.return_unit
+  | Error `Eof ->
+    Logs.warn (fun m -> m "eof from server");
+    Lwt.return (Ok ())
+  | Error _ ->
+    Lwt.return (Error (`Msg ("read failure")))
   | Ok wire ->
     Albatross_cli.print_result version wire ;
     read_tls_write_cons t
@@ -24,17 +28,25 @@ let client cas host port cert priv_key =
          - ip: connecto to ip and verify hostname *)
     Lwt_unix.gethostbyname host >>= fun host_entry ->
     let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-    let fd = Lwt_unix.socket host_entry.Lwt_unix.h_addrtype Lwt_unix.SOCK_STREAM 0 in
-    Lwt_unix.connect fd (Lwt_unix.ADDR_INET (host_inet_addr, port)) >>= fun _ ->
-    X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
-    let certificates = `Single cert in
-    let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-    Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
-    read_tls_write_cons t)
+    let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
+    Vmm_lwt.connect host_entry.Lwt_unix.h_addrtype sockaddr >>= function
+    | None ->
+      let err =
+        Rresult.R.error_msgf "couldn't connect to %a" Vmm_lwt.pp_sockaddr sockaddr
+      in
+      Lwt.return err
+    | Some fd ->
+      X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
+      let certificates = `Single cert in
+      let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+      Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
+      read_tls_write_cons t)
     (fun exn ->
-       Logs.err (fun m -> m "failed to establish TLS connection: %s"
-                    (Printexc.to_string exn)) ;
-       Lwt.return_unit)
+      let err =
+        Rresult.R.error_msgf "failed to establish TLS connection: %s"
+          (Printexc.to_string exn)
+      in
+      Lwt.return err)
 
 let run_client _ cas cert key (host, port) =
   Printexc.register_printer (function

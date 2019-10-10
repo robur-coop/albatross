@@ -23,7 +23,7 @@ let pp_sockaddr ppf = function
   | Lwt_unix.ADDR_INET (addr, port) -> Fmt.pf ppf "TCP %s:%d"
                                          (Unix.string_of_inet_addr addr) port
 
-let handle s addr () =
+let handle s addr =
   Logs.info (fun m -> m "handling stats connection %a" pp_sockaddr addr) ;
   let rec loop () =
     Vmm_lwt.read_wire s >>= function
@@ -64,20 +64,19 @@ let timer () =
         Vmm_lwt.safe_close s)
     outs
 
-let jump _ file interval =
+let m = Albatross_cli.conn_metrics "unix"
+
+let jump _ interval influx =
   Sys.(set_signal sigpipe Signal_ignore) ;
   let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run
-    ((Lwt_unix.file_exists file >>= function
-       | true -> Lwt_unix.unlink file
-       | false -> Lwt.return_unit) >>= fun () ->
-     let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
-     Lwt_unix.listen s 1 ;
+    (Albatross_cli.init_influx "albatross_stats" influx;
+     Vmm_lwt.server_socket `Stats >>= fun s ->
      let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async timer) in
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
-       Lwt.async (handle cs addr) ;
+       m `Open;
+       Lwt.async (fun () -> handle cs addr >|= fun () -> m `Close);
        loop ()
      in
      loop ())
@@ -85,16 +84,12 @@ let jump _ file interval =
 open Cmdliner
 open Albatross_cli
 
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Stats) & info [ "socket" ] ~doc)
-
 let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in
   Arg.(value & opt int 10 & info [ "interval" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ socket $ interval)),
+  Term.(term_result (const jump $ setup_log $ interval $ influx)),
   Term.info "albatross_stats" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

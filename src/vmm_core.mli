@@ -24,6 +24,7 @@ module Name : sig
 
   val of_list : string list -> (t, [> `Msg of string ]) result
   val to_list : t -> string list
+  val drop : t -> t
   val append : string -> t -> (t, [> `Msg of string ]) result
   val prepend : string -> t -> (t, [> `Msg of string ]) result
   val append_exn : string -> t -> t

@@ -120,7 +120,7 @@ let read_data mvar ring s =
   in
   loop ()
 
-let handle mvar ring s addr () =
+let handle mvar ring s addr =
   Logs.info (fun m -> m "handling connection from %a" Vmm_lwt.pp_sockaddr addr) ;
   Vmm_lwt.read_wire s >>= begin function
     | Error _ ->
@@ -159,15 +159,13 @@ let handle mvar ring s addr () =
   end >>= fun () ->
   Vmm_lwt.safe_close s
 
-let jump _ file sock =
+let m = Albatross_cli.conn_metrics "unix"
+
+let jump _ file influx =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
-    ((Lwt_unix.file_exists sock >>= function
-       | true -> Lwt_unix.unlink sock
-       | false -> Lwt.return_unit) >>= fun () ->
-     let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.(bind s (ADDR_UNIX sock)) >>= fun () ->
-     Lwt_unix.listen s 1 ;
+    (Albatross_cli.init_influx "albatross_log" influx;
+     Vmm_lwt.server_socket `Log >>= fun s ->
      let ring = Vmm_ring.create `Startup () in
      read_from_file file >>= fun entries ->
      Logs.app (fun m -> m "read %d entries from disk" (List.length entries)) ;
@@ -181,7 +179,8 @@ let jump _ file sock =
      Vmm_ring.write ring start ;
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
-       Lwt.async (handle mvar ring cs addr) ;
+       m `Open;
+       Lwt.async (fun () -> handle mvar ring cs addr >|= fun () -> m `Close) ;
        loop ()
      in
      loop ())
@@ -189,16 +188,12 @@ let jump _ file sock =
 open Cmdliner
 open Albatross_cli
 
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Log) & info [ "socket" ] ~doc)
-
 let file =
   let doc = "File to write the log to" in
   Arg.(value & opt string "/var/log/albatross" & info [ "logfile" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ file $ socket)),
+  Term.(term_result (const jump $ setup_log $ file $ influx)),
   Term.info "albatross_log" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -3,6 +3,68 @@
 open Astring
 open Vmm_core
 
+let conn_metrics kind =
+  let s = ref (0, 0) in
+  let open Metrics in
+  let doc = "connection statistics" in
+  let data () =
+    Data.v [
+      int "active" (fst !s) ;
+      int "total" (snd !s) ;
+    ] in
+  let tags = Tags.string "kind" in
+  let src = Src.v ~doc ~tags:Tags.[ tags ] ~data "connections" in
+  (fun action ->
+     (match action with
+      | `Open -> s := (succ (fst !s), succ (snd !s))
+      | `Close -> s := (pred (fst !s), snd !s));
+     Metrics.add src (fun x -> x kind) (fun d -> d ()))
+
+open Lwt.Infix
+
+let process =
+  Metrics.field ~doc:"name of the process" "process" Metrics.String
+
+let init_influx name data =
+  match data with
+  | None -> ()
+  | Some (ip, port) ->
+    Logs.info (fun m -> m "stats connecting to %a:%d" Ipaddr.V4.pp ip port);
+    Metrics.enable_all ();
+    Metrics_lwt.init_periodic (fun () -> Lwt_unix.sleep 10.);
+    let get_cache, reporter = Metrics.cache_reporter () in
+    Metrics.set_reporter reporter;
+    let fd = ref None in
+    let rec report () =
+      let send () =
+        (match !fd with
+         | Some _ -> Lwt.return_unit
+         | None ->
+           let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.V4.to_inet_addr ip, port) in
+           Vmm_lwt.connect Lwt_unix.PF_INET addr >|= function
+           | None -> Logs.err (fun m -> m "connection failure to stats")
+           | Some fd' -> fd := Some fd') >>= fun () ->
+        match !fd with
+        | None -> Lwt.return_unit
+        | Some socket ->
+          let tag = process name in
+          let datas = Metrics.SM.fold (fun src (tags, data) acc ->
+              let name = Metrics.Src.name src in
+              Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
+              (get_cache ()) []
+          in
+          let datas = String.concat ~sep:"" datas in
+          Vmm_lwt.write_raw socket (Bytes.unsafe_of_string datas) >|= function
+          | Ok () -> ()
+          | Error `Exception ->
+            Logs.warn (fun m -> m "error on stats write");
+            fd := None
+      and sleep () = Lwt_unix.sleep 10.
+      in
+      Lwt.join [ send () ; sleep () ] >>= report
+    in
+    Lwt.async report
+
 let print_result version (header, reply) =
   if not (Vmm_commands.version_eq header.Vmm_commands.version version) then
     Logs.err (fun m -> m "version not equal")
@@ -43,9 +105,30 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
+let ip_port : (Ipaddr.V4.t * int) Arg.converter =
+  let default_port = 8094 in
+  let parse s =
+    match
+      match String.cut ~sep:":" s with
+      | None -> Ok (s, default_port)
+      | Some (ip, port) -> match int_of_string port with
+        | exception Failure _ -> Error "non-numeric port"
+        | port -> Ok (ip, port)
+    with
+    | Error msg -> `Error msg
+    | Ok (ip, port) -> match Ipaddr.V4.of_string ip with
+      | Ok ip -> `Ok (ip, port)
+      | Error `Msg msg -> `Error msg
+  in
+  parse, fun ppf (ip, port) -> Format.fprintf ppf "%a:%d" Ipaddr.V4.pp ip port
+
+let influx =
+  let doc = "IP address and port (default: 8094) to report metrics to in influx line protocol" in
+  Arg.(value & opt (some ip_port) None & info [ "influx" ] ~doc ~docv:"INFLUXHOST[:PORT]")
+
 let host_port : (string * int) Arg.converter =
   let parse s =
-    match Astring.String.cut ~sep:":" s with
+    match String.cut ~sep:":" s with
     | None -> `Error "broken: no port specified"
     | Some (hostname, port) ->
       try
@@ -80,7 +163,6 @@ let pid_req1 =
 let vmm_dev_req0 =
   let doc = "VMM device name" in
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VMMDEV")
-
 
 let opt_vm_name =
   let doc = "name of virtual machine." in

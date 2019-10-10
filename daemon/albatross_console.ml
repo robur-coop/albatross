@@ -20,7 +20,7 @@ let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
 let active = ref String.Map.empty
 
-let read_console id name ring channel () =
+let read_console id name ring channel =
   Lwt.catch (fun () ->
       let rec loop () =
         Lwt_io.read_line channel >>= fun line ->
@@ -66,6 +66,8 @@ let open_fifo name =
 
 let t = ref String.Map.empty
 
+let fifos = Albatross_cli.conn_metrics "fifo"
+
 let add_fifo id =
   let name = Vmm_core.Name.to_string id in
   open_fifo id >|= function
@@ -79,7 +81,8 @@ let add_fifo id =
         ring
       | Some ring -> ring
     in
-    Lwt.async (read_console id name ring f) ;
+    fifos `Open;
+    Lwt.async (fun () -> read_console id name ring f >|= fun () -> fifos `Close) ;
     Ok ()
 
 let subscribe s id =
@@ -110,7 +113,7 @@ let send_history s r id since =
       | Error _ -> Vmm_lwt.safe_close s)
     entries
 
-let handle s addr () =
+let handle s addr =
   Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
   let rec loop () =
     Vmm_lwt.read_wire s >>= function
@@ -156,18 +159,17 @@ let handle s addr () =
   Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnected")
 
-let jump _ file =
+let m = Albatross_cli.conn_metrics "unix"
+
+let jump _ influx =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
-    ((Lwt_unix.file_exists file >>= function
-       | true -> Lwt_unix.unlink file
-       | false -> Lwt.return_unit) >>= fun () ->
-     let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-     Lwt_unix.(bind s (ADDR_UNIX file)) >>= fun () ->
-     Lwt_unix.listen s 1 ;
+    (Albatross_cli.init_influx "albatross_console" influx;
+     Vmm_lwt.server_socket `Console >>= fun s ->
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
-       Lwt.async (handle cs addr) ;
+       m `Open;
+       Lwt.async (fun () -> handle cs addr >|= fun () -> m `Close) ;
        loop ()
      in
      loop ())
@@ -176,12 +178,8 @@ open Cmdliner
 
 open Albatross_cli
 
-let socket =
-  let doc = "socket to use" in
-  Arg.(value & opt string (Vmm_core.socket_path `Console) & info [ "socket" ] ~doc)
-
 let cmd =
-  Term.(term_result (const jump $ setup_log $ socket)),
+  Term.(term_result (const jump $ setup_log $ influx)),
   Term.info "albatross_console" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

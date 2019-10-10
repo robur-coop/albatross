@@ -26,8 +26,15 @@ depends: [
   "duration"
   "decompress" {>= "0.9.0" & < "1.0.0"}
   "checkseum"
+  "metrics"
+  "metrics-lwt"
+  "metrics-influx"
 ]
-
+pin-depends: [
+  ["metrics.dev" "git+https://github.com/hannesm/metrics.git#future"]
+  ["metrics-lwt.dev" "git+https://github.com/hannesm/metrics.git#future"]
+  ["metrics-influx.dev" "git+https://github.com/hannesm/metrics.git#future"]
+]
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]

@@ -86,7 +86,7 @@ let restore_unikernels () =
     match Vmm_asn.unikernels_of_cstruct data with
     | Error (`Msg msg) -> Error (`Msg ("couldn't parse state: " ^ msg))
     | Ok unikernels ->
-      Logs.info (fun m -> m "restored some unikernels") ;
+      Logs.info (fun m -> m "restored %d unikernels" (List.length (Vmm_trie.all unikernels))) ;
       Ok unikernels
 
 let dump_unikernels t =
