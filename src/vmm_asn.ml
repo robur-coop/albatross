@@ -282,27 +282,40 @@ let log_cmd =
   Asn.S.map f g @@
   Asn.S.(sequence (single (optional ~label:"since" utc_time)))
 
+let fail_behaviour =
+  let f = function
+    | `C1 () -> `Quit
+    | `C2 () -> `Restart
+  and g = function
+    | `Quit -> `C1 ()
+    | `Restart -> `C2 ()
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice2
+           (explicit 0 null)
+           (explicit 1 null))
+
 let unikernel_config =
   let open Unikernel in
-  let f (image, cpuid, memory, blocks, bridges, argv) =
+  let f (fail_behaviour, (image, (cpuid, (memory, (blocks, (bridges, argv)))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
-    { cpuid ; memory ; block_devices ; bridges ; image ; argv }
+    { cpuid ; memory ; block_devices ; bridges ; image ; argv ; fail_behaviour }
   and g vm =
     let bridges = match vm.bridges with [] -> None | xs -> Some xs
     and blocks = match vm.block_devices with [] -> None | xs -> Some xs
     in
-    (vm.image, vm.cpuid, vm.memory, blocks, bridges, vm.argv)
+    (vm.fail_behaviour, (vm.image, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))
   in
-  Asn.S.map f g @@
-  Asn.S.(sequence6
-           (required ~label:"image" image)
-           (required ~label:"cpu" int)
-           (required ~label:"memory" int)
-           (optional ~label:"blocks" (explicit 0 (sequence_of utf8_string)))
-           (optional ~label:"bridges" (explicit 1 (sequence_of utf8_string)))
-           (optional ~label:"arguments"(explicit 2 (sequence_of utf8_string))))
+  Asn.S.(map f g @@ sequence @@
+           (required ~label:"fail behaviour" (explicit 3 fail_behaviour))
+         @ (required ~label:"image" image)
+         @ (required ~label:"cpu" int)
+         @ (required ~label:"memory" int)
+         @ (optional ~label:"blocks" (explicit 0 (sequence_of utf8_string)))
+         @ (optional ~label:"bridges" (explicit 1 (sequence_of utf8_string)))
+        -@ (optional ~label:"arguments"(explicit 2 (sequence_of utf8_string))))
 
 let unikernel_cmd =
   let f = function

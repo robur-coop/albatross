@@ -158,6 +158,11 @@ module Unikernel = struct
     | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
     | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
 
+  type fail_behaviour = [ `Quit | `Restart ]
+
+  let pp_fail_behaviour ppf f =
+    Fmt.string ppf (match f with `Quit -> "quit" | `Restart -> "restart")
+
   type config = {
     cpuid : int ;
     memory : int ;
@@ -165,6 +170,7 @@ module Unikernel = struct
     bridges : string list ;
     image : typ * Cstruct.t ;
     argv : string list option ;
+    fail_behaviour : fail_behaviour;
   }
 
   let pp_image ppf (typ, blob) =
@@ -172,7 +178,8 @@ module Unikernel = struct
     Fmt.pf ppf "%a: %d bytes" pp_typ typ l
 
   let pp_config ppf (vm : config) =
-    Fmt.pf ppf "cpu %d, %d MB memory, block devices %a@ bridge %a, image %a, argv %a"
+    Fmt.pf ppf "fail behaviour %a, cpu %d, %d MB memory, block devices %a@ bridge %a, image %a, argv %a"
+      pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       Fmt.(list ~sep:(unit ", ") string) vm.block_devices
       Fmt.(list ~sep:(unit ", ") string) vm.bridges
@@ -280,9 +287,9 @@ end
 type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
 
 let pp_process_exit ppf = function
-  | `Exit n -> Fmt.pf ppf "exit %a (%d)" Fmt.Dump.signal n n
-  | `Signal n -> Fmt.pf ppf "signal %a (%d)" Fmt.Dump.signal n n
-  | `Stop n -> Fmt.pf ppf "stop %a (%d)" Fmt.Dump.signal n n
+  | `Exit n -> Fmt.pf ppf "exit %d" n
+  | `Signal n -> Fmt.pf ppf "signal %a (numeric %d)" Fmt.Dump.signal n n
+  | `Stop n -> Fmt.pf ppf "stop %a (numeric %d)" Fmt.Dump.signal n n
 
 module Log = struct
   type log_event = [

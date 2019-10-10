@@ -23,8 +23,30 @@ let killall t =
   | [] -> false
   | vms -> in_shutdown := true ; List.iter Vmm_unix.destroy vms ; true
 
+let remove_resources t name =
+  let resources = match Vmm_resources.remove_vm t.resources name with
+    | Error (`Msg e) ->
+      Logs.warn (fun m -> m "%s while removing vm %a from resources" e Name.pp name) ;
+      t.resources
+    | Ok resources -> resources
+  in
+  { t with resources }
+
+let dump_unikernels t =
+  let unikernels = Vmm_trie.all t.resources.Vmm_resources.unikernels in
+  let trie = List.fold_left (fun t (name, unik) ->
+      fst @@ Vmm_trie.insert name unik.Unikernel.config t)
+      Vmm_trie.empty unikernels
+  in
+  let data = Vmm_asn.unikernels_to_cstruct trie in
+  match Vmm_unix.dump data with
+  | Error (`Msg msg) -> Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
+  | Ok () -> Logs.info (fun m -> m "dumped current state")
+
 let waiter t id =
+  let t = remove_resources t id in
   let name = Name.to_string id in
+  if not !in_shutdown then dump_unikernels t ;
   match String.Map.find name t.waiters with
   | None -> t, None
   | Some waiter ->
@@ -33,11 +55,14 @@ let waiter t id =
 
 let register t id create =
   let name = Name.to_string id in
+  let task, waiter = create () in
+  { t with waiters = String.Map.add name waiter t.waiters }, task
+
+let register_restart t id create =
+  let name = Name.to_string id in
   match String.Map.find name t.waiters with
-  | None ->
-    let task, waiter = create () in
-    Some ({ t with waiters = String.Map.add name waiter t.waiters }, task)
-  | Some _ -> None
+  | Some _ -> Logs.err (fun m -> m "restart attempted to overwrite waiter"); None
+  | _ -> Some (register t id create)
 
 let init wire_version =
   let t = {
@@ -88,17 +113,6 @@ let restore_unikernels () =
     | Ok unikernels ->
       Logs.info (fun m -> m "restored %d unikernels" (List.length (Vmm_trie.all unikernels))) ;
       Ok unikernels
-
-let dump_unikernels t =
-  let unikernels = Vmm_trie.all t.resources.Vmm_resources.unikernels in
-  let trie = List.fold_left (fun t (name, unik) ->
-      fst @@ Vmm_trie.insert name unik.Unikernel.config t)
-      Vmm_trie.empty unikernels
-  in
-  let data = Vmm_asn.unikernels_to_cstruct trie in
-  match Vmm_unix.dump data with
-  | Error (`Msg msg) -> Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
-  | Ok () -> Logs.info (fun m -> m "dumped current state")
 
 let setup_stats t name vm =
   let stat_out =
@@ -171,14 +185,6 @@ let handle_shutdown t name vm r =
   (match Vmm_unix.free_system_resources name vm.Unikernel.taps with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm)) ;
-  let resources = match Vmm_resources.remove_vm t.resources name with
-    | Error (`Msg e) ->
-      Logs.warn (fun m -> m "%s while removing vm %a from resources" e Unikernel.pp vm) ;
-      t.resources
-    | Ok resources -> resources
-  in
-  let t = { t with resources } in
-  if not !in_shutdown then dump_unikernels t ;
   let t, log_out = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r)) in
   let t, stat_out = remove_stats t name in
   (t, stat_out, log_out)
@@ -213,7 +219,7 @@ let handle_policy_cmd t reply id = function
     | _ ->
       Ok (t, `End (reply (`Policies policies)))
 
-let handle_unikernel_cmd t reply header id msg_to_err = function
+let handle_unikernel_cmd t reply header id = function
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
@@ -228,29 +234,37 @@ let handle_unikernel_cmd t reply header id msg_to_err = function
       | _ ->
         Ok (t, `End (reply (`Unikernels vms)))
     end
-  | `Unikernel_create vm_config -> handle_create t header id vm_config
+  | `Unikernel_create vm_config -> Ok (t, `Create (header, id, vm_config))
   | `Unikernel_force_create vm_config ->
     begin
       let resources =
         match Vmm_resources.remove_vm t.resources id with
-        | Error _ -> t.resources
-        | Ok r -> r
+        | Error _ -> t.resources | Ok r -> r
       in
       Vmm_resources.check_vm resources id vm_config >>= fun () ->
       match Vmm_resources.find_vm t.resources id with
-      | None -> handle_create t header id vm_config
+      | None -> Ok (t, `Create (header, id, vm_config))
       | Some vm ->
-        Vmm_unix.destroy vm ;
-        Ok (t, `Wait_and_create
-              (id, fun t -> msg_to_err @@ handle_create t header id vm_config))
+        (match Vmm_unix.destroy vm with
+         | exception Unix.Unix_error _ -> ()
+         | () -> ());
+        Ok (t, `Wait_and_create (id, (header, id, vm_config)))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
-    | Some vm ->
-      Vmm_unix.destroy vm ;
-      let s = reply (`String "destroyed unikernel") in
-      Ok (t, `Wait (id, s))
     | None -> Error (`Msg "destroy: not found")
+    | Some vm ->
+      let answer =
+        try
+          Vmm_unix.destroy vm ; "destroyed unikernel"
+        with
+          Unix.Unix_error _ -> "kill failed"
+      in
+      let s ex =
+        let data = Fmt.strf "%a %s %a" Name.pp id answer pp_process_exit ex in
+        reply (`String data)
+      in
+      Ok (t, `Wait (id, s))
 
 let handle_block_cmd t reply id = function
   | `Block_remove ->
@@ -300,7 +314,7 @@ let handle_command t (header, payload) =
   msg_to_err (
     match payload with
     | `Command (`Policy_cmd pc) -> handle_policy_cmd t reply id pc
-    | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t reply header id msg_to_err vc
+    | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t reply header id vc
     | `Command (`Block_cmd bc) -> handle_block_cmd t reply id bc
     | _ ->
       Logs.err (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, payload)) ;

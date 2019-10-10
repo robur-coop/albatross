@@ -88,7 +88,8 @@ let read_wire s =
       (fun e ->
          let err = Printexc.to_string e in
          Logs.err (fun m -> m "exception %s while reading" err) ;
-         Lwt.return (Error `Exception))
+         safe_close s >|= fun () ->
+         Error `Exception)
   in
   r buf 0 4 >>= function
   | Error e -> Lwt.return (Error e)
@@ -121,7 +122,8 @@ let write_raw s buf =
           w (off + n) (l - n))
       (fun e ->
          Logs.err (fun m -> m "exception %s while writing" (Printexc.to_string e)) ;
-         Lwt.return (Error `Exception))
+         safe_close s >|= fun () ->
+         Error `Exception)
   in
   (*  Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
   w 0 (Bytes.length buf)

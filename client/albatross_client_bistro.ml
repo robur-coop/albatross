@@ -110,8 +110,8 @@ let info_ _ endp cert key ca name =
 let destroy _ endp cert key ca name =
   jump endp cert key ca name (`Unikernel_cmd `Unikernel_destroy)
 
-let create _ endp cert key ca force name image cpuid memory argv block network compression =
-  match Albatross_cli.create_vm force image cpuid memory argv block network compression with
+let create _ endp cert key ca force name image cpuid memory argv block network compression restart_on_fail =
+  match Albatross_cli.create_vm force image cpuid memory argv block network compression restart_on_fail with
   | Ok cmd -> jump endp cert key ca name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> Error (`Msg msg)
 
@@ -208,7 +208,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9)),
+  Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9 $ restart_on_fail)),
   Term.info "create" ~doc ~man
 
 let console_cmd =

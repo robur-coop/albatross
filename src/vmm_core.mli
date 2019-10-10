@@ -58,6 +58,8 @@ module Unikernel : sig
   type typ = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
   val pp_typ : typ Fmt.t
 
+  type fail_behaviour = [ `Quit | `Restart ]
+
   type config = {
     cpuid : int;
     memory : int;
@@ -65,6 +67,7 @@ module Unikernel : sig
     bridges : string list;
     image : typ * Cstruct.t;
     argv : string list option;
+    fail_behaviour : fail_behaviour;
   }
 
   val pp_image : (typ * Cstruct.t) Fmt.t
