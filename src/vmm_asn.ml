@@ -50,22 +50,6 @@ let policy =
            (optional ~label:"block" int)
            (required ~label:"bridges" Asn.S.(sequence_of utf8_string)))
 
-let image =
-  let f = function
-    | `C1 x -> `Hvt_amd64, x
-    | `C2 x -> `Hvt_arm64, x
-    | `C3 x -> `Hvt_amd64_compressed, x
-  and g = function
-    | `Hvt_amd64, x -> `C1 x
-    | `Hvt_arm64, x -> `C2 x
-    | `Hvt_amd64_compressed, x -> `C3 x
-  in
-  Asn.S.map f g @@
-  Asn.S.(choice3
-           (explicit 0 octet_string)
-           (explicit 1 octet_string)
-           (explicit 2 octet_string))
-
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
@@ -282,6 +266,16 @@ let log_cmd =
   Asn.S.map f g @@
   Asn.S.(sequence (single (optional ~label:"since" utc_time)))
 
+let typ =
+  let f = function
+    | `C1 () -> `Solo5
+    | `C2 () -> assert false
+  and g = function
+    | `Solo5 -> `C1 ()
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice2 (explicit 0 null) (explicit 1 null))
+
 let fail_behaviour =
   let f = function
     | `C1 () -> `Quit
@@ -297,21 +291,23 @@ let fail_behaviour =
 
 let unikernel_config =
   let open Unikernel in
-  let f (fail_behaviour, (image, (cpuid, (memory, (blocks, (bridges, argv)))))) =
+  let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
-    { cpuid ; memory ; block_devices ; bridges ; image ; argv ; fail_behaviour }
+    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g vm =
     let bridges = match vm.bridges with [] -> None | xs -> Some xs
     and blocks = match vm.block_devices with [] -> None | xs -> Some xs
     in
-    (vm.fail_behaviour, (vm.image, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))
+    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
   in
   Asn.S.(map f g @@ sequence @@
-           (required ~label:"fail behaviour" (explicit 3 fail_behaviour))
-         @ (required ~label:"image" image)
-         @ (required ~label:"cpu" int)
+           (required ~label:"typ" typ)
+         @ (required ~label:"compressed" bool)
+         @ (required ~label:"image" octet_string)
+         @ (required ~label:"fail behaviour" fail_behaviour)
+         @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
          @ (optional ~label:"blocks" (explicit 0 (sequence_of utf8_string)))
          @ (optional ~label:"bridges" (explicit 1 (sequence_of utf8_string)))

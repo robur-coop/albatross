@@ -55,22 +55,22 @@ module Policy : sig
 end
 
 module Unikernel : sig
-  type typ = [ `Hvt_amd64 | `Hvt_amd64_compressed | `Hvt_arm64 ]
+  type typ = [ `Solo5 ]
   val pp_typ : typ Fmt.t
 
   type fail_behaviour = [ `Quit | `Restart ]
 
   type config = {
-    cpuid : int;
-    memory : int;
-    block_devices : string list;
-    bridges : string list;
-    image : typ * Cstruct.t;
-    argv : string list option;
+    typ : typ ;
+    compressed : bool ;
+    image : Cstruct.t ;
     fail_behaviour : fail_behaviour;
+    cpuid : int ;
+    memory : int ;
+    block_devices : string list ;
+    bridges : string list ;
+    argv : string list option ;
   }
-
-  val pp_image : (typ * Cstruct.t) Fmt.t
 
   val pp_config : config Fmt.t
 

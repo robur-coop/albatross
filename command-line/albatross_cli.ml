@@ -82,15 +82,15 @@ let setup_log style_renderer level =
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail =
   let open Rresult.R.Infix in
   Bos.OS.File.read (Fpath.v image) >>| fun image ->
-  let image = match compression with
-    | 0 -> `Hvt_amd64, Cstruct.of_string image
+  let image, compressed = match compression with
+    | 0 -> Cstruct.of_string image, false
     | level ->
       let img = Vmm_compress.compress ~level image in
-      `Hvt_amd64_compressed, Cstruct.of_string img
+      Cstruct.of_string img, true
   and argv = match argv with [] -> None | xs -> Some xs
   and fail_behaviour = if restart_on_fail then `Restart else `Quit
   in
-  let config = Unikernel.{ cpuid ; memory ; block_devices ; bridges ; argv ; image ; fail_behaviour } in
+  let config = Unikernel.{ typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then `Unikernel_force_create config else `Unikernel_create config
 
 let policy vms memory cpus block bridges =

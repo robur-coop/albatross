@@ -125,14 +125,15 @@ let destroy_tap tapname =
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let prepare name vm =
-  (match vm.Unikernel.image with
-   | `Hvt_amd64, blob -> Ok blob
-   | `Hvt_amd64_compressed, blob ->
-     begin match Vmm_compress.uncompress (Cstruct.to_string blob) with
-       | Ok blob -> Ok (Cstruct.of_string blob)
-       | Error () -> Error (`Msg "failed to uncompress")
-     end
-   | `Hvt_arm64, _ -> Error (`Msg "no amd64 hvt image found")) >>= fun image ->
+  (match vm.Unikernel.typ with
+   | `Solo5 ->
+     if vm.Unikernel.compressed then
+       begin match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
+         | Ok blob -> Ok (Cstruct.of_string blob)
+         | Error () -> Error (`Msg "failed to uncompress")
+       end
+     else
+       Ok vm.Unikernel.image) >>= fun image ->
   let fifo = Name.fifo_file name in
   (match fifo_exists fifo with
    | Ok true -> Ok ()

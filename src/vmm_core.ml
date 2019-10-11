@@ -151,12 +151,10 @@ module Policy = struct
 end
 
 module Unikernel = struct
-  type typ = [ `Hvt_amd64 | `Hvt_arm64 | `Hvt_amd64_compressed ]
+  type typ = [ `Solo5 ]
 
   let pp_typ ppf = function
-    | `Hvt_amd64 -> Fmt.pf ppf "hvt-amd64"
-    | `Hvt_amd64_compressed -> Fmt.pf ppf "hvt-amd64-compressed"
-    | `Hvt_arm64 -> Fmt.pf ppf "hvt-arm64"
+    | `Solo5 -> Fmt.pf ppf "solo5"
 
   type fail_behaviour = [ `Quit | `Restart ]
 
@@ -164,26 +162,26 @@ module Unikernel = struct
     Fmt.string ppf (match f with `Quit -> "quit" | `Restart -> "restart")
 
   type config = {
+    typ : typ ;
+    compressed : bool ;
+    image : Cstruct.t ;
+    fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
     block_devices : string list ;
     bridges : string list ;
-    image : typ * Cstruct.t ;
     argv : string list option ;
-    fail_behaviour : fail_behaviour;
   }
 
-  let pp_image ppf (typ, blob) =
-    let l = Cstruct.len blob in
-    Fmt.pf ppf "%a: %d bytes" pp_typ typ l
-
   let pp_config ppf (vm : config) =
-    Fmt.pf ppf "fail behaviour %a, cpu %d, %d MB memory, block devices %a@ bridge %a, image %a, argv %a"
+    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a"
+      pp_typ vm.typ
+      vm.compressed
+      (Cstruct.len vm.image)
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       Fmt.(list ~sep:(unit ", ") string) vm.block_devices
       Fmt.(list ~sep:(unit ", ") string) vm.bridges
-      pp_image vm.image
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
   type t = {
