@@ -5,7 +5,7 @@ open Vmm_asn
 
 open Rresult.R.Infix
 
-let version = `AV3
+let version = `AV4
 
 let csr priv name cmd =
   let ext =

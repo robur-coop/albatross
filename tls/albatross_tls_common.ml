@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-let my_version = `AV3
+let my_version = `AV4
 
 let command = ref 0L
 

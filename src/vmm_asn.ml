@@ -376,10 +376,12 @@ let block_cmd =
 
 let version =
   let f data = match data with
+    | 4 -> `AV4
     | 3 -> `AV3
     | 2 -> `AV2
     | x -> Asn.S.error (`Parse (Printf.sprintf "unknown version number 0x%X" x))
   and g = function
+    | `AV4 -> 4
     | `AV3 -> 3
     | `AV2 -> 2
   in

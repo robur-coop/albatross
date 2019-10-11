@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-let version = `AV3
+let version = `AV4
 
 let socket t = function
   | Some x -> x

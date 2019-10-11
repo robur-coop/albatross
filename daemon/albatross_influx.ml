@@ -156,7 +156,7 @@ module P = struct
       vm ifd.bridge (String.concat ~sep:"," fields)
 end
 
-let my_version = `AV3
+let my_version = `AV4
 
 let command = ref 1L
 

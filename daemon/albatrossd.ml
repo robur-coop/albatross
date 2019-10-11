@@ -6,7 +6,7 @@ open Vmm_core
 
 open Lwt.Infix
 
-let version = `AV3
+let version = `AV4
 
 let state = ref (Vmm_vmmd.init version)
 

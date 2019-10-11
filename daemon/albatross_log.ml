@@ -10,7 +10,7 @@
 
 open Lwt.Infix
 
-let my_version = `AV3
+let my_version = `AV4
 
 let broadcast prefix wire t =
   Lwt_list.fold_left_s (fun t (id, s) ->
