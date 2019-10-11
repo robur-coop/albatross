@@ -37,39 +37,19 @@ let rec create stat_out log_out cons_out data_out hdr name config =
          Lwt.return (None, fail_cont ())
        | Ok (state', stat, log, data, name, vm) ->
          state := state';
-         (match Unikernel.(vm.config.fail_behaviour) with
-          | `Quit -> ()
-          | `Restart ->
+         (if Unikernel.restart_handler config then
             match Vmm_vmmd.register_restart !state name Lwt.task with
             | None -> ()
             | Some (state', task) ->
               state := state';
               Lwt.async (fun () ->
-                  task >>= function
-                  | (`Signal _ | `Stop _) as r ->
-                    Logs.warn (fun m -> m "unikernel %a exited with signal %a"
-                                  Name.pp name pp_process_exit r);
-                    Lwt.return_unit
-                  | `Exit i ->
-                    (* results:
-                       normal exit (i.e. teardown) is 0
-                       solo5-exit allows an arbitrary int
-                       solo5-abort emits 255
-                       solo5 internal error (bad image, bad manigest) is 1
-                       ocaml exceptions (out of memory et al) use 2
-                       -> soon (4.10) they'll abort == 255
-                       signal 11 is if a kill -TERM was sent (i.e. our destroy)
-
-                       --> best: user-provided list of which exit codes to restart on
-                           (and filter 1 specially)
-                    *)
-                    match i with
-                    | 1 -> Logs.warn (fun m -> m "solo5 exit failure"); Lwt.return_unit
-                    | _ ->
-                      Logs.info (fun m -> m "solo5 exited with %d, restarting" i);
-                      Lwt_mutex.with_lock create_lock (fun () ->
-                          create stat_out log_out cons_out stub_data_out
-                            stub_hdr name vm.Unikernel.config)));
+                  task >>= fun r ->
+                  if should_restart config name r then
+                    Lwt_mutex.with_lock create_lock (fun () ->
+                        create stat_out log_out cons_out stub_data_out
+                          stub_hdr name vm.Unikernel.config)
+                  else
+                    Lwt.return_unit));
          stat_out "setting up stat" stat >>= fun () ->
          log_out "setting up log" log >|= fun () ->
          (Some vm, data)) >>= fun (started, data) ->

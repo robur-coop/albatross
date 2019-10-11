@@ -279,15 +279,25 @@ let typ =
 let fail_behaviour =
   let f = function
     | `C1 () -> `Quit
-    | `C2 () -> `Restart
+    | `C2 xs ->
+      let exit_codes = match xs with
+        | [] -> None
+        | xs -> Some (IS.of_list xs)
+      in
+      `Restart exit_codes
   and g = function
     | `Quit -> `C1 ()
-    | `Restart -> `C2 ()
+    | `Restart xs ->
+      let exit_codes = match xs with
+        | None -> []
+        | Some i -> IS.elements i
+      in
+      `C2 exit_codes
   in
   Asn.S.map f g @@
   Asn.S.(choice2
            (explicit 0 null)
-           (explicit 1 null))
+           (explicit 1 (set_of int)))
 
 let unikernel_config =
   let open Unikernel in
@@ -309,8 +319,8 @@ let unikernel_config =
          @ (required ~label:"fail behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
-         @ (optional ~label:"blocks" (explicit 0 (sequence_of utf8_string)))
-         @ (optional ~label:"bridges" (explicit 1 (sequence_of utf8_string)))
+         @ (optional ~label:"blocks" (explicit 0 (set_of utf8_string)))
+         @ (optional ~label:"bridges" (explicit 1 (set_of utf8_string)))
         -@ (optional ~label:"arguments"(explicit 2 (sequence_of utf8_string))))
 
 let unikernel_cmd =

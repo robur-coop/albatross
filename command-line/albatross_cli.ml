@@ -79,7 +79,7 @@ let setup_log style_renderer level =
   Logs.set_level level;
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
-let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail =
+let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let open Rresult.R.Infix in
   Bos.OS.File.read (Fpath.v image) >>| fun image ->
   let image, compressed = match compression with
@@ -88,7 +88,9 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
       let img = Vmm_compress.compress ~level image in
       Cstruct.of_string img, true
   and argv = match argv with [] -> None | xs -> Some xs
-  and fail_behaviour = if restart_on_fail then `Restart else `Quit
+  and fail_behaviour =
+    let exits = match exit_codes with [] -> None | xs -> Some (IS.of_list xs) in
+    if restart_on_fail then `Restart exits else `Quit
   in
   let config = Unikernel.{ typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then `Unikernel_force_create config else `Unikernel_create config
@@ -240,6 +242,10 @@ let net =
 let restart_on_fail =
   let doc = "Restart on fail" in
   Arg.(value & flag & info [ "restart-on-fail" ] ~doc)
+
+let exit_code =
+  let doc = "Exit code to restart on" in
+  Arg.(value & opt_all int [] & info [ "exit-code" ] ~doc)
 
 let timestamp_c =
   let parse s = match Ptime.of_rfc3339 s with

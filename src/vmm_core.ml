@@ -156,10 +156,14 @@ module Unikernel = struct
   let pp_typ ppf = function
     | `Solo5 -> Fmt.pf ppf "solo5"
 
-  type fail_behaviour = [ `Quit | `Restart ]
+  type fail_behaviour = [ `Quit | `Restart of IS.t option ]
 
-  let pp_fail_behaviour ppf f =
-    Fmt.string ppf (match f with `Quit -> "quit" | `Restart -> "restart")
+  let pp_fail_behaviour ppf = function
+    | `Quit -> Fmt.string ppf "quit"
+    | `Restart codes  ->
+      Fmt.pf ppf "restart %a"
+        Fmt.(option ~none:(unit "all except 1") (list ~sep:(unit ", ") int))
+        (match codes with None -> None | Some x -> Some (IS.elements x))
 
   type config = {
     typ : typ ;
@@ -183,6 +187,9 @@ module Unikernel = struct
       Fmt.(list ~sep:(unit ", ") string) vm.block_devices
       Fmt.(list ~sep:(unit ", ") string) vm.bridges
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
+
+  let restart_handler config =
+    match config.fail_behaviour with `Quit -> false | `Restart _ -> true
 
   type t = {
     config : config ;
@@ -288,6 +295,43 @@ let pp_process_exit ppf = function
   | `Exit n -> Fmt.pf ppf "exit %d" n
   | `Signal n -> Fmt.pf ppf "signal %a (numeric %d)" Fmt.Dump.signal n n
   | `Stop n -> Fmt.pf ppf "stop %a (numeric %d)" Fmt.Dump.signal n n
+
+let should_restart config name = function
+  | (`Signal _ | `Stop _) as r ->
+    (* signal 11 is if a kill -TERM was sent (i.e. our destroy) *)
+    Logs.warn (fun m -> m "unikernel %a exited with signal %a"
+                  Name.pp name pp_process_exit r);
+    false
+  | `Exit i ->
+    (* results (and default behaviour) -- solo5-exit allows an arbitrary int
+        0 normal exit (i.e. teardown) -> restart
+        1 solo5 internal error (bad image, bad manigest) -> no restart, never
+        2 ocaml exceptions (out of memory et al) -> restart
+        64..70 -> no restart (soon to be used by unikernel command line parsing)
+        255 solo5-abort -> soon (OCaml 4.10) fatal error (out of memory) -> restart *)
+    let opt_mem i =
+      match config.Unikernel.fail_behaviour with
+      | `Quit -> assert false
+      | `Restart None -> true
+      | `Restart (Some c) -> IS.mem i c
+    in
+    match i with
+    | 1 ->
+      Logs.warn (fun m -> m "unikernel %a solo5 exit failure (1)"
+                    Name.pp name);
+      false
+    | 64 | 65 | 66 | 67 | 68 | 69 | 70 ->
+      Logs.warn (fun m -> m "unikernel %a exited %d, not restarting"
+                    Name.pp name i);
+      false
+    | _ when opt_mem i ->
+      Logs.info (fun m -> m "unikernel %a exited %d, restarting"
+                    Name.pp name i);
+      true
+    | _ ->
+      Logs.info (fun m -> m "unikernel %a exited %d, not restarting %a"
+                    Name.pp name i Unikernel.pp_fail_behaviour config.fail_behaviour);
+      false
 
 module Log = struct
   type log_event = [

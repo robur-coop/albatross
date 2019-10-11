@@ -58,7 +58,7 @@ module Unikernel : sig
   type typ = [ `Solo5 ]
   val pp_typ : typ Fmt.t
 
-  type fail_behaviour = [ `Quit | `Restart ]
+  type fail_behaviour = [ `Quit | `Restart of IS.t option ]
 
   type config = {
     typ : typ ;
@@ -73,6 +73,8 @@ module Unikernel : sig
   }
 
   val pp_config : config Fmt.t
+
+  val restart_handler : config -> bool
 
   type t = {
     config : config;
@@ -152,6 +154,8 @@ end
 type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
 
 val pp_process_exit : process_exit Fmt.t
+
+val should_restart : Unikernel.config -> Name.t -> process_exit -> bool
 
 module Log : sig
   type log_event = [
