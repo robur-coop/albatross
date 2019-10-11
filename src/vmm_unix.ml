@@ -150,25 +150,16 @@ let prepare name vm =
   Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
-let free_resources name taps =
-  (* same order as prepare! *)
-  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
-  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
-  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) taps
-
 let vm_device vm =
   match Lazy.force uname with
   | x when x = "FreeBSD" -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
   | _ -> Error (`Msg "don't know what you mean, sorry")
 
-let shutdown name vm =
-  (* since solo5 0.4.1, it drops privileges on FreeBSD *)
-  (* this results in solo5-hvt not being able to sysctl hw.vmm.destroy *)
-  (match Lazy.force uname, vm_device vm with
-   | x, Ok name when x = "FreeBSD" ->
-     ignore (Bos.OS.Cmd.run Bos.Cmd.(v "bhyvectl" % "--destroy" % ("--vm=" ^ name)))
-   | _ -> ()) ;
-  free_resources name vm.Unikernel.taps
+let free_system_resources name taps =
+  (* same order as prepare! *)
+  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
+  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
+  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) taps
 
 let cpuset cpu =
   let cpustring = string_of_int cpu in

@@ -152,7 +152,7 @@ let handle_create t hdr name vm_config =
     let t, stat_out = setup_stats t name vm in
     (t, stat_out, log_out, (hdr, `Success (`String "created VM")), name, vm)
   and fail () =
-    match Vmm_unix.free_resources name taps with
+    match Vmm_unix.free_system_resources name taps with
     | Ok () -> (hdr, `Failure "could not create VM: console failed")
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in
@@ -162,7 +162,7 @@ let handle_create t hdr name vm_config =
       `Create (cons_out, success, fail))
 
 let handle_shutdown t name vm r =
-  (match Vmm_unix.shutdown name vm with
+  (match Vmm_unix.free_system_resources name vm.Unikernel.taps with
    | Ok () -> ()
    | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm)) ;
   let resources = match Vmm_resources.remove_vm t.resources name with
