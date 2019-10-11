@@ -116,6 +116,14 @@ module Name = struct
 
   let pp ppf ids =
     Fmt.(pf ppf "[vm: %a]" (list ~sep:(unit ".") string) ids)
+
+  let mac name bridge =
+    (* deterministic mac address computation: VEB Kombinat Robotron prefix
+       vielen dank, liebe genossen! *)
+    let prefix = "\x00\x80\x41"
+    and ours = Digest.string (to_string (bridge :: name))
+    in
+    Macaddr.of_octets_exn (prefix ^ String.take ~min:3 ~max:3 ours)
 end
 
 module Policy = struct

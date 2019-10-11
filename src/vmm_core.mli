@@ -38,6 +38,14 @@ module Name : sig
   val domain : t -> t
   val pp : t Fmt.t
   val block_name : t -> string -> t
+
+  val mac : t -> string -> Macaddr.t
+(** [mac t bridge] outputs deterministically a mac address for [t] on [bridge].
+    The resulting mac address is computed as follows: as prefix, the (no longer
+    active) 00:80:41 (VEB Kombinat Robotron) is used, the remaining three bytes
+    are the first three bytes of the MD5 digest of [bridge ^ "." ^ to_string t].
+
+    i.e., [mac ["foo";"bar"] "default" = 00:80:41:1b:11:78] *)
 end
 
 module Policy : sig

@@ -172,7 +172,13 @@ let cpuset cpu =
   | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let exec name config bridge_taps blocks =
-  let net = List.map (fun (bridge, tap) -> "--net:" ^ bridge ^ "=" ^ tap) bridge_taps
+  let net, macs =
+    List.split
+      (List.map (fun (bridge, tap) ->
+           let mac = Name.mac name bridge in
+           "--net:" ^ bridge ^ "=" ^ tap,
+           "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
+          bridge_taps)
   and blocks = List.map (fun (name, dev) -> "--disk:" ^ name ^ "=" ^ Fpath.to_string (block_file dev)) blocks
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
@@ -180,7 +186,7 @@ let exec name config bridge_taps blocks =
   cpuset config.Unikernel.cpuid >>= fun cpuset ->
   let cmd =
     Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt") % mem %%
-             of_list net %% of_list blocks %
+             of_list net %% of_list macs %% of_list blocks %
              "--" % p (Name.image_file name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
