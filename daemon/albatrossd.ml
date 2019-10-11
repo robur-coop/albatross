@@ -27,7 +27,7 @@ let rec create stat_out log_out cons_out data_out hdr name config =
    | Error `Msg msg ->
      Logs.err (fun m -> m "failed to create %a: %s" Name.pp name msg) ;
      Lwt.return (None, (hdr, `Failure msg))
-   | Ok (state', `Create (cons, succ_cont, fail_cont)) ->
+   | Ok (state', (cons, succ_cont, fail_cont)) ->
      state := state';
      cons_out "create" cons >>= function
      | Error () -> Lwt.return (None, fail_cont ())

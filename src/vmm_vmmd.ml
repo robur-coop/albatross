@@ -179,12 +179,13 @@ let handle_create t hdr name vm_config =
       (hdr, `Failure m)
   in
   Ok ({ t with console_counter = Int64.succ t.console_counter },
-      `Create (cons_out, success, fail))
+      (cons_out, success, fail))
 
 let handle_shutdown t name vm r =
   (match Vmm_unix.free_system_resources name vm.Unikernel.taps with
    | Ok () -> ()
-   | Error (`Msg e) -> Logs.warn (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm)) ;
+   | Error (`Msg e) ->
+     Logs.err (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm));
   let t, log_out = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r)) in
   let t, stat_out = remove_stats t name in
   (t, stat_out, log_out)

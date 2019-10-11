@@ -8,13 +8,14 @@ val init : Vmm_commands.version -> 'a t
 
 val waiter : 'a t -> Name.t -> 'a t * 'a option
 
-val register : 'a t -> Name.t -> (unit -> 'b * 'a) -> ('a t * 'b)
+val register : 'a t -> Name.t -> (unit -> 'b * 'a) -> 'a t * 'b
 
 val register_restart : 'a t -> Name.t -> (unit -> 'b * 'a) -> ('a t * 'b) option
 
 type 'a create =
   Vmm_commands.wire *
-  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.wire * Name.t * Unikernel.t, [ `Msg of string ]) result) *
+  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.wire *
+            Name.t * Unikernel.t, [ `Msg of string ]) result) *
   (unit -> Vmm_commands.wire)
 
 val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
@@ -22,7 +23,7 @@ val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
 
 val handle_create : 'a t -> Vmm_commands.header ->
   Name.t -> Unikernel.config ->
-  ('a t * [ `Create of 'a create ], [> `Msg of string ]) result
+  ('a t * 'a create, [> `Msg of string ]) result
 
 val handle_command : 'a t -> Vmm_commands.wire ->
   ('a t *
