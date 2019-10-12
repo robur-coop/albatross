@@ -194,7 +194,7 @@ let log_event =
     | `C4 (name, pid, taps, blocks) ->
       let blocks = List.map (fun (name, dev) ->
           name, match Name.of_string dev with
-          | Error _ -> Name.append_exn "name" Name.(append_exn "invalid" root)
+          | Error `Msg msg -> Asn.S.error (`Parse msg)
           | Ok id -> id) blocks
       in
       `Unikernel_start (to_name name, pid, taps, blocks)

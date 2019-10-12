@@ -13,14 +13,10 @@ let state = ref (Vmm_vmmd.init version)
 let stub_hdr = Vmm_commands.{ version ; sequence = 0L ; name = Name.root }
 let stub_data_out _ = Lwt.return_unit
 
-(*
- - handle_create only prepares the unikernel (fifo, image file)
-  -> IO console about fifo
- - only the succ_cont later commits this (to resources)
-  --> there's a brief period
- *)
-
 let create_lock = Lwt_mutex.create ()
+(* the global lock held during execution of create -- and also while
+   Vmm_vmmd.handle is getting called, and while communicating via log /
+   console / stat socket communication. *)
 
 let rec create stat_out log_out cons_out data_out hdr name config =
   (match Vmm_vmmd.handle_create !state hdr name config with
@@ -72,18 +68,6 @@ let rec create stat_out log_out cons_out data_out hdr name config =
 
 let handle log_out cons_out stat_out fd addr =
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
-  (* now we need to read a packet and handle it
-    (1)
-     (a) easy for info (look up name/prefix in resources)
-     (b) destroy looks up vm in resources, executes kill (wait for pid will do the cleanup)
-         logs "destroy issued"
-     (c) create initiates the vm startup procedure:
-         write image file, create fifo, create tap(s), send fifo to console
-         -- Lwt effects happen (console) --
-         executes solo5-hvt + waiter, send stats pid and taps, inserts await into state, logs "created vm"
-         -- Lwt effects happen (stats, logs, wait_and_clear) --
-    (2) goto (1)
-  *)
   let out wire =
     (* TODO should we terminate the connection on write failure? *)
     Vmm_lwt.write_wire fd wire >|= fun _ -> ()
