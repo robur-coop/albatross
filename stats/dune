@@ -7,7 +7,7 @@ let () =
 (library
   (name albatross_stats)
   (public_name albatross.stats)
-  (libraries albatross albatross.cli)
+  (libraries albatross)
   (wrapped false)
   (c_names albatross_stats_stubs)
   (modules albatross_stats_pure))

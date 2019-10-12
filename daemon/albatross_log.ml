@@ -159,7 +159,7 @@ let handle mvar ring s addr =
   end >>= fun () ->
   Vmm_lwt.safe_close s
 
-let m = Albatross_cli.conn_metrics "unix"
+let m = Vmm_core.conn_metrics "unix"
 
 let jump _ file influx =
   Sys.(set_signal sigpipe Signal_ignore) ;

@@ -1,5 +1,7 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
+val conn_metrics : string -> [ `Close | `Open ] -> unit
+
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
 val socket_path : service -> string

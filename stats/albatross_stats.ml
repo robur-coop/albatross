@@ -64,7 +64,7 @@ let timer () =
         Vmm_lwt.safe_close s)
     outs
 
-let m = Albatross_cli.conn_metrics "unix"
+let m = Vmm_core.conn_metrics "unix"
 
 let jump _ interval influx =
   Sys.(set_signal sigpipe Signal_ignore) ;

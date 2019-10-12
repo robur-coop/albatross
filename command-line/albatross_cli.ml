@@ -3,23 +3,6 @@
 open Astring
 open Vmm_core
 
-let conn_metrics kind =
-  let s = ref (0, 0) in
-  let open Metrics in
-  let doc = "connection statistics" in
-  let data () =
-    Data.v [
-      int "active" (fst !s) ;
-      int "total" (snd !s) ;
-    ] in
-  let tags = Tags.string "kind" in
-  let src = Src.v ~doc ~tags:Tags.[ tags ] ~data "connections" in
-  (fun action ->
-     (match action with
-      | `Open -> s := (succ (fst !s), succ (snd !s))
-      | `Close -> s := (pred (fst !s), snd !s));
-     Metrics.add src (fun x -> x kind) (fun d -> d ()))
-
 open Lwt.Infix
 
 let process =

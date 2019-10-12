@@ -46,7 +46,7 @@ let rec wrap f arg =
     Logs.err (fun m -> m "exception %s" (Printexc.to_string e)) ;
     None
 
-let vmmapi = Albatross_cli.conn_metrics "vmmapi"
+let vmmapi = conn_metrics "vmmapi"
 
 let remove_vmid t vmid =
   Logs.info (fun m -> m "removing vmid %a" Vmm_core.Name.pp vmid) ;

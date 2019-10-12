@@ -66,7 +66,7 @@ let open_fifo name =
 
 let t = ref String.Map.empty
 
-let fifos = Albatross_cli.conn_metrics "fifo"
+let fifos = Vmm_core.conn_metrics "fifo"
 
 let add_fifo id =
   let name = Vmm_core.Name.to_string id in
@@ -159,7 +159,7 @@ let handle s addr =
   Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnected")
 
-let m = Albatross_cli.conn_metrics "unix"
+let m = Vmm_core.conn_metrics "unix"
 
 let jump _ influx =
   Sys.(set_signal sigpipe Signal_ignore) ;
