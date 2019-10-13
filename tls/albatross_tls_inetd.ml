@@ -27,7 +27,7 @@ let jump cacert cert priv_key tmpdir =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ cacert $ cert $ key $ Vmm_cli.runtime_directory),
+  Term.(const jump $ cacert $ cert $ key $ Albatross_cli.runtime_directory),
   Term.info "albatross_tls_inetd" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

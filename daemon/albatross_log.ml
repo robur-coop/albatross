@@ -159,7 +159,7 @@ let handle mvar ring s addr () =
   end >>= fun () ->
   Vmm_lwt.safe_close s
 
-let jump _ file tmpdir : unit =
+let jump _ file tmpdir =
   let sock = Vmm_core.socket_path ~tmpdir `Log in
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
@@ -180,12 +180,13 @@ let jump _ file tmpdir : unit =
      let start = Ptime_clock.now (), `Startup in
      Lwt_mvar.put mvar (`Entry start) >>= fun () ->
      Vmm_ring.write ring start ;
-     let rec loop () =
+     let rec loop () : unit Lwt.t =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        Lwt.async (handle mvar ring cs addr) ;
        loop ()
      in
      loop ())
+  ; Ok ()
 
 open Cmdliner
 open Albatross_cli
