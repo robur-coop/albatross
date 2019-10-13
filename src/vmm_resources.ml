@@ -83,7 +83,7 @@ let unikernel_metrics =
 
 let rec report_vms t name =
   let name' = Name.drop name in
-  let str = if Name.is_root name' then "." else Name.to_string name' in
+  let str = Name.to_string name' in
   Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, name'));
   if Name.is_root name' then () else report_vms t name'
 

@@ -66,7 +66,9 @@ module Name = struct
         | _ -> false)
       s (* only LDH (letters, digits, hyphen)! *)
 
-  let to_string ids = String.concat ~sep:"." ids
+  let to_string = function
+    | [] -> "."
+    | ids -> String.concat ~sep:"." ids
 
   let to_list x = x
 
