@@ -104,6 +104,8 @@ let ru =
          @ (required ~label:"nvcsw" int64)
         -@ (required ~label:"nivcsw" int64))
 
+(* although this changed (+runtime + cow + start) from V3 to V4, since it's not
+   persistent, no need to care about it *)
 let kinfo_mem =
   let open Stats in
   let f (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))) =
@@ -187,42 +189,53 @@ let of_name, to_name =
     | Ok name -> name
 
 let log_event =
+  (* this is stored on disk persistently -- be aware when changing the grammar
+     below to only ever extend it! *)
   let f = function
-    | `C1 () -> `Startup
-    | `C2 (name, ip, port) -> `Login (to_name name, ip, port)
-    | `C3 (name, ip, port) -> `Logout (to_name name, ip, port)
-    | `C4 (name, pid, taps, blocks) ->
+    | `C1 `C1 () -> `Startup
+    | `C1 `C2 (name, ip, port) -> `Login (to_name name, ip, port)
+    | `C1 `C3 (name, ip, port) -> `Logout (to_name name, ip, port)
+    | `C1 `C4 (name, pid, taps, block) ->
+      let name = to_name name in
+      let blocks = match block with
+        | None -> []
+        | Some block -> [ block, Name.block_name name block ]
+      and taps = List.map (fun tap -> tap, tap) taps
+      in
+      `Unikernel_start (name, pid, taps, blocks)
+    | `C2 `C1 (name, pid, taps, blocks) ->
       let blocks = List.map (fun (name, dev) ->
           name, match Name.of_string dev with
           | Error `Msg msg -> Asn.S.error (`Parse msg)
           | Ok id -> id) blocks
       in
       `Unikernel_start (to_name name, pid, taps, blocks)
-    | `C5 (name, pid, status) ->
+    | `C1 `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
         | `C2 n -> `Signal n
         | `C3 n -> `Stop n
       in
       `Unikernel_stop (to_name name, pid, status')
-    | `C6 () -> `Hup
+    | `C1 `C6 () -> `Hup
+    | `C2 `C2 () -> assert false (* placeholder *)
   and g = function
-    | `Startup -> `C1 ()
-    | `Login (name, ip, port) -> `C2 (of_name name, ip, port)
-    | `Logout (name, ip, port) -> `C3 (of_name name, ip, port)
+    | `Startup -> `C1 (`C1 ())
+    | `Login (name, ip, port) -> `C1 (`C2 (of_name name, ip, port))
+    | `Logout (name, ip, port) -> `C1 (`C3 (of_name name, ip, port))
     | `Unikernel_start (name, pid, taps, blocks) ->
       let blocks =
         List.map (fun (name, dev) -> name, Name.to_string dev) blocks
       in
-      `C4 (of_name name, pid, taps, blocks)
+      `C2 (`C1 (of_name name, pid, taps, blocks))
     | `Unikernel_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
         | `Signal n -> `C2 n
         | `Stop n -> `C3 n
       in
-      `C5 (of_name name, pid, status')
-    | `Hup -> `C6 ()
+      `C1 (`C5 (of_name name, pid, status'))
+    | `Hup -> `C1 (`C6 ())
   in
   let endp =
     Asn.S.(sequence3
@@ -231,31 +244,42 @@ let log_event =
             (required ~label:"port" int))
   in
   Asn.S.map f g @@
-  Asn.S.(choice6
-           (explicit 0 null)
-           (explicit 1 endp)
-           (explicit 2 endp)
-           (explicit 3 (sequence4
-                         (required ~label:"name" (sequence_of utf8_string))
-                         (required ~label:"pid" int)
-                         (required ~label:"taps"
-                            (sequence_of
-                               (sequence2
-                                  (required ~label:"bridge" utf8_string)
-                                  (required ~label:"tap" utf8_string))))
-                         (required ~label:"blocks"
-                            (sequence_of
-                               (sequence2
-                                  (required ~label:"name" utf8_string)
-                                  (required ~label:"device" utf8_string))))))
-           (explicit 4 (sequence3
-                          (required ~label:"name" (sequence_of utf8_string))
-                          (required ~label:"pid" int)
-                          (required ~label:"status" (choice3
-                                                       (explicit 0 int)
-                                                       (explicit 1 int)
-                                                       (explicit 2 int)))))
-           (explicit 5 null))
+  Asn.S.(choice2
+           (choice6
+              (explicit 0 null)
+              (explicit 1 endp)
+              (explicit 2 endp)
+              (* the old V3 unikernel start *)
+              (explicit 3 (sequence4
+                             (required ~label:"name" (sequence_of utf8_string))
+                             (required ~label:"pid" int)
+                             (required ~label:"taps" (sequence_of utf8_string))
+                             (optional ~label:"block" utf8_string)))
+              (explicit 4 (sequence3
+                             (required ~label:"name" (sequence_of utf8_string))
+                             (required ~label:"pid" int)
+                             (required ~label:"status" (choice3
+                                                          (explicit 0 int)
+                                                          (explicit 1 int)
+                                                          (explicit 2 int)))))
+              (explicit 5 null))
+           (choice2
+              (* the new V4 unikernel start*)
+              (explicit 6 (sequence4
+                             (required ~label:"name" (sequence_of utf8_string))
+                             (required ~label:"pid" int)
+                             (required ~label:"taps"
+                                (sequence_of
+                                   (sequence2
+                                      (required ~label:"bridge" utf8_string)
+                                      (required ~label:"tap" utf8_string))))
+                             (required ~label:"blocks"
+                                (sequence_of
+                                   (sequence2
+                                      (required ~label:"name" utf8_string)
+                                      (required ~label:"device" utf8_string))))))
+              (explicit 7 null)))
+
 
 let log_cmd =
   let f = function
@@ -299,6 +323,55 @@ let fail_behaviour =
            (explicit 0 null)
            (explicit 1 (set_of int)))
 
+(* this is part of the state file! *)
+let v3_unikernel_config =
+  let image =
+    let f = function
+      | `C1 x -> `Hvt_amd64, x
+      | `C2 x -> `Hvt_arm64, x
+      | `C3 x -> `Hvt_amd64_compressed, x
+    and g = function
+      | `Hvt_amd64, x -> `C1 x
+      | `Hvt_arm64, x -> `C2 x
+      | `Hvt_amd64_compressed, x -> `C3 x
+    in
+    Asn.S.map f g @@
+    Asn.S.(choice3
+             (explicit 0 octet_string)
+             (explicit 1 octet_string)
+             (explicit 2 octet_string))
+  in
+  let open Unikernel in
+  let f (cpuid, memory, block_device, network_interfaces, image, argv) =
+    let bridges = match network_interfaces with None -> [] | Some xs -> xs
+    and block_devices = match block_device with None -> [] | Some b -> [ b ]
+    in
+    let typ = `Solo5
+    and compressed = match fst image with `Hvt_amd64_compressed -> true | _ -> false
+    and image = snd image
+    and fail_behaviour = `Quit
+    in
+    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+  and g vm =
+    let network_interfaces = match vm.bridges with [] -> None | xs -> Some xs
+    and block_device = match vm.block_devices with [] -> None | x::_ -> Some x
+    and typ = if vm.compressed then `Hvt_amd64_compressed else `Hvt_amd64
+    in
+    let image = typ, vm.image in
+    (vm.cpuid, vm.memory, block_device, network_interfaces, image, vm.argv)
+  in
+  Asn.S.map f g @@
+  Asn.S.(sequence6
+           (required ~label:"cpu" int)
+           (required ~label:"memory" int)
+           (optional ~label:"block" utf8_string)
+           (optional ~label:"network_interfaces" (sequence_of utf8_string))
+           (required ~label:"image" image)
+           (optional ~label:"arguments" (sequence_of utf8_string)))
+
+
+(* this is part of the state file (and unikernel_create command)
+   be aware if this (or a dependent grammar) is changed! *)
 let unikernel_config =
   let open Unikernel in
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
@@ -507,28 +580,6 @@ let wire =
 
 let wire_of_cstruct, wire_to_cstruct = projections_of wire
 
-(* maybe one day to smoothly transition to a new version,
-   but this requires version handshaking in all communication (i.e. server
-   sends: supported versions, client picks one to talk over this channel)
-let payload_of_cstruct, _ = projections_of payload
-let wire_of_cstruct versions buf =
-  let wire_header =
-    Asn.S.(sequence2
-             (required ~label:"header" header)
-             (required ~label:"payload" octet_string))
-  in
-  let wire_header_of_cstruct, _ = projections_of wire_header in
-  match wire_header_of_cstruct buf with
-  | Error e -> Error e
-  | Ok (header, payload) ->
-    if List.mem header.version versions then
-      match payload_of_cstruct payload with
-      | Ok p -> Ok (header, p)
-      | Error e -> Error e
-    else
-      Error (`Msg "unsupported version")
-*)
-
 let log_entry =
   Asn.S.(sequence2
            (required ~label:"timestamp" utc_time)
@@ -536,12 +587,8 @@ let log_entry =
 
 let log_entry_of_cstruct, log_entry_to_cstruct = projections_of log_entry
 
-(* if we revise structure, we need to stay in a sequence.. the first element
-   is always the version, we can dispatch on it for the later reader
-   -- would be easier to use a choice here -- we can define implicit tagged
-   is the current structure, and then 1 for new format etc.
-   keep in mind while changing arbitrary data here which may end up in the log ;)
-*)
+(* data is persisted to disk, we need to ensure to be able to decode (and
+   encode) properly without conflicts! *)
 let log_disk =
   Asn.S.(sequence2
            (required ~label:"version" version)
@@ -584,20 +631,22 @@ let trie e =
               (required ~label:"name" utf8_string)
               (required ~label:"value" e)))
 
-let version0_unikernels = trie unikernel_config
+let version0_unikernels = trie v3_unikernel_config
+
+let version1_unikernels = trie unikernel_config
 
 let unikernels =
    (* the choice is the implicit version + migration... be aware when
      any dependent data layout changes .oO(/o\) *)
   let f = function
-    | `C1 () -> Asn.S.error (`Parse "shouldn't happen")
+    | `C1 data -> data
     | `C2 data -> data
   and g data =
-    `C2 data
+    `C1 data
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-           (explicit 0 null)
+           (explicit 0 version1_unikernels)
            (explicit 1 version0_unikernels))
 
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
