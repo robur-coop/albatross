@@ -161,29 +161,36 @@ let handle mvar ring s addr =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ file influx =
+let jump _ file read_only influx =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Lwt_main.run
-    (Albatross_cli.init_influx "albatross_log" influx;
-     Vmm_lwt.server_socket `Log >>= fun s ->
-     let ring = Vmm_ring.create `Startup () in
-     read_from_file file >>= fun entries ->
+    (read_from_file file >>= fun entries ->
      Logs.app (fun m -> m "read %d entries from disk" (List.length entries)) ;
-     List.iter (Vmm_ring.write ring) entries ;
-     let mvar = Lwt_mvar.create_empty () in
-     Sys.(set_signal sighup (Signal_handle (fun _ ->
-         Lwt.async (fun () -> Lwt_mvar.put mvar `Hup)))) ;
-     Lwt.async (fun () -> write_to_file mvar file) ;
-     let start = Ptime_clock.now (), `Startup in
-     Lwt_mvar.put mvar (`Entry start) >>= fun () ->
-     Vmm_ring.write ring start ;
-     let rec loop () =
-       Lwt_unix.accept s >>= fun (cs, addr) ->
-       m `Open;
-       Lwt.async (fun () -> handle mvar ring cs addr >|= fun () -> m `Close) ;
+     if read_only then begin
+       List.iteri (fun i e ->
+           Logs.app (fun m -> m "entry %d: %a" i Vmm_core.Log.pp e))
+         entries;
+       Lwt.return_unit
+     end else begin
+       Albatross_cli.init_influx "albatross_log" influx;
+       Vmm_lwt.server_socket `Log >>= fun s ->
+       let ring = Vmm_ring.create `Startup () in
+       List.iter (Vmm_ring.write ring) entries ;
+       let mvar = Lwt_mvar.create_empty () in
+       Sys.(set_signal sighup (Signal_handle (fun _ ->
+           Lwt.async (fun () -> Lwt_mvar.put mvar `Hup)))) ;
+       Lwt.async (fun () -> write_to_file mvar file) ;
+       let start = Ptime_clock.now (), `Startup in
+       Lwt_mvar.put mvar (`Entry start) >>= fun () ->
+       Vmm_ring.write ring start ;
+       let rec loop () =
+         Lwt_unix.accept s >>= fun (cs, addr) ->
+         m `Open;
+         Lwt.async (fun () -> handle mvar ring cs addr >|= fun () -> m `Close) ;
+         loop ()
+       in
        loop ()
-     in
-     loop ())
+     end)
 
 open Cmdliner
 open Albatross_cli
@@ -192,8 +199,12 @@ let file =
   let doc = "File to write the log to" in
   Arg.(value & opt string "/var/log/albatross" & info [ "logfile" ] ~doc)
 
+let read_only =
+  let doc = "Only read log file and present entries" in
+  Arg.(value & flag & info [ "read-only" ] ~doc)
+
 let cmd =
-  Term.(term_result (const jump $ setup_log $ file $ influx)),
+  Term.(const jump $ setup_log $ file $ read_only $ influx),
   Term.info "albatross_log" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
