@@ -331,11 +331,31 @@ let should_restart config name = function
     false
   | `Exit i ->
     (* results (and default behaviour) -- solo5-exit allows an arbitrary int
+       from sysexits(3), bash tutorial (appendix E), OCaml runtime, solo5:
         0 normal exit (i.e. teardown) -> restart
-        1 solo5 internal error (bad image, bad manigest) -> no restart, never
+        1 solo5 internal error (bad image, bad manifest) -> no restart, never
         2 ocaml exceptions (out of memory et al) -> restart
-        64..70 -> no restart (soon to be used by unikernel command line parsing)
-        255 solo5-abort -> soon (OCaml 4.10) fatal error (out of memory) -> restart *)
+        60 61 62 (unused, not reserved) -> no restart, never
+        63 functoria-runtime help/version -> no restart, never
+        64 argument parse error - no restart, never
+        65 (sysexits, unused) data error
+        66 (sysexits, unused) noinput
+        67 (sysexits, unused) nouser
+        68 (sysexits, unused) nohost
+        69 (sysexits, unused) unavailable
+        70 (sysexits, unused) software
+        71 (sysexits, unused) oserr
+        72 (sysexits, unused) osfile
+        73 (sysexits, unused) cantcreat
+        74 (sysexits, unused) ioerr
+        75 (sysexits, unused) tempfail
+        76 (sysexits, unused) protocol
+        77 (sysexits, unused) noperm
+        78 (sysexits, unused) config
+        126 (bash, unused) command invoked cannot execute
+        127 (bash, unused) command not found
+        128+n (bash, unused) fatal error signal n
+        255 solo5-abort -> OCaml 4.10: fatal error (instead of 2) -> restart *)
     let opt_mem i =
       match config.Unikernel.fail_behaviour with
       | `Quit -> assert false
@@ -347,7 +367,7 @@ let should_restart config name = function
       Logs.warn (fun m -> m "unikernel %a solo5 exit failure (1)"
                     Name.pp name);
       false
-    | 64 | 65 | 66 | 67 | 68 | 69 | 70 ->
+    | 60 | 61 | 62 | 63 | 64 ->
       Logs.warn (fun m -> m "unikernel %a exited %d, not restarting"
                     Name.pp name i);
       false
