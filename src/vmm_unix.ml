@@ -89,20 +89,24 @@ let rec fifo_exists file =
   | Unix.Unix_error (e, _, _) ->
       R.error_msgf "file %a exists: %s" Fpath.pp file (Unix.error_message e)
 
+type supported = FreeBSD | Linux
+
 let uname =
   let cmd = Bos.Cmd.(v "uname" % "-s") in
   lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
-      | Ok (s, _) -> s
+      | Ok (s, _) when s = "FreeBSD" -> FreeBSD
+      | Ok (s, _) when s = "Linux" -> Linux
+      | Ok (s, _) -> invalid_arg (Printf.sprintf "OS %s not supported" s)
       | Error (`Msg m) -> invalid_arg m)
 
 let create_tap bridge =
   match Lazy.force uname with
-  | x when x = "FreeBSD" ->
+  | FreeBSD ->
     let cmd = Bos.Cmd.(v "ifconfig" % "tap" % "create") in
     Bos.OS.Cmd.run_out cmd |> Bos.OS.Cmd.out_string >>= fun (name, _) ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) >>= fun () ->
     Ok name
-  | x when x = "Linux" ->
+  | Linux ->
     let prefix = "vmmtap" in
     let rec find_n x =
       let nam = prefix ^ string_of_int x in
@@ -114,15 +118,13 @@ let create_tap bridge =
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % "mode" % "tap" % tap) >>= fun () ->
     Bos.OS.Cmd.run Bos.Cmd.(v "brctl" % "addif" % bridge % tap) >>= fun () ->
     Ok tap
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let destroy_tap tapname =
   match Lazy.force uname with
-  | x when x = "FreeBSD" ->
+  | FreeBSD ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % tapname % "destroy")
-  | x when x = "Linux" ->
+  | Linux ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "del" % "dev" % tapname % "mode" % "tap")
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
 
 let prepare name vm =
   (match vm.Unikernel.typ with
@@ -153,8 +155,8 @@ let prepare name vm =
 
 let vm_device vm =
   match Lazy.force uname with
-  | x when x = "FreeBSD" -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
-  | _ -> Error (`Msg "don't know what you mean, sorry")
+  | FreeBSD -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
+  | _ -> Error (`Msg "don't know what you mean (trying to find vm device)")
 
 let free_system_resources name taps =
   (* same order as prepare! *)
@@ -165,11 +167,8 @@ let free_system_resources name taps =
 let cpuset cpu =
   let cpustring = string_of_int cpu in
   match Lazy.force uname with
-  | x when x = "FreeBSD" ->
-    Ok ([ "cpuset" ; "-l" ; cpustring ])
-  | x when x = "Linux" ->
-    Ok ([ "taskset" ; "-c" ; cpustring ])
-  | x -> Error (`Msg ("unsupported operating system " ^ x))
+  | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
+  | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
 let exec name config bridge_taps blocks =
   let net, macs =

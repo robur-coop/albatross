@@ -355,7 +355,23 @@ let should_restart config name = function
         126 (bash, unused) command invoked cannot execute
         127 (bash, unused) command not found
         128+n (bash, unused) fatal error signal n
-        255 solo5-abort -> OCaml 4.10: fatal error (instead of 2) -> restart *)
+        255 solo5-abort -> OCaml 4.10: fatal error (instead of 2) -> restart
+
+opam exit codes:
+       1   False. Returned when a boolean return value is expected, e.g. when running with --check, or for queries like opam lint.
+       2   Bad command-line arguments, or command-line arguments pointing to an invalid context (e.g. file not following the expected format).
+       5   Not found. You requested something (package, version, repository, etc.) that couldn't be found.
+       10  Aborted. The operation required confirmation, which wasn't given.
+       15  Could not acquire the locks required for the operation.
+       20  There is no solution to the user request. This can be caused by asking to install two incompatible packages, for example.
+       30  Error in package definition, or other metadata files. Using --strict raises this error more often.
+       31  Package script error. Some package operations were unsuccessful. This may be an error in the packages or an incompatibility with your system. This can be a partial error.
+       40  Sync error. Could not fetch some remotes from the network. This can be a partial error.
+       50  Configuration error. Opam or system configuration doesn't allow operation, and needs fixing.
+       60  Solver failure. The solver failed to return a sound answer. It can be due to a broken external solver, or an error in solver configuration.
+       99  Internal error. Something went wrong, likely due to a bug in opam itself.
+       130 User interrupt. SIGINT was received, generally due to the user pressing Ctrl-C.
+ *)
     let opt_mem i =
       match config.Unikernel.fail_behaviour with
       | `Quit -> assert false
