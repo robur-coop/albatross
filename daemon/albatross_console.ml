@@ -20,8 +20,10 @@ let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
 let active = ref String.Map.empty
 
-let read_console id name ring channel =
+let read_console id name ring fd =
   Lwt.catch (fun () ->
+      Lwt_unix.wait_read fd >>= fun () ->
+      let channel = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
       let rec loop () =
         Lwt_io.read_line channel >>= fun line ->
         Logs.debug (fun m -> m "read %s" line) ;
@@ -48,14 +50,14 @@ let read_console id name ring channel =
          | exn ->
            Logs.err (fun m -> m "%s error while reading %s" name (Printexc.to_string exn))
        end ;
-       Lwt_io.close channel)
+       Vmm_lwt.safe_close fd)
 
 let open_fifo name =
   let fifo = Vmm_core.Name.fifo_file name in
   Lwt.catch (fun () ->
       Logs.debug (fun m -> m "opening %a for reading" Fpath.pp fifo) ;
-      Lwt_io.open_file ~mode:Lwt_io.Input (Fpath.to_string fifo) >>= fun channel ->
-      Lwt.return (Some channel))
+      Lwt_unix.openfile (Fpath.to_string fifo) [Lwt_unix.O_RDONLY; Lwt_unix.O_NONBLOCK] 0 >>= fun fd ->
+      Lwt.return (Some fd))
     (function
       | Unix.Unix_error (e, f, _) ->
         Logs.err (fun m -> m "%a error in %s: %a" Fpath.pp fifo f pp_unix_error e) ;
