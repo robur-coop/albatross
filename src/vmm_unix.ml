@@ -17,10 +17,10 @@ open Rresult
    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   ---------------------------------------------------------------------------*)
-let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
+let pp_unix_err ppf e = Fmt.string ppf (Unix.error_message e)
 
 let err_empty_line = "no command, empty command line"
-let err_file f e = R.error_msgf "%a: %a" Fpath.pp f pp_unix_error e
+let err_file f e = R.error_msgf "%a: %a" Fpath.pp f pp_unix_err e
 
 let rec openfile fn mode perm = try Unix.openfile fn mode perm with
   | Unix.Unix_error (Unix.EINTR, _, _) -> openfile fn mode perm
@@ -119,32 +119,33 @@ let create_tap bridge =
     Bos.OS.Cmd.run Bos.Cmd.(v "brctl" % "addif" % bridge % tap) >>= fun () ->
     Ok tap
 
-let destroy_tap tapname =
-  match Lazy.force uname with
-  | FreeBSD ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % tapname % "destroy")
-  | Linux ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "del" % "dev" % tapname % "mode" % "tap")
+let destroy_tap tap =
+  let cmd =
+    match Lazy.force uname with
+    | FreeBSD -> Bos.Cmd.(v "ifconfig" % tap % "destroy")
+    | Linux -> Bos.Cmd.(v "ip" % "tuntap" % "del" % "dev" % tap % "mode" % "tap")
+  in
+  Bos.OS.Cmd.run cmd
 
 let prepare name vm =
   (match vm.Unikernel.typ with
    | `Solo5 ->
      if vm.Unikernel.compressed then
-       begin match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
-         | Ok blob -> Ok (Cstruct.of_string blob)
-         | Error () -> Error (`Msg "failed to uncompress")
-       end
+       match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
+       | Ok blob -> Ok (Cstruct.of_string blob)
+       | Error () -> Error (`Msg "failed to uncompress")
      else
        Ok vm.Unikernel.image) >>= fun image ->
   let fifo = Name.fifo_file name in
-  (match fifo_exists fifo with
-   | Ok true -> Ok ()
-   | Ok false -> Error (`Msg ("file " ^ Fpath.to_string fifo ^ " exists and is not a fifo"))
-   | Error _ ->
-     try Ok (mkfifo fifo) with
-     | Unix.Unix_error (e, f, _) ->
-       Logs.err (fun m -> m "%a error in %s: %a" Fpath.pp fifo f pp_unix_error e) ;
-       Error (`Msg "while creating fifo")) >>= fun () ->
+  begin match fifo_exists fifo with
+    | Ok true -> Ok ()
+    | Ok false -> R.error_msgf "file %a exists and is not a fifo" Fpath.pp fifo
+    | Error _ ->
+      try Ok (mkfifo fifo) with
+      | Unix.Unix_error (e, f, _) ->
+        Logs.err (fun m -> m "%a error in %s: %a" Fpath.pp fifo f pp_unix_err e);
+        Error (`Msg "while creating fifo")
+  end >>= fun () ->
   List.fold_left (fun acc b ->
       acc >>= fun acc ->
       create_tap b >>= fun tap ->
@@ -207,7 +208,7 @@ let exec name config bridge_taps blocks =
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
-    R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_error e
+    R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_err e
 
 let destroy vm = Unix.kill vm.Unikernel.pid Sys.sigterm
 
