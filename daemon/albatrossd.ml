@@ -147,6 +147,8 @@ let m = conn_metrics "unix"
 
 let jump _ influx =
   Sys.(set_signal sigpipe Signal_ignore);
+  Rresult.R.error_msg_to_invalid_arg
+    (Vmm_unix.check_commands ());
   match Vmm_vmmd.restore_unikernels () with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->

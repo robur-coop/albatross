@@ -1,6 +1,47 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
 open Rresult
+
+open Vmm_core
+
+let dbdir = Fpath.(v "/var" / "db" / "albatross")
+
+type supported = FreeBSD | Linux
+
+let uname =
+  let cmd = Bos.Cmd.(v "uname" % "-s") in
+  lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
+      | Ok (s, _) when s = "FreeBSD" -> FreeBSD
+      | Ok (s, _) when s = "Linux" -> Linux
+      | Ok (s, _) -> invalid_arg (Printf.sprintf "OS %s not supported" s)
+      | Error (`Msg m) -> invalid_arg m)
+
+let check_solo5_cmd name =
+  match
+    Bos.OS.Cmd.must_exist (Bos.Cmd.v name),
+    Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(dbdir / name)))
+  with
+  | Ok cmd, _ | _, Ok cmd -> Ok cmd
+  | _ -> R.error_msgf "%s does not exist" name
+
+(* here we check that the binaries we use in this file are actually present *)
+let check_commands () =
+  let uname_cmd = Bos.Cmd.v "uname" in
+  Bos.OS.Cmd.must_exist uname_cmd >>= fun _ ->
+  let cmds =
+    match Lazy.force uname with
+    | Linux -> [ "ip" ; "brctl" ; "taskset" ]
+    | FreeBSD -> [ "ifconfig" ; "cpuset" ]
+  in
+  List.fold_left
+    (fun acc cmd -> acc >>= fun _ ->
+      Bos.OS.Cmd.must_exist (Bos.Cmd.v cmd))
+    (Ok uname_cmd) cmds >>= fun _ ->
+  check_solo5_cmd "solo5-elftool" >>| fun _ ->
+  ()
+  (* we could check for solo5-hvt OR solo5-spt, but in practise we need
+     to handle either being absent and we get an image of that type anyways *)
+
 (* bits copied over from Bos *)
 (*---------------------------------------------------------------------------
    Copyright (c) 2014 Daniel C. Bünzli
@@ -51,10 +92,6 @@ let close_no_err fd = try close fd with _ -> ()
 (* own code starts here
    (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Vmm_core
-
-let dbdir = Fpath.(v "/var" / "db" / "albatross")
-
 let dump, restore =
   let open R.Infix in
   let state_file = Fpath.(dbdir / "state") in
@@ -89,16 +126,6 @@ let rec fifo_exists file =
   | Unix.Unix_error (e, _, _) ->
       R.error_msgf "file %a exists: %s" Fpath.pp file (Unix.error_message e)
 
-type supported = FreeBSD | Linux
-
-let uname =
-  let cmd = Bos.Cmd.(v "uname" % "-s") in
-  lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
-      | Ok (s, _) when s = "FreeBSD" -> FreeBSD
-      | Ok (s, _) when s = "Linux" -> Linux
-      | Ok (s, _) -> invalid_arg (Printf.sprintf "OS %s not supported" s)
-      | Error (`Msg m) -> invalid_arg m)
-
 let create_tap bridge =
   match Lazy.force uname with
   | FreeBSD ->
@@ -110,7 +137,7 @@ let create_tap bridge =
     let prefix = "vmmtap" in
     let rec find_n x =
       let nam = prefix ^ string_of_int x in
-      match Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % nam) with
+      match Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "show" % nam) with
       | Error _ -> nam
       | Ok _ -> find_n (succ x)
     in
@@ -127,6 +154,20 @@ let destroy_tap tap =
   in
   Bos.OS.Cmd.run cmd
 
+type solo5_target = Spt | Hvt
+
+let solo5_image_target image =
+  check_solo5_cmd "solo5-elftool" >>= fun cmd ->
+  let cmd = Bos.Cmd.(cmd % "query-abi" % p image) in
+  Bos.OS.Cmd.(run_out cmd |> out_string) >>= fun (s, _) ->
+  R.error_to_msg ~pp_error:Jsonm.pp_error
+    (Vmm_json.json_of_string s) >>= fun data ->
+  Vmm_json.find_string_value "target" data >>= function
+  | "spt" -> Ok Spt | "hvt" -> Ok Hvt
+  | x -> R.error_msgf "unsupported solo5 target %s" x
+
+let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
+
 let prepare name vm =
   (match vm.Unikernel.typ with
    | `Solo5 ->
@@ -136,6 +177,10 @@ let prepare name vm =
        | Error () -> Error (`Msg "failed to uncompress")
      else
        Ok vm.Unikernel.image) >>= fun image ->
+  let filename = Name.image_file name in
+  Bos.OS.File.write filename (Cstruct.to_string image) >>= fun () ->
+  solo5_image_target filename >>= fun target ->
+  check_solo5_cmd (solo5_tender target) >>= fun _ ->
   let fifo = Name.fifo_file name in
   begin match fifo_exists fifo with
     | Ok true -> Ok ()
@@ -143,15 +188,13 @@ let prepare name vm =
     | Error _ ->
       try Ok (mkfifo fifo) with
       | Unix.Unix_error (e, f, _) ->
-        Logs.err (fun m -> m "%a error in %s: %a" Fpath.pp fifo f pp_unix_err e);
-        Error (`Msg "while creating fifo")
+        R.error_msgf "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e
   end >>= fun () ->
   List.fold_left (fun acc b ->
       acc >>= fun acc ->
       create_tap b >>= fun tap ->
       Ok (tap :: acc))
     (Ok []) vm.Unikernel.bridges >>= fun taps ->
-  Bos.OS.File.write (Name.image_file name) (Cstruct.to_string image) >>= fun () ->
   Ok (List.rev taps)
 
 let vm_device vm =
@@ -184,8 +227,11 @@ let exec name config bridge_taps blocks =
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   cpuset config.Unikernel.cpuid >>= fun cpuset ->
+  let filename = Name.image_file name in
+  solo5_image_target filename >>= fun target ->
+  check_solo5_cmd (solo5_tender target) >>= fun tender ->
   let cmd =
-    Bos.Cmd.(of_list cpuset % p Fpath.(dbdir / "solo5-hvt") % mem %%
+    Bos.Cmd.(of_list cpuset %% tender % mem %%
              of_list net %% of_list macs %% of_list blocks %
              "--" % p (Name.image_file name) %% of_list argv)
   in
