@@ -4,7 +4,9 @@ open Rresult
 
 open Vmm_core
 
-let dbdir = Fpath.(v "/var" / "db" / "albatross")
+let dbdir = ref (Fpath.v "/nonexisting")
+
+let set_dbdir path = dbdir := path
 
 type supported = FreeBSD | Linux
 
@@ -19,7 +21,7 @@ let uname =
 let check_solo5_cmd name =
   match
     Bos.OS.Cmd.must_exist (Bos.Cmd.v name),
-    Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(dbdir / name)))
+    Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(!dbdir / name)))
   with
   | Ok cmd, _ | _, Ok cmd -> Ok cmd
   | _ -> R.error_msgf "%s does not exist" name
@@ -94,8 +96,8 @@ let close_no_err fd = try close fd with _ -> ()
 
 let dump, restore =
   let open R.Infix in
-  let state_file = Fpath.(dbdir / "state") in
   (fun data ->
+     let state_file = Fpath.(!dbdir / "state") in
      Bos.OS.File.exists state_file >>= fun exists ->
      (if exists then begin
         let bak = Fpath.(state_file + "bak") in
@@ -103,17 +105,18 @@ let dump, restore =
       end else Ok ()) >>= fun () ->
      Bos.OS.File.write state_file (Cstruct.to_string data)),
   (fun () ->
+     let state_file = Fpath.(!dbdir / "state") in
      Bos.OS.File.exists state_file >>= fun exists ->
      if exists then
        Bos.OS.File.read state_file >>| fun data ->
        Cstruct.of_string data
      else Error `NoFile)
 
-let blockdir = Fpath.(dbdir / "block")
+let block_sub = "block"
 
 let block_file name =
   let file = Name.to_string name in
-  Fpath.(blockdir / file)
+  Fpath.(!dbdir / block_sub / file)
 
 let rec mkfifo name =
   try Unix.mkfifo (Fpath.to_string name) 0o640 with
@@ -285,6 +288,7 @@ let mb_of_bytes size =
     Ok (size lsr 20)
 
 let find_block_devices () =
+  let blockdir = Fpath.(!dbdir / block_sub) in
   Bos.OS.Dir.contents ~rel:true blockdir >>= fun files ->
   List.fold_left (fun acc file ->
       acc >>= fun acc ->

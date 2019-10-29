@@ -4,6 +4,12 @@ open Rresult
 
 open Vmm_core
 
+type supported = FreeBSD | Linux
+
+val uname : supported Lazy.t
+
+val set_dbdir : Fpath.t -> unit
+
 val check_commands : unit -> (unit, [> R.msg ]) result
 
 val prepare : Name.t -> Unikernel.config -> (string list, [> R.msg ]) result

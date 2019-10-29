@@ -40,7 +40,8 @@ let handle opt_socket name (cmd : Vmm_commands.t) =
       Vmm_lwt.safe_close fd >|= fun () ->
       Ok ()
 
-let jump opt_socket name cmd =
+let jump opt_socket name cmd tmpdir =
+  Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run (handle opt_socket name cmd)
 
 let info_policy _ opt_socket name =
@@ -59,9 +60,9 @@ let info_ _ opt_socket name =
 let destroy _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_destroy)
 
-let create _ opt_socket force name image cpuid memory argv block network compression restart_on_fail exit_code =
+let create _ opt_socket force name image cpuid memory argv block network compression restart_on_fail exit_code tmpdir =
   match Albatross_cli.create_vm force image cpuid memory argv block network compression restart_on_fail exit_code with
-  | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd)
+  | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd) tmpdir
   | Error (`Msg msg) -> Error (`Msg msg)
 
 let console _ opt_socket name since count =
@@ -106,7 +107,7 @@ let destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroy a virtual machine."]
   in
-  Term.(term_result (const destroy $ setup_log $ socket $ vm_name)),
+  Term.(term_result (const destroy $ setup_log $ socket $ vm_name $ tmpdir)),
   Term.info "destroy" ~doc ~man
 
 let remove_policy_cmd =
@@ -115,7 +116,7 @@ let remove_policy_cmd =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
-  Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name)),
+  Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name $ tmpdir)),
   Term.info "remove_policy" ~doc ~man
 
 let info_cmd =
@@ -124,7 +125,7 @@ let info_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(term_result (const info_ $ setup_log $ socket $ opt_vm_name)),
+  Term.(term_result (const info_ $ setup_log $ socket $ opt_vm_name $ tmpdir)),
   Term.info "info" ~doc ~man
 
 let policy_cmd =
@@ -133,7 +134,7 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name)),
+  Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name $ tmpdir)),
   Term.info "policy" ~doc ~man
 
 let add_policy_cmd =
@@ -142,7 +143,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
+  Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir)),
   Term.info "add_policy" ~doc ~man
 
 let create_cmd =
@@ -151,7 +152,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(term_result (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code)),
+  Term.(term_result (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir)),
   Term.info "create" ~doc ~man
 
 let console_cmd =
@@ -160,7 +161,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(term_result (const console $ setup_log $ socket $ vm_name $ since $ count)),
+  Term.(term_result (const console $ setup_log $ socket $ vm_name $ since $ count $ tmpdir)),
   Term.info "console" ~doc ~man
 
 let stats_subscribe_cmd =
@@ -169,7 +170,7 @@ let stats_subscribe_cmd =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(term_result (const stats_subscribe $ setup_log $ socket $ opt_vm_name)),
+  Term.(term_result (const stats_subscribe $ setup_log $ socket $ opt_vm_name $ tmpdir)),
   Term.info "stats" ~doc ~man
 
 let stats_remove_cmd =
@@ -178,7 +179,7 @@ let stats_remove_cmd =
     [`S "DESCRIPTION";
      `P "Removes statistics of VM."]
   in
-  Term.(term_result (const stats_remove $ setup_log $ socket $ opt_vm_name)),
+  Term.(term_result (const stats_remove $ setup_log $ socket $ opt_vm_name $ tmpdir)),
   Term.info "stats_remove" ~doc ~man
 
 let stats_add_cmd =
@@ -187,7 +188,7 @@ let stats_add_cmd =
     [`S "DESCRIPTION";
      `P "Add VM to statistics gathering."]
   in
-  Term.(term_result (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps)),
+  Term.(term_result (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps $ tmpdir)),
   Term.info "stats_add" ~doc ~man
 
 let log_cmd =
@@ -196,7 +197,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(term_result (const event_log $ setup_log $ socket $ opt_vm_name $ since $ count)),
+  Term.(term_result (const event_log $ setup_log $ socket $ opt_vm_name $ since $ count $ tmpdir)),
   Term.info "log" ~doc ~man
 
 let block_info_cmd =
@@ -205,7 +206,7 @@ let block_info_cmd =
     [`S "DESCRIPTION";
      `P "Block device information."]
   in
-  Term.(term_result (const block_info $ setup_log $ socket $ opt_block_name)),
+  Term.(term_result (const block_info $ setup_log $ socket $ opt_block_name $ tmpdir)),
   Term.info "block" ~doc ~man
 
 let block_create_cmd =
@@ -214,7 +215,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size)),
+  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ tmpdir)),
   Term.info "create_block" ~doc ~man
 
 let block_destroy_cmd =
@@ -223,7 +224,7 @@ let block_destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroys a block device."]
   in
-  Term.(term_result (const block_destroy $ setup_log $ socket $ block_name)),
+  Term.(term_result (const block_destroy $ setup_log $ socket $ block_name $ tmpdir)),
   Term.info "destroy_block" ~doc ~man
 
 let help_cmd =

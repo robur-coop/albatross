@@ -13,8 +13,9 @@ let server_socket port =
   listen s 10 ;
   Lwt.return s
 
-let jump _ cacert cert priv_key port =
-  Sys.(set_signal sigpipe Signal_ignore) ;
+let jump _ cacert cert priv_key port tmpdir =
+  Sys.(set_signal sigpipe Signal_ignore);
+  Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
     (Nocrypto_entropy_lwt.initialize () >>= fun () ->
      server_socket port >>= fun socket ->
@@ -57,7 +58,7 @@ let port =
   Arg.(value & opt int 1025 & info [ "port" ] ~doc)
 
 let cmd =
-  Term.(const jump $ setup_log $ cacert $ cert $ key $ port),
+  Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir),
   Term.info "albatross_tls_endpoint" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

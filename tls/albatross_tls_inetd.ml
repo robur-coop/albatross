@@ -3,8 +3,9 @@
 open Lwt.Infix
 open Albatross_tls_common
 
-let jump cacert cert priv_key =
+let jump cacert cert priv_key tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
     (Nocrypto_entropy_lwt.initialize () >>= fun () ->
      tls_config cacert cert priv_key >>= fun (config, ca) ->
@@ -25,7 +26,7 @@ let jump cacert cert priv_key =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ cacert $ cert $ key),
+  Term.(const jump $ cacert $ cert $ key $ Albatross_cli.tmpdir),
   Term.info "albatross_tls_inetd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

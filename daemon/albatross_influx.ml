@@ -280,8 +280,9 @@ let client influx vm drop =
   in
   loop ()
 
-let run_client _ influx vm drop =
+let run_client _ influx vm drop tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run (client influx vm drop)
 
 open Cmdliner
@@ -297,7 +298,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label)),
+  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir)),
   Term.info "albatross_influx" ~version ~doc ~man
 
 let () =

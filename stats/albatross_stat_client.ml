@@ -31,8 +31,9 @@ let timer pid vmmapi interval =
       let all = List.combine !descr st in
       Logs.app (fun m -> m "bhyve stats %a" Stats.pp_vmm_mem all)
 
-let jump _ pid name interval =
+let jump _ pid name interval tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  Albatross_cli.set_tmpdir tmpdir;
   let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run (
     let vmmapi = match name with
@@ -68,7 +69,7 @@ let vmname =
   Arg.(value & opt (some string) None & info [ "name" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ pid $ vmname $ interval)),
+  Term.(term_result (const jump $ setup_log $ pid $ vmname $ interval $ tmpdir)),
   Term.info "albatross_stat_client" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -66,8 +66,9 @@ let timer () =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ interval influx =
-  Sys.(set_signal sigpipe Signal_ignore) ;
+let jump _ interval influx tmpdir =
+  Sys.(set_signal sigpipe Signal_ignore);
+  Albatross_cli.set_tmpdir tmpdir;
   let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_stats" influx;
@@ -89,7 +90,7 @@ let interval =
   Arg.(value & opt int 10 & info [ "interval" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ interval $ influx)),
+  Term.(term_result (const jump $ setup_log $ interval $ influx $ tmpdir)),
   Term.info "albatross_stats" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -148,8 +148,9 @@ let handle mvar ring s addr =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ file read_only influx =
+let jump _ file read_only influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
     (read_from_file file >>= fun entries ->
      Logs.app (fun m -> m "read %d entries from disk" (List.length entries)) ;
@@ -191,7 +192,7 @@ let read_only =
   Arg.(value & flag & info [ "read-only" ] ~doc)
 
 let cmd =
-  Term.(const jump $ setup_log $ file $ read_only $ influx),
+  Term.(const jump $ setup_log $ file $ read_only $ influx $ tmpdir),
   Term.info "albatross_log" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

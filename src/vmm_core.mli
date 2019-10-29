@@ -2,6 +2,8 @@
 
 val conn_metrics : string -> [ `Close | `Open ] -> unit
 
+val set_tmpdir : Fpath.t -> unit
+
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
 val socket_path : service -> string
