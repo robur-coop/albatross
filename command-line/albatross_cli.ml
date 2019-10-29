@@ -233,10 +233,22 @@ let exit_code =
 let timestamp_c =
   let parse s = match Ptime.of_rfc3339 s with
     | Ok (t, _, _) -> `Ok t
-    | Error _ -> `Error "couldn't parse timestamp"
+    | Error _ ->
+      (* let's try to add T00:00:00-00:00 *)
+      match Ptime.of_rfc3339 (s ^ "T00:00:00-00:00") with
+      | Ok (t, _, _) -> `Ok t
+      | Error _ -> `Error "couldn't parse timestamp"
   in
   (parse, Ptime.pp_rfc3339 ())
 
 let since =
   let doc = "Receive data since a specified timestamp (RFC 3339 encoded)" in
   Arg.(value & opt (some timestamp_c) None & info [ "since" ] ~doc)
+
+let count =
+  let doc = "Receive N data records" in
+  Arg.(value & opt int 20 & info [ "count" ] ~doc)
+
+let since_count since count = match since with
+  | None -> `Count count
+  | Some since -> `Since since

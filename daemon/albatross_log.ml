@@ -67,19 +67,15 @@ let write_to_file mvar file =
   loop fd >|= fun _ ->
   ()
 
-let send_history s ring id ts =
-  let elements =
-    match ts with
-    | None -> Vmm_ring.read ring
-    | Some since -> Vmm_ring.read_history ring since
+let send_history s ring id what =
+  let tst event =
+    let sub = Vmm_core.Log.name event in
+    Vmm_core.Name.is_sub ~super:id ~sub
   in
-  let res =
-    List.fold_left (fun acc (ts, event) ->
-        let sub = Vmm_core.Log.name event in
-        if Vmm_core.Name.is_sub ~super:id ~sub
-        then (ts, event) :: acc
-        else acc)
-      [] elements
+  let elements =
+    match what with
+    | `Since since -> Vmm_ring.read_history ~tst ring since
+    | `Count n -> Vmm_ring.read_last ~tst ring n
   in
   (* just need a wrapper in tag = Log.Data, id = reqid *)
   Lwt_list.fold_left_s (fun r (ts, event) ->
@@ -88,7 +84,7 @@ let send_history s ring id ts =
         let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
         Vmm_lwt.write_wire s (header, `Data (`Log_data (ts, event)))
       | Error e -> Lwt.return (Error e))
-    (Ok ()) (List.rev res)
+    (Ok ()) elements
 
 let tree = ref Vmm_trie.empty
 

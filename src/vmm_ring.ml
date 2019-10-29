@@ -19,25 +19,30 @@ let write t entry =
 
 let dec t n = (pred n + t.size) mod t.size
 
-let not_written ts = Ptime.equal ts Ptime.min
-
-let entry_not_written (ts, _) = not_written ts
-
-let earlier than (ts, _) =
-  if not_written ts then true else Ptime.is_earlier ts ~than
-
-let read_some tst t =
-  let rec go s acc idx =
-    if idx = s then (* don't read it twice *)
-      acc
+let read_last t ?(tst = fun _ -> true) n =
+  let rec one idx count acc =
+    let our = Array.get t.data idx in
+    if tst (snd our) then
+      if pred count = 0 then
+        our :: acc
+      else
+        one (dec t idx) (pred count) (our :: acc)
     else
-      let entry = Array.get t.data idx in
-      if tst entry then acc else go s (entry :: acc) (dec t idx)
+      one (dec t idx) count acc
   in
-  let idx = dec t t.write in
-  let entry = Array.get t.data idx in
-  if tst entry then [] else go idx [entry] (dec t idx)
+  one (dec t t.write) n []
 
-let read t = read_some entry_not_written t
-
-let read_history t than = read_some (earlier than) t
+let read_history t ?(tst = fun _ -> true) since =
+  let rec go acc idx =
+    let entry = Array.get t.data idx in
+    if Ptime.equal (fst entry) Ptime.min then
+      acc
+    else if tst (snd entry) then
+      if Ptime.is_earlier (fst entry) ~than:since then
+        acc
+      else
+        go (entry :: acc) (dec t idx)
+    else
+      go acc (dec t idx)
+  in
+  go [] (dec t t.write)

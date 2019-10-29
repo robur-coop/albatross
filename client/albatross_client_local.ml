@@ -66,8 +66,8 @@ let create _ opt_socket force name image cpuid memory argv block network compres
   | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> Error (`Msg msg)
 
-let console _ opt_socket name since =
-  jump opt_socket name (`Console_cmd (`Console_subscribe since))
+let console _ opt_socket name since count =
+  jump opt_socket name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
 let stats_add _ opt_socket name vmmdev pid bridge_taps =
   jump opt_socket name (`Stats_cmd (`Stats_add (vmmdev, pid, bridge_taps)))
@@ -78,8 +78,8 @@ let stats_remove _ opt_socket name =
 let stats_subscribe _ opt_socket name =
   jump opt_socket name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ opt_socket name since =
-  jump opt_socket name (`Log_cmd (`Log_subscribe since))
+let event_log _ opt_socket name since count =
+  jump opt_socket name (`Log_cmd (`Log_subscribe (Albatross_cli.since_count since count)))
 
 let block_info _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_info)
@@ -162,7 +162,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(term_result (const console $ setup_log $ socket $ vm_name $ since)),
+  Term.(term_result (const console $ setup_log $ socket $ vm_name $ since $ count)),
   Term.info "console" ~doc ~man
 
 let stats_subscribe_cmd =
@@ -198,7 +198,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(term_result (const event_log $ setup_log $ socket $ opt_vm_name $ since)),
+  Term.(term_result (const event_log $ setup_log $ socket $ opt_vm_name $ since $ count)),
   Term.info "log" ~doc ~man
 
 let block_info_cmd =

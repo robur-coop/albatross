@@ -53,15 +53,17 @@ let policy =
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
-    | `C2 ts -> `Console_subscribe ts
+    | `C2 `C1 ts -> `Console_subscribe (`Since ts)
+    | `C2 `C2 c -> `Console_subscribe (`Count c)
   and g = function
     | `Console_add -> `C1 ()
-    | `Console_subscribe ts -> `C2 ts
+    | `Console_subscribe `Since ts -> `C2 (`C1 ts)
+    | `Console_subscribe `Count c -> `C2 (`C2 c)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
            (explicit 0 null)
-           (explicit 1 (sequence (single (optional ~label:"since" utc_time)))))
+           (explicit 1 (choice2 (explicit 0 utc_time) (explicit 1 int))))
 
 (* TODO is this good? *)
 let int64 =
@@ -283,12 +285,14 @@ let log_event =
 
 let log_cmd =
   let f = function
-    | ts -> `Log_subscribe ts
+    | `C1 since -> `Log_subscribe (`Since since)
+    | `C2 n -> `Log_subscribe (`Count n)
   and g = function
-    | `Log_subscribe ts -> ts
+    | `Log_subscribe `Since since -> `C1 since
+    | `Log_subscribe `Count n -> `C2 n
   in
   Asn.S.map f g @@
-  Asn.S.(sequence (single (optional ~label:"since" utc_time)))
+  Asn.S.(choice2 (explicit 0 utc_time) (explicit 1 int))
 
 let typ =
   let f = function

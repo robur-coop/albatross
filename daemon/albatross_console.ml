@@ -104,8 +104,8 @@ let subscribe s id =
 let send_history s r id since =
   let entries =
     match since with
-    | None -> Vmm_ring.read r
-    | Some ts -> Vmm_ring.read_history r ts
+    | `Count n -> Vmm_ring.read_last r n
+    | `Since ts -> Vmm_ring.read_history r ts
   in
   Logs.debug (fun m -> m "%a found %d history" Vmm_core.Name.pp id (List.length entries)) ;
   Lwt_list.iter_s (fun (i, v) ->

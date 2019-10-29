@@ -11,9 +11,11 @@ val version_eq : version -> version -> bool
 (** [pp_version ppf version] pretty prints [version] onto [ppf]. *)
 val pp_version : version Fmt.t
 
+type since_count = [ `Since of Ptime.t | `Count of int ]
+
 type console_cmd = [
   | `Console_add
-  | `Console_subscribe of Ptime.t option
+  | `Console_subscribe of since_count
 ]
 
 type stats_cmd = [
@@ -23,7 +25,7 @@ type stats_cmd = [
 ]
 
 type log_cmd = [
-  | `Log_subscribe of Ptime.t option
+  | `Log_subscribe of since_count
 ]
 
 type unikernel_cmd = [

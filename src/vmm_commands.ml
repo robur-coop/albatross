@@ -19,16 +19,20 @@ let version_eq a b =
   | `AV2, `AV2 -> true
   | _ -> false
 
+type since_count = [ `Since of Ptime.t | `Count of int ]
+
+let pp_since_count ppf = function
+  | `Since since -> Fmt.pf ppf "since %a" (Ptime.pp_rfc3339 ()) since
+  | `Count n -> Fmt.pf ppf "number %d" n
+
 type console_cmd = [
   | `Console_add
-  | `Console_subscribe of Ptime.t option
+  | `Console_subscribe of since_count
 ]
 
 let pp_console_cmd ppf = function
   | `Console_add -> Fmt.string ppf "console add"
-  | `Console_subscribe ts ->
-    Fmt.pf ppf "console subscribe since %a"
-      Fmt.(option ~none:(unit "epoch") (Ptime.pp_rfc3339 ())) ts
+  | `Console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
 
 type stats_cmd = [
   | `Stats_add of string * int * (string * string) list
@@ -44,13 +48,11 @@ let pp_stats_cmd ppf = function
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
 
 type log_cmd = [
-  | `Log_subscribe of Ptime.t option
+  | `Log_subscribe of since_count
 ]
 
 let pp_log_cmd ppf = function
-  | `Log_subscribe ts ->
-    Fmt.pf ppf "log subscribe since %a"
-      Fmt.(option ~none:(unit "epoch") (Ptime.pp_rfc3339 ())) ts
+  | `Log_subscribe x -> Fmt.pf ppf "log subscribe since %a" pp_since_count x
 
 type unikernel_cmd = [
   | `Unikernel_info

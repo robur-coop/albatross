@@ -115,14 +115,14 @@ let create _ endp cert key ca force name image cpuid memory argv block network c
   | Ok cmd -> jump endp cert key ca name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> Error (`Msg msg)
 
-let console _ endp cert key ca name since =
-  jump endp cert key ca name (`Console_cmd (`Console_subscribe since))
+let console _ endp cert key ca name since count =
+  jump endp cert key ca name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
 let stats _ endp cert key ca name =
   jump endp cert key ca name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ endp cert key ca name since =
-  jump endp cert key ca name (`Log_cmd (`Log_subscribe since))
+let event_log _ endp cert key ca name since count =
+  jump endp cert key ca name (`Log_cmd (`Log_subscribe (Albatross_cli.since_count since count)))
 
 let block_info _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_info)
@@ -217,7 +217,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(term_result (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since)),
+  Term.(term_result (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since $ count)),
   Term.info "console" ~doc ~man
 
 let stats_cmd =
@@ -235,7 +235,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(term_result (const event_log $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ since)),
+  Term.(term_result (const event_log $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ since $ count)),
   Term.info "log" ~doc ~man
 
 let block_info_cmd =

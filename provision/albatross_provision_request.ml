@@ -45,14 +45,14 @@ let create _ force name image cpuid memory argv block network compression restar
   | Ok cmd -> jump name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> Error (`Msg msg)
 
-let console _ name since =
-  jump name (`Console_cmd (`Console_subscribe since))
+let console _ name since count =
+  jump name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
 let stats _ name =
   jump name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ name since =
-  jump name (`Log_cmd (`Log_subscribe since))
+let event_log _ name since count =
+  jump name (`Log_cmd (`Log_subscribe (Albatross_cli.since_count since count)))
 
 let block_info _ block_name =
   jump block_name (`Block_cmd `Block_info)
@@ -131,7 +131,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(term_result (const console $ setup_log $ vm_name $ since)),
+  Term.(term_result (const console $ setup_log $ vm_name $ since $ count)),
   Term.info "console" ~doc ~man
 
 let stats_cmd =
@@ -149,7 +149,7 @@ let log_cmd =
     [`S "DESCRIPTION";
      `P "Shows event log of VM."]
   in
-  Term.(term_result (const event_log $ setup_log $ opt_vm_name $ since)),
+  Term.(term_result (const event_log $ setup_log $ opt_vm_name $ since $ count)),
   Term.info "log" ~doc ~man
 
 let block_info_cmd =
