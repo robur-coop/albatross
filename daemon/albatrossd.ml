@@ -186,7 +186,7 @@ let jump _ influx =
          | Some s -> write_reply "stat" s txt wire >|= fun _ -> ()
        in
 
-       Lwt_list.iter_p (fun (name, config) ->
+       Lwt_list.iter_s (fun (name, config) ->
            create stat_out log_out cons_out stub_data_out stub_hdr name config)
          (Vmm_trie.all old_unikernels) >>= fun () ->
 
