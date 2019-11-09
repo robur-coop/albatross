@@ -174,7 +174,7 @@ let safe_close s =
        Logs.err (fun m -> m "exception %s while closing" (Printexc.to_string e)) ;
        Lwt.return_unit)
 
-let rec read_sock_write_tcp c ?fd addr =
+let rec read_sock_write_tcp drop c ?fd addr =
   match fd with
   | None ->
     begin
@@ -184,10 +184,10 @@ let rec read_sock_write_tcp c ?fd addr =
         Logs.warn (fun m -> m "error connecting to influxd %a, retrying in 5s"
                       Vmm_lwt.pp_sockaddr addr);
         Lwt_unix.sleep 5.0 >>= fun () ->
-        read_sock_write_tcp c addr
+        read_sock_write_tcp drop c addr
       | Some fd ->
         Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
-        read_sock_write_tcp c ~fd addr
+        read_sock_write_tcp drop c ~fd addr
     end
   | Some fd ->
     Logs.debug (fun m -> m "reading from unix socket") ;
@@ -206,7 +206,14 @@ let rec read_sock_write_tcp c ?fd addr =
           safe_close c >|= fun () ->
           false
         end else
-          let name = Name.to_string hdr.Vmm_commands.name in
+          let name =
+            let orig = hdr.Vmm_commands.name
+            and f = if drop then Name.drop_front else (fun a -> a)
+            in
+            let n = f orig in
+            let safe = if Name.is_root n then orig else n in
+            Name.to_string safe
+          in
           let ru = P.encode_ru name ru in
           let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
           let vmm = match vmm with None -> [] | Some vmm -> [ P.encode_vmm name vmm ] in
@@ -216,7 +223,7 @@ let rec read_sock_write_tcp c ?fd addr =
           Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
           | Ok () ->
             Logs.debug (fun m -> m "wrote successfully") ;
-            read_sock_write_tcp c ~fd addr
+            read_sock_write_tcp drop c ~fd addr
           | Error e ->
             Logs.err (fun m -> m "error %s while writing to tcp (%s)"
                          (str_of_e e) name) ;
@@ -226,7 +233,7 @@ let rec read_sock_write_tcp c ?fd addr =
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
       Lwt.return (Some fd) >>= fun fd ->
-      read_sock_write_tcp c ?fd addr
+      read_sock_write_tcp drop c ?fd addr
 
 let query_sock vm c =
   let header = Vmm_commands.{ version = my_version ; sequence = !command ; name = vm } in
@@ -246,7 +253,7 @@ let rec maybe_connect () =
     Logs.debug (fun m -> m "connected");
     Lwt.return c
 
-let client influx vm =
+let client influx vm drop =
   match influx with
   | None -> Lwt.return (Error (`Msg "influx host not provided"))
   | Some (ip, port) ->
@@ -276,17 +283,21 @@ let client influx vm =
       in
       Lwt.return err
     | Ok () ->
-      read_sock_write_tcp c addr >>= fun restart ->
+      read_sock_write_tcp drop c addr >>= fun restart ->
       if restart then loop () else Lwt.return (Ok ())
   in
   loop ()
 
-let run_client _ influx vm =
+let run_client _ influx vm drop =
   Sys.(set_signal sigpipe Signal_ignore) ;
-  Lwt_main.run (client influx vm)
+  Lwt_main.run (client influx vm drop)
 
 open Cmdliner
 open Albatross_cli
+
+let drop_label =
+  let doc = "Drop leftmost label" in
+  Arg.(value & flag & info [ "drop-label" ] ~doc)
 
 let cmd =
   let doc = "Albatross Influx connector" in
@@ -294,7 +305,7 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name)),
+  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label)),
   Term.info "albatross_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =

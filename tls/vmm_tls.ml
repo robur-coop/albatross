@@ -33,12 +33,8 @@ let name chain =
       | Error e, _ -> Error e
       | _, Error e -> Error e
       | Ok acc, Ok None -> Ok acc
-      | Ok acc, Ok (Some data) -> Vmm_core.Name.prepend data acc)
-    (Ok Vmm_core.Name.root) chain >>= fun lbl ->
-  if List.length (Vmm_core.Name.to_list lbl) < 10 then
-    Ok lbl
-  else
-    Error (`Msg "too deep")
+      | Ok acc, Ok (Some data) -> Vmm_core.Name.append data acc)
+    (Ok Vmm_core.Name.root) chain
 
 (* this separates the leaf and top-level certificate from the chain,
    and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
@@ -78,10 +74,21 @@ let extract_policies version chain =
     (Ok (Vmm_core.Name.root, [])) chain
 
 let handle version chain =
+  (if List.length chain < 10 then
+     Ok ()
+   else
+     Error (`Msg "certificate chain too long")) >>= fun () ->
   separate_chain chain >>= fun (leaf, rest) ->
-  name chain >>= fun name ->
-  Logs.debug (fun m -> m "leaf is %a, chain %a"
-                 Certificate.pp leaf
+  (* use subject common names of intermediate certs as prefix *)
+  name rest >>= fun name' ->
+  (* and subject common name of leaf certificate -- allowing dots in CN -- as postfix *)
+  (cert_name leaf >>= function
+    | None -> Ok name'
+    | Some x ->
+      Vmm_core.Name.of_string x >>| fun post ->
+      Vmm_core.Name.concat name' post) >>= fun name ->
+  Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
+                 Vmm_core.Name.pp name Certificate.pp leaf
                  Fmt.(list ~sep:(unit " -> ") Certificate.pp) rest);
   extract_policies version rest >>= fun (_, policies) ->
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)

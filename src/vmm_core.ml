@@ -76,6 +76,10 @@ module Name = struct
     | [] -> []
     | _::tl -> List.rev tl
 
+  let drop_front = function
+    | [] -> []
+    | _::tl -> tl
+
   let append_exn lbl x =
     if valid_label lbl then
       x @ [ lbl ]
@@ -93,6 +97,8 @@ module Name = struct
       Ok (lbl :: x)
     else
       Error (`Msg "label not valid")
+
+  let concat a b = a @ b
 
   let domain id = match List.rev id with
     | _::prefix -> List.rev prefix
