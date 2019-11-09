@@ -6,7 +6,7 @@ open Vmm_core
 open Lwt.Infix
 
 let process =
-  Metrics.field ~doc:"name of the process" "process" Metrics.String
+  Metrics.field ~doc:"name of the process" "vm" Metrics.String
 
 let init_influx name data =
   match data with
