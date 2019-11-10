@@ -45,10 +45,11 @@ let sign_csr dbname cacert key csr days =
        Ok ()
      else
        Error (`Msg "unknown version in request")) >>= fun () ->
-    let exts = match cmd with
-      | `Policy_cmd (`Policy_add _) -> d_exts ()
-      | _ -> l_exts
+    let exts, default_days = match cmd with
+      | `Policy_cmd (`Policy_add _) -> d_exts (), 365
+      | _ -> l_exts, 1
     in
+    let days = match days with None -> default_days | Some x -> x in
     Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd);
     (* the "false" is here since X509 validation bails on exts marked as
        critical (as required), but has no way to supply which extensions
@@ -121,7 +122,7 @@ let generate_cmd =
 
 let days =
   let doc = "Number of days" in
-  Arg.(value & opt int 1 & info [ "days" ] ~doc)
+  Arg.(value & opt (some int) None & info [ "days" ] ~doc)
 
 let cacert =
   let doc = "cacert" in
