@@ -9,7 +9,7 @@ let read fd =
   let rec loop () =
     Vmm_tls_lwt.read_tls fd >>= function
     | Error `Eof ->
-      Logs.warn (fun m -> m "eof from server");
+      Logs.debug (fun m -> m "eof from server");
       Lwt.return (Ok ())
     | Error _ -> Lwt.return (Error (`Msg ("read failure")))
     | Ok wire ->

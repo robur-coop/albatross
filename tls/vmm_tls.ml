@@ -80,7 +80,7 @@ let handle chain =
   name rest >>= fun name' ->
   (* and subject common name of leaf certificate -- allowing dots in CN -- as postfix *)
   (cert_name leaf >>= function
-    | None -> Ok name'
+    | None | Some "." -> Ok name'
     | Some x ->
       Vmm_core.Name.of_string x >>| fun post ->
       Vmm_core.Name.concat name' post) >>= fun name ->
