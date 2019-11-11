@@ -1,6 +1,6 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-let asn_version = `AV2
+let asn_version = `AV4
 
 let timestamps validity =
   let now = Ptime_clock.now () in
