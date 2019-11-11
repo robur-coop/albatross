@@ -177,7 +177,8 @@ let jump _ influx =
        in
 
        Lwt_list.iter_s (fun (name, config) ->
-           create stat_out log_out cons_out stub_data_out name config)
+           Lwt_mutex.with_lock create_lock (fun () ->
+               create stat_out log_out cons_out stub_data_out name config))
          (Vmm_trie.all old_unikernels) >>= fun () ->
 
        Lwt.catch (fun () ->
