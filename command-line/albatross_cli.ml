@@ -48,14 +48,12 @@ let init_influx name data =
     in
     Lwt.async report
 
-let print_result version (header, reply) =
-  if not (Vmm_commands.version_eq header.Vmm_commands.version version) then
-    Logs.err (fun m -> m "version not equal")
-  else match reply with
-    | `Success _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
-    | `Data _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
-    | `Failure _ -> Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire (header, reply))
-    | `Command _ -> Logs.err (fun m -> m "unexpected command %a" Vmm_commands.pp_wire (header, reply))
+let print_result ((_, reply) as wire) =
+  match reply with
+  | `Success _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire)
+  | `Data _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire)
+  | `Failure _ -> Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire wire)
+  | `Command _ -> Logs.err (fun m -> m "unexpected command %a" Vmm_commands.pp_wire wire)
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -252,3 +250,7 @@ let count =
 let since_count since count = match since with
   | None -> `Count count
   | Some since -> `Since since
+
+let version =
+  Fmt.strf "version %%VERSION%% protocol version %a"
+    Vmm_commands.pp_version Vmm_commands.current

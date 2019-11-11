@@ -40,10 +40,15 @@ let read_tls t =
                          hdr.Vmm_wire.id Vmm_wire.pp_version hdr.Vmm_wire.version hdr.Vmm_wire.tag
                          Cstruct.hexdump_pp b) ; *)
         match Vmm_asn.wire_of_cstruct b with
-        | Ok w -> Ok w
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s while parsing data" msg) ;
           Error `Exception
+        | (Ok (hdr, _)) as w ->
+          if not Vmm_commands.(is_current hdr.version) then
+            Logs.warn (fun m -> m "version mismatch, received %a current %a"
+                          Vmm_commands.pp_version hdr.Vmm_commands.version
+                          Vmm_commands.pp_version Vmm_commands.current);
+          w
       else
         Lwt.return (Error `Eof)
 

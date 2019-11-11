@@ -8,7 +8,6 @@ open Rresult
 open R.Infix
 
 type 'a t = {
-  wire_version : Vmm_commands.version ;
   console_counter : int64 ;
   stats_counter : int64 ;
   log_counter : int64 ;
@@ -64,9 +63,8 @@ let register_restart t id create =
   | Some _ -> Logs.err (fun m -> m "restart attempted to overwrite waiter"); None
   | _ -> Some (register t id create)
 
-let init wire_version =
+let init () =
   let t = {
-    wire_version ;
     console_counter = 1L ;
     stats_counter = 1L ;
     log_counter = 1L ;
@@ -91,12 +89,12 @@ let init wire_version =
 
 type 'a create =
   Vmm_commands.wire *
-  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.wire * Name.t * Unikernel.t, [ `Msg of string ]) result) *
-  (unit -> Vmm_commands.wire)
+  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
+  (unit -> Vmm_commands.res)
 
 let log t name event =
   let data = (Ptime_clock.now (), event) in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.log_counter ; name } in
+  let header = Vmm_commands.header ~sequence:t.log_counter name in
   let log_counter = Int64.succ t.log_counter in
   Logs.debug (fun m -> m "log %a" Log.pp data) ;
   ({ t with log_counter }, (header, `Data (`Log_data data)))
@@ -123,16 +121,16 @@ let setup_stats t name vm =
     in
     `Stats_add (name, vm.Unikernel.pid, ifs)
   in
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
+  let header = Vmm_commands.header ~sequence:t.stats_counter name in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   t, (header, `Command (`Stats_cmd stat_out))
 
 let remove_stats t name =
-  let header = Vmm_commands.{ version = t.wire_version ; sequence = t.stats_counter ; name } in
+  let header = Vmm_commands.header ~sequence:t.stats_counter name in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   (t, (header, `Command (`Stats_cmd `Stats_remove)))
 
-let handle_create t hdr name vm_config =
+let handle_create t name vm_config =
   (match Vmm_resources.find_vm t.resources name with
    | Some _ -> Error (`Msg "VM with same name is already running")
    | None -> Ok ()) >>= fun () ->
@@ -142,7 +140,7 @@ let handle_create t hdr name vm_config =
   Vmm_unix.prepare name vm_config >>= fun taps ->
   Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
   let cons_out =
-    let header = Vmm_commands.{ version = t.wire_version ; sequence = t.console_counter ; name } in
+    let header = Vmm_commands.header ~sequence:t.console_counter name in
     (header, `Command (`Console_cmd `Console_add))
   in
   let success t =
@@ -170,13 +168,13 @@ let handle_create t hdr name vm_config =
       log t name start
     in
     let t, stat_out = setup_stats t name vm in
-    (t, stat_out, log_out, (hdr, `Success (`String "created VM")), name, vm)
+    (t, stat_out, log_out, `Success (`String "created VM"), name, vm)
   and fail () =
     match Vmm_unix.free_system_resources name taps with
-    | Ok () -> (hdr, `Failure "could not create VM: console failed")
+    | Ok () -> `Failure "could not create VM: console failed"
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in
-      (hdr, `Failure m)
+      `Failure m
   in
   Ok ({ t with console_counter = Int64.succ t.console_counter },
       (cons_out, success, fail))
@@ -190,11 +188,11 @@ let handle_shutdown t name vm r =
   let t, stat_out = remove_stats t name in
   (t, stat_out, log_out)
 
-let handle_policy_cmd t reply id = function
+let handle_policy_cmd t id = function
   | `Policy_remove ->
     Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;
     Vmm_resources.remove_policy t.resources id >>= fun resources ->
-    Ok ({ t with resources }, `End (reply (`String "removed policy")))
+    Ok ({ t with resources }, `End (`Success (`String "removed policy")))
   | `Policy_add policy ->
     Logs.debug (fun m -> m "insert policy %a" Name.pp id) ;
     let same_policy = match Vmm_resources.find_policy t.resources id with
@@ -202,10 +200,10 @@ let handle_policy_cmd t reply id = function
       | Some p' -> Policy.equal policy p'
     in
     if same_policy then
-      Ok (t, `Loop (reply (`String "no modification of policy")))
+      Ok (t, `Loop (`Success (`String "no modification of policy")))
     else
       Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
-      Ok ({ t with resources }, `Loop (reply (`String "added policy")))
+      Ok ({ t with resources }, `Loop (`Success (`String "added policy")))
   | `Policy_info ->
     Logs.debug (fun m -> m "policy %a" Name.pp id) ;
     let policies =
@@ -218,9 +216,9 @@ let handle_policy_cmd t reply id = function
       Logs.debug (fun m -> m "policies: couldn't find %a" Name.pp id) ;
       Error (`Msg "policy: not found")
     | _ ->
-      Ok (t, `End (reply (`Policies policies)))
+      Ok (t, `End (`Success (`Policies policies)))
 
-let handle_unikernel_cmd t reply header id = function
+let handle_unikernel_cmd t id = function
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
@@ -233,9 +231,9 @@ let handle_unikernel_cmd t reply header id = function
         Logs.debug (fun m -> m "info: couldn't find %a" Name.pp id) ;
         Error (`Msg "info: no unikernel found")
       | _ ->
-        Ok (t, `End (reply (`Unikernels vms)))
+        Ok (t, `End (`Success (`Unikernels vms)))
     end
-  | `Unikernel_create vm_config -> Ok (t, `Create (header, id, vm_config))
+  | `Unikernel_create vm_config -> Ok (t, `Create (id, vm_config))
   | `Unikernel_force_create vm_config ->
     begin
       let resources =
@@ -244,12 +242,12 @@ let handle_unikernel_cmd t reply header id = function
       in
       Vmm_resources.check_vm resources id vm_config >>= fun () ->
       match Vmm_resources.find_vm t.resources id with
-      | None -> Ok (t, `Create (header, id, vm_config))
+      | None -> Ok (t, `Create (id, vm_config))
       | Some vm ->
         (match Vmm_unix.destroy vm with
          | exception Unix.Unix_error _ -> ()
          | () -> ());
-        Ok (t, `Wait_and_create (id, (header, id, vm_config)))
+        Ok (t, `Wait_and_create (id, (id, vm_config)))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
@@ -263,11 +261,11 @@ let handle_unikernel_cmd t reply header id = function
       in
       let s ex =
         let data = Fmt.strf "%a %s %a" Name.pp id answer pp_process_exit ex in
-        reply (`String data)
+        `Success (`String data)
       in
       Ok (t, `Wait (id, s))
 
-let handle_block_cmd t reply id = function
+let handle_block_cmd t id = function
   | `Block_remove ->
     Logs.debug (fun m -> m "removing block %a" Name.pp id) ;
     begin match Vmm_resources.find_block t.resources id with
@@ -276,7 +274,7 @@ let handle_block_cmd t reply id = function
       | Some (_, false) ->
         Vmm_unix.destroy_block id >>= fun () ->
         Vmm_resources.remove_block t.resources id >>= fun resources ->
-        Ok ({ t with resources }, `End (reply (`String "removed block")))
+        Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
   | `Block_add size ->
     begin
@@ -287,7 +285,7 @@ let handle_block_cmd t reply id = function
         Vmm_resources.check_block t.resources id size >>= fun () ->
         Vmm_unix.create_block id size >>= fun () ->
         Vmm_resources.insert_block t.resources id size >>= fun resources ->
-        Ok ({ t with resources }, `Loop (reply (`String "added block device")))
+        Ok ({ t with resources }, `Loop (`Success (`String "added block device")))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;
@@ -301,22 +299,21 @@ let handle_block_cmd t reply id = function
       Logs.debug (fun m -> m "block: couldn't find %a" Name.pp id) ;
       Error (`Msg "block: not found")
     | _ ->
-      Ok (t, `End (reply (`Block_devices blocks)))
+      Ok (t, `End (`Success (`Block_devices blocks)))
 
 let handle_command t (header, payload) =
   let msg_to_err = function
     | Ok x -> Ok x
     | Error (`Msg msg) ->
       Logs.err (fun m -> m "error while processing command: %s" msg) ;
-      Error (header, `Failure msg)
-  and reply x = (header, `Success x)
+      Error (`Failure msg)
   and id = header.Vmm_commands.name
   in
   msg_to_err (
     match payload with
-    | `Command (`Policy_cmd pc) -> handle_policy_cmd t reply id pc
-    | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t reply header id vc
-    | `Command (`Block_cmd bc) -> handle_block_cmd t reply id bc
+    | `Command (`Policy_cmd pc) -> handle_policy_cmd t id pc
+    | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t id vc
+    | `Command (`Block_cmd bc) -> handle_block_cmd t id bc
     | _ ->
       Logs.err (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, payload)) ;
       Error (`Msg "unknown command"))

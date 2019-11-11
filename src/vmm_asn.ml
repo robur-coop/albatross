@@ -455,12 +455,10 @@ let version =
   let f data = match data with
     | 4 -> `AV4
     | 3 -> `AV3
-    | 2 -> `AV2
     | x -> Asn.S.error (`Parse (Printf.sprintf "unknown version number 0x%X" x))
   and g = function
     | `AV4 -> 4
     | `AV3 -> 3
-    | `AV2 -> 2
   in
   Asn.S.map f g Asn.S.int
 
@@ -602,8 +600,7 @@ let log_disk_of_cstruct, log_disk_to_cstruct =
   let c = Asn.codec Asn.der log_disk in
   (Asn.decode c, Asn.encode c)
 
-let log_to_disk version entry =
-  log_disk_to_cstruct (version, entry)
+let log_to_disk entry = log_disk_to_cstruct (current, entry)
 
 let logs_of_disk buf =
   let rec next acc buf =
@@ -655,12 +652,11 @@ let unikernels =
 
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
 
-type cert_extension = version * t
-
 let cert_extension =
   Asn.S.(sequence2
            (required ~label:"version" version)
            (required ~label:"command" wire_command))
 
-let cert_extension_of_cstruct, cert_extension_to_cstruct =
-  projections_of cert_extension
+let of_cert_extension, to_cert_extension =
+  let a, b = projections_of cert_extension in
+  a, (fun d -> b (current, d))

@@ -3,8 +3,6 @@
 open Lwt.Infix
 open X509
 
-let version = `AV4
-
 let read fd =
   (* now we busy read and process output *)
   Logs.debug (fun m -> m "reading tls stream") ;
@@ -15,7 +13,7 @@ let read fd =
       Lwt.return (Ok ())
     | Error _ -> Lwt.return (Error (`Msg ("read failure")))
     | Ok wire ->
-      Albatross_cli.print_result version wire ;
+      Albatross_cli.print_result wire ;
       loop ()
   in
   loop ()
@@ -37,6 +35,10 @@ let timestamps validity =
   | Some now, Some exp -> (now, exp)
 
 let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
+  Printexc.register_printer (function
+      | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
+      | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
+      | _ -> None) ;
   Vmm_lwt.read_from_file cert >>= fun cert_cs ->
   Vmm_lwt.read_from_file key >>= fun key_cs ->
   match Certificate.decode_pem cert_cs, Private_key.decode_pem key_cs with
@@ -48,7 +50,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
     let tmpkey = Nocrypto.Rsa.generate 4096 in
     let name = Vmm_core.Name.to_string id in
     let extensions =
-      let v = Vmm_asn.cert_extension_to_cstruct (version, cmd) in
+      let v = Vmm_asn.to_cert_extension cmd in
       Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
                    (add Basic_constraints (true, (false, None))
                       (add Ext_key_usage (true, [ `Client_auth ])
@@ -285,7 +287,7 @@ let default_cmd =
     `P "$(tname) executes the provided subcommand on a remote albatross" ]
   in
   Term.(ret (const help $ setup_log $ destination $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_client_bistro" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_client_bistro" ~version ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

@@ -2,8 +2,6 @@
 
 open Lwt.Infix
 
-let my_version = `AV4
-
 let command = ref 0L
 
 let tls_config cacert cert priv_key =
@@ -32,92 +30,87 @@ let client_auth ca tls =
    | `Ok epoch -> Lwt.return epoch.Tls.Core.peer_certificate_chain
    | `Error -> Lwt.fail_with "error while getting epoch")
 
-let read fd tls =
+let read version fd tls =
   (* now we busy read and process output *)
   let rec loop () =
     Vmm_lwt.read_wire fd >>= function
-    | Error _ -> Lwt.return (Error (`Msg "exception while reading"))
-    | Ok wire ->
-      Logs.debug (fun m -> m "read proxying %a" Vmm_commands.pp_wire wire) ;
+    | Error _ -> Lwt.return (`Failure "exception while reading from fd")
+    | Ok (hdr, pay) ->
+      Logs.debug (fun m -> m "read proxying %a" Vmm_commands.pp_wire (hdr, pay)) ;
+      let wire = { hdr with version }, pay in
       Vmm_tls_lwt.write_tls tls wire >>= function
       | Ok () -> loop ()
-      | Error `Exception -> Lwt.return (Error (`Msg "exception"))
+      | Error `Exception -> Lwt.return (`Failure "exception")
   in
   loop ()
 
-let process fd tls =
-  Vmm_lwt.read_wire fd >>= function
-  | Error _ -> Lwt.return (Error (`Msg "read error"))
-  | Ok wire ->
-    (* TODO check version *)
-    Logs.debug (fun m -> m "proxying %a" Vmm_commands.pp_wire wire) ;
-    Vmm_tls_lwt.write_tls tls wire >|= function
-    | Ok () -> Ok ()
-    | Error `Exception -> Error (`Msg "exception on write")
+let process fd =
+  Vmm_lwt.read_wire fd >|= function
+  | Error _ -> `Failure "error reading from fd"
+  | Ok (hdr, pay) ->
+    Logs.debug (fun m -> m "proxying %a" Vmm_commands.pp_wire (hdr, pay));
+    pay
 
 let handle ca tls =
   client_auth ca tls >>= fun chain ->
-  match Vmm_tls.handle my_version chain with
-  | Error (`Msg m) -> Lwt.fail_with m
-  | Ok (name, policies, cmd) ->
-    let sock, next = Vmm_commands.endpoint cmd in
-    let sockaddr = Lwt_unix.ADDR_UNIX (Vmm_core.socket_path sock) in
-    Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
-    | None ->
-      let err =
-        Rresult.R.error_msgf "failed to connect to %a" Vmm_lwt.pp_sockaddr sockaddr
-      in
-      Lwt.return err
-    | Some fd ->
-      (match sock with
-       | `Vmmd ->
-         Lwt_list.fold_left_s (fun r (id, policy) ->
-             match r with
-             | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
-             | Ok () ->
-               Logs.debug (fun m -> m "adding policy for %a: %a" Vmm_core.Name.pp id Vmm_core.Policy.pp policy) ;
-               let header = Vmm_commands.{version = my_version ; sequence = !command ; name = id } in
-               command := Int64.succ !command ;
-               Vmm_lwt.write_wire fd (header, `Command (`Policy_cmd (`Policy_add policy))) >>= function
-               | Error `Exception -> Lwt.return (Error (`Msg "failed to write policy"))
+  match Vmm_tls.handle chain with
+  | Error `Msg msg ->
+    Logs.err (fun m -> m "failed to handle TLS connection %s" msg);
+    Lwt.return_unit
+  | Ok (name, policies, version, cmd) ->
+    begin
+      let sock, next = Vmm_commands.endpoint cmd in
+      let sockaddr = Lwt_unix.ADDR_UNIX (Vmm_core.socket_path sock) in
+      Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
+      | None ->
+        Logs.warn (fun m -> m "failed to connect to %a" Vmm_lwt.pp_sockaddr sockaddr);
+        Lwt.return (`Failure "couldn't reach service")
+      | Some fd ->
+        (match sock with
+         | `Vmmd ->
+           Lwt_list.fold_left_s (fun r (id, policy) ->
+               match r with
+               | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
                | Ok () ->
-                 Vmm_lwt.read_wire fd >|= function
-                   (* TODO check version *)
-                 | Error _ -> Error (`Msg "read error after writing policy")
-                 | Ok (_, `Success _) -> Ok ()
-                 | Ok wire ->
-                   Rresult.R.error_msgf
-                     "expected success when adding policy, got: %a"
-                     Vmm_commands.pp_wire wire)
-           (Ok ()) policies
-       | _ -> Lwt.return (Ok ())) >>= function
-      | Error (`Msg msg) ->
-        begin
-          Logs.warn (fun m -> m "error while applying policies %s" msg) ;
-          let wire =
-            let header = Vmm_commands.{version = my_version ; sequence = 0L ; name } in
-            header, `Failure msg
-          in
-          Vmm_tls_lwt.write_tls tls wire >>= fun _ ->
-          Vmm_lwt.safe_close fd >>= fun () ->
-          Lwt.fail_with msg
-        end
-      | Ok () ->
-        let wire =
-          let header = Vmm_commands.{version = my_version ; sequence = !command ; name } in
-          command := Int64.succ !command ;
-          (header, `Command cmd)
-        in
-        Vmm_lwt.write_wire fd wire >>= function
-        | Error `Exception ->
-          Vmm_lwt.safe_close fd >>= fun () ->
-          Lwt.return (Error (`Msg "couldn't write"))
-        | Ok () ->
-          (match next with
-           | `Read -> read fd tls
-           | `End -> process fd tls) >>= fun res ->
+                 Logs.debug (fun m -> m "adding policy for %a: %a" Vmm_core.Name.pp id Vmm_core.Policy.pp policy) ;
+                 let header = Vmm_commands.header ~sequence:!command id in
+                 command := Int64.succ !command ;
+                 Vmm_lwt.write_wire fd (header, `Command (`Policy_cmd (`Policy_add policy))) >>= function
+                 | Error `Exception -> Lwt.return (Error (`Msg "failed to write policy"))
+                 | Ok () ->
+                   Vmm_lwt.read_wire fd >|= function
+                   | Error _ -> Error (`Msg "read error after writing policy")
+                   | Ok (_, `Success _) -> Ok ()
+                   | Ok wire ->
+                     Rresult.R.error_msgf
+                       "expected success when adding policy, got: %a"
+                       Vmm_commands.pp_wire wire)
+             (Ok ()) policies
+         | _ -> Lwt.return (Ok ())) >>= function
+        | Error (`Msg msg) ->
           Vmm_lwt.safe_close fd >|= fun () ->
-          res
+          Logs.warn (fun m -> m "error while applying policies %s" msg) ;
+          `Failure msg
+        | Ok () ->
+          let wire =
+            let header = Vmm_commands.header ~sequence:!command name in
+            command := Int64.succ !command ;
+            (header, `Command cmd)
+          in
+          Vmm_lwt.write_wire fd wire >>= function
+          | Error `Exception ->
+            Vmm_lwt.safe_close fd >|= fun () ->
+            `Failure "couldn't write unikernel to VMMD"
+          | Ok () ->
+            (match next with
+             | `Read -> read version fd tls
+             | `End -> process fd) >>= fun res ->
+            Vmm_lwt.safe_close fd >|= fun () ->
+            res
+    end >>= fun reply ->
+    Vmm_tls_lwt.write_tls tls
+      (Vmm_commands.header ~version name, reply) >|= fun _ ->
+    ()
 
 open Cmdliner
 

@@ -2,8 +2,6 @@
 
 open Lwt.Infix
 
-let version = `AV4
-
 let rec read_tls_write_cons t =
   Vmm_tls_lwt.read_tls t >>= function
   | Error `Eof ->
@@ -12,7 +10,7 @@ let rec read_tls_write_cons t =
   | Error _ ->
     Lwt.return (Error (`Msg ("read failure")))
   | Ok wire ->
-    Albatross_cli.print_result version wire ;
+    Albatross_cli.print_result wire ;
     read_tls_write_cons t
 
 let client cas host port cert priv_key =
@@ -82,7 +80,7 @@ let cmd =
     `P "$(tname) connects to an Albatross server and initiates a TLS handshake" ]
   in
   Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "albatross_client_remote_tls" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_client_remote_tls" ~version ~doc ~man
 
 let () =
   match Term.eval cmd

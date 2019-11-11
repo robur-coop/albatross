@@ -156,8 +156,6 @@ module P = struct
       vm ifd.bridge (String.concat ~sep:"," fields)
 end
 
-let my_version = `AV4
-
 let command = ref 1L
 
 let str_of_e = function
@@ -199,36 +197,30 @@ let rec read_sock_write_tcp drop c ?fd addr =
       safe_close c >|= fun () ->
       true
     | Ok (hdr, `Data (`Stats_data (ru, mem, vmm, ifs))) ->
+      let name =
+        let orig = hdr.Vmm_commands.name
+        and f = if drop then Name.drop_front else (fun a -> a)
+        in
+        let n = f orig in
+        let safe = if Name.is_root n then orig else n in
+        Name.to_string safe
+      in
+      let ru = P.encode_ru name ru in
+      let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
+      let vmm = match vmm with None -> [] | Some vmm -> [ P.encode_vmm name vmm ] in
+      let taps = List.map (P.encode_if name) ifs in
+      let out = (String.concat ~sep:"\n" (ru :: mem @ vmm @ taps)) ^ "\n" in
+      Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
       begin
-        if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
-          Logs.err (fun m -> m "unknown wire protocol version") ;
-          safe_close fd >>= fun () ->
-          safe_close c >|= fun () ->
+        Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
+        | Ok () ->
+          Logs.debug (fun m -> m "wrote successfully") ;
+          read_sock_write_tcp drop c ~fd addr
+        | Error e ->
+          Logs.err (fun m -> m "error %s while writing to tcp (%s)"
+                       (str_of_e e) name) ;
+          safe_close fd >|= fun () ->
           false
-        end else
-          let name =
-            let orig = hdr.Vmm_commands.name
-            and f = if drop then Name.drop_front else (fun a -> a)
-            in
-            let n = f orig in
-            let safe = if Name.is_root n then orig else n in
-            Name.to_string safe
-          in
-          let ru = P.encode_ru name ru in
-          let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
-          let vmm = match vmm with None -> [] | Some vmm -> [ P.encode_vmm name vmm ] in
-          let taps = List.map (P.encode_if name) ifs in
-          let out = (String.concat ~sep:"\n" (ru :: mem @ vmm @ taps)) ^ "\n" in
-          Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
-          Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
-          | Ok () ->
-            Logs.debug (fun m -> m "wrote successfully") ;
-            read_sock_write_tcp drop c ~fd addr
-          | Error e ->
-            Logs.err (fun m -> m "error %s while writing to tcp (%s)"
-                         (str_of_e e) name) ;
-            safe_close fd >|= fun () ->
-            false
       end
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
@@ -236,7 +228,7 @@ let rec read_sock_write_tcp drop c ?fd addr =
       read_sock_write_tcp drop c ?fd addr
 
 let query_sock vm c =
-  let header = Vmm_commands.{ version = my_version ; sequence = !command ; name = vm } in
+  let header = Vmm_commands.header ~sequence:!command vm in
   command := Int64.succ !command  ;
   Logs.debug (fun m -> m "%Lu requesting %a via socket" !command Name.pp vm) ;
   Vmm_lwt.write_wire c (header, `Command (`Stats_cmd `Stats_subscribe))
@@ -306,7 +298,7 @@ let cmd =
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
   Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label)),
-  Term.info "albatross_influx" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_influx" ~version ~doc ~man
 
 let () =
   match Term.eval cmd

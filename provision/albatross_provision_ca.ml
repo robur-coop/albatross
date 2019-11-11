@@ -40,10 +40,10 @@ let sign_csr dbname cacert key csr days =
   (* TODO: check delegation! verify whitelisted commands!? *)
   match albatross_extension csr with
   | Ok v ->
-    Vmm_asn.cert_extension_of_cstruct v >>= fun (version, cmd) ->
-    if not (Vmm_commands.version_eq asn_version version) then
+    Vmm_asn.of_cert_extension v >>= fun (version, cmd) ->
+    if not Vmm_commands.(is_current version) then
       Logs.warn (fun m -> m "version in request (%a) different from our version %a, using ours"
-                    Vmm_commands.pp_version version Vmm_commands.pp_version asn_version);
+                    Vmm_commands.pp_version version Vmm_commands.pp_version Vmm_commands.current);
     let exts, default_days = match cmd with
       | `Policy_cmd (`Policy_add _) -> d_exts (), 365
       | _ -> l_exts, 1
@@ -53,7 +53,7 @@ let sign_csr dbname cacert key csr days =
     (* the "false" is here since X509 validation bails on exts marked as
        critical (as required), but has no way to supply which extensions
        are actually handled by the application / caller *)
-    let v' = Vmm_asn.cert_extension_to_cstruct (asn_version, cmd) in
+    let v' = Vmm_asn.to_cert_extension cmd in
     let extensions = Extension.(add (Unsupported Vmm_asn.oid) (false, v') exts) in
     sign ~dbname extensions issuer key csr (Duration.of_day days)
   | Error e -> Error e
@@ -157,7 +157,7 @@ let default_cmd =
     `P "$(tname) does CA operations (creation, sign, etc.)" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_provision_ca" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_provision_ca" ~version ~doc ~man
 
 let cmds = [ help_cmd ; sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)]
 

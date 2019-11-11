@@ -17,8 +17,6 @@ external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
 external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
 external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
 
-let my_version = `AV4
-
 let descr = ref []
 
 type 'a t = {
@@ -139,11 +137,11 @@ let tick t =
                 ru', mem, vmm', ifd
               in
               let outs =
-                List.fold_left (fun out (id, socket) ->
+                List.fold_left (fun out (id, (version, socket)) ->
                     match Vmm_core.Name.drop_super ~super:id ~sub:vmid with
                     | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.Name.pp id Vmm_core.Name.pp vmid) ; out
                     | Some real_id ->
-                      let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = real_id } in
+                      let header = Vmm_commands.header ~version real_id in
                       ((socket, id, (header, `Data (`Stats_data stats))) :: out))
                   out xs
               in
@@ -178,28 +176,24 @@ let add_pid t vmid vmmdev pid nics =
     assert (ret = None) ;
     Ok { t with pid_nic ; vmid_pid }
 
-let handle t socket (header, wire) =
-  if not (Vmm_commands.version_eq my_version header.Vmm_commands.version) then begin
-    Logs.err (fun m -> m "invalid version %a (mine is %a)"
-                 Vmm_commands.pp_version header.Vmm_commands.version
-                 Vmm_commands.pp_version my_version) ;
-    Error (`Msg "cannot handle version")
-  end else
-    match wire with
-    | `Command (`Stats_cmd cmd) ->
-      begin
-        let id = header.Vmm_commands.name in
-        match cmd with
-        | `Stats_add (vmmdev, pid, taps) ->
-          add_pid t id vmmdev pid taps >>= fun t ->
-          Ok (t, None, "added")
-        | `Stats_remove ->
-          let t = remove_vmid t id in
-          Ok (t, None, "removed")
-        | `Stats_subscribe ->
-          let name_sockets, close = Vmm_trie.insert id socket t.name_sockets in
-          Ok ({ t with name_sockets }, close, "subscribed")
-      end
-    | _ ->
-      Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire (header, wire)) ;
-      Error (`Msg "unexpected command")
+let handle t socket (hdr, wire) =
+  match wire with
+  | `Command (`Stats_cmd cmd) ->
+    begin
+      let id = hdr.Vmm_commands.name in
+      match cmd with
+      | `Stats_add (vmmdev, pid, taps) ->
+        add_pid t id vmmdev pid taps >>= fun t ->
+        Ok (t, None, "added")
+      | `Stats_remove ->
+        let t = remove_vmid t id in
+        Ok (t, None, "removed")
+      | `Stats_subscribe ->
+        let name_sockets, close =
+          Vmm_trie.insert id (hdr.Vmm_commands.version, socket) t.name_sockets
+        in
+        Ok ({ t with name_sockets }, close, "subscribed")
+    end
+  | _ ->
+    Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire (hdr, wire)) ;
+    Error (`Msg "unexpected command")

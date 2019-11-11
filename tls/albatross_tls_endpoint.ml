@@ -30,9 +30,7 @@ let jump _ cacert cert priv_key port =
            Lwt.async (fun () ->
                Lwt.catch
                  (fun () ->
-                    (handle ca t >|= function
-                      | Error (`Msg msg) -> Logs.err (fun m -> m "error in handle %s" msg)
-                      | Ok () -> ()) >>= fun () ->
+                    handle ca t >>= fun () ->
                     Vmm_tls_lwt.close t)
                  (fun e ->
                     Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
@@ -60,6 +58,6 @@ let port =
 
 let cmd =
   Term.(const jump $ setup_log $ cacert $ cert $ key $ port),
-  Term.info "albatross_tls_endpoint" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_tls_endpoint" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

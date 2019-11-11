@@ -6,11 +6,8 @@ open Vmm_core
 
 open Lwt.Infix
 
-let version = `AV4
+let state = ref (Vmm_vmmd.init ())
 
-let state = ref (Vmm_vmmd.init version)
-
-let stub_hdr = Vmm_commands.{ version ; sequence = 0L ; name = Name.root }
 let stub_data_out _ = Lwt.return_unit
 
 let create_lock = Lwt_mutex.create ()
@@ -18,11 +15,11 @@ let create_lock = Lwt_mutex.create ()
    Vmm_vmmd.handle is getting called, and while communicating via log /
    console / stat socket communication. *)
 
-let rec create stat_out log_out cons_out data_out hdr name config =
-  (match Vmm_vmmd.handle_create !state hdr name config with
+let rec create stat_out log_out cons_out data_out name config =
+  (match Vmm_vmmd.handle_create !state name config with
    | Error `Msg msg ->
      Logs.err (fun m -> m "failed to create %a: %s" Name.pp name msg) ;
-     Lwt.return (None, (hdr, `Failure msg))
+     Lwt.return (None, `Failure msg)
    | Ok (state', (cons, succ_cont, fail_cont)) ->
      state := state';
      cons_out "create" cons >>= function
@@ -43,7 +40,7 @@ let rec create stat_out log_out cons_out data_out hdr name config =
                   if should_restart config name r then
                     Lwt_mutex.with_lock create_lock (fun () ->
                         create stat_out log_out cons_out stub_data_out
-                          stub_hdr name vm.Unikernel.config)
+                          name vm.Unikernel.config)
                   else
                     Lwt.return_unit));
          stat_out "setting up stat" stat >>= fun () ->
@@ -68,29 +65,28 @@ let rec create stat_out log_out cons_out data_out hdr name config =
 
 let handle log_out cons_out stat_out fd addr =
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
-  let out wire =
-    (* TODO should we terminate the connection on write failure? *)
-    Vmm_lwt.write_wire fd wire >|= fun _ -> ()
-  in
-
   let rec loop () =
     Logs.debug (fun m -> m "now reading") ;
     Vmm_lwt.read_wire fd >>= function
     | Error _ ->
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
-    | Ok wire ->
-      Logs.debug (fun m -> m "read %a" Vmm_commands.pp_wire wire) ;
+    | Ok (hdr, wire) ->
+      let out wire' =
+        (* TODO should we terminate the connection on write failure? *)
+        Vmm_lwt.write_wire fd (hdr, wire') >|= fun _ -> ()
+      in
+      Logs.debug (fun m -> m "read %a" Vmm_commands.pp_wire (hdr, wire));
       Lwt_mutex.lock create_lock >>= fun () ->
-      match Vmm_vmmd.handle_command !state wire with
-      | Error wire -> Lwt_mutex.unlock create_lock; out wire
+      match Vmm_vmmd.handle_command !state (hdr, wire) with
+      | Error wire' -> Lwt_mutex.unlock create_lock; out wire'
       | Ok (state', next) ->
         state := state' ;
         match next with
         | `Loop wire -> Lwt_mutex.unlock create_lock; out wire >>= loop
         | `End wire -> Lwt_mutex.unlock create_lock; out wire
-        | `Create (hdr, id, vm) ->
-          create stat_out log_out cons_out out hdr id vm >|= fun () ->
+        | `Create (id, vm) ->
+          create stat_out log_out cons_out out id vm >|= fun () ->
           Lwt_mutex.unlock create_lock
         | `Wait (who, data) ->
           let state', task = Vmm_vmmd.register !state who Lwt.task in
@@ -98,38 +94,32 @@ let handle log_out cons_out stat_out fd addr =
           Lwt_mutex.unlock create_lock;
           task >>= fun r ->
           out (data r)
-        | `Wait_and_create (who, (hdr, id, vm)) ->
+        | `Wait_and_create (who, (id, vm)) ->
           let state', task = Vmm_vmmd.register !state who Lwt.task in
           state := state';
           Lwt_mutex.unlock create_lock;
           task >>= fun r ->
           Logs.info (fun m -> m "wait returned %a" pp_process_exit r);
           Lwt_mutex.with_lock create_lock (fun () ->
-              create stat_out log_out cons_out out hdr id vm)
+              create stat_out log_out cons_out out id vm)
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close fd
 
-let write_reply name fd txt (header, cmd) =
-  Vmm_lwt.write_wire fd (header, cmd) >>= function
-  | Error `Exception -> invalid_arg ("exception during " ^ txt ^ " while writing to " ^ name)
+let write_reply name fd txt (hdr, cmd) =
+  Vmm_lwt.write_wire fd (hdr, cmd) >>= function
+  | Error `Exception ->
+    invalid_arg ("exception during " ^ txt ^ " while writing to " ^ name)
   | Ok () ->
     Vmm_lwt.read_wire fd >|= function
-    | Ok (header', reply) ->
-      if not Vmm_commands.(version_eq header.version header'.version) then begin
-        Logs.err (fun m -> m "%s: wrong version (got %a, expected %a) in reply from %s"
-                     txt
-                     Vmm_commands.pp_version header'.Vmm_commands.version
-                     Vmm_commands.pp_version header.Vmm_commands.version
-                     name) ;
-        invalid_arg "bad version received"
-      end else if not Vmm_commands.(Int64.equal header.sequence header'.sequence) then begin
+    | Ok (hdr', reply) ->
+      if not Vmm_commands.(Int64.equal hdr.sequence hdr'.sequence) then begin
         Logs.err (fun m -> m "%s: wrong id %Lu (expected %Lu) in reply from %s"
-                     txt header'.Vmm_commands.sequence header.Vmm_commands.sequence name) ;
+                     txt hdr'.Vmm_commands.sequence hdr.Vmm_commands.sequence name) ;
         invalid_arg "wrong sequence number received"
       end else begin
         Logs.debug (fun m -> m "%s: received valid reply from %s %a (request %a)"
-                       txt name Vmm_commands.pp_wire (header', reply) Vmm_commands.pp_wire (header,cmd)) ;
+                       txt name Vmm_commands.pp_wire (hdr', reply) Vmm_commands.pp_wire (hdr, cmd)) ;
         match reply with
         | `Success _ -> Ok ()
         | `Failure msg ->
@@ -187,7 +177,7 @@ let jump _ influx =
        in
 
        Lwt_list.iter_s (fun (name, config) ->
-           create stat_out log_out cons_out stub_data_out stub_hdr name config)
+           create stat_out log_out cons_out stub_data_out name config)
          (Vmm_trie.all old_unikernels) >>= fun () ->
 
        Lwt.catch (fun () ->
@@ -209,6 +199,6 @@ open Cmdliner
 
 let cmd =
   Term.(const jump $ setup_log $ influx),
-  Term.info "albatrossd" ~version:"%%VERSION_NUM%%"
+  Term.info "albatrossd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

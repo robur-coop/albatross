@@ -16,9 +16,7 @@ let jump cacert cert priv_key =
           Lwt.fail exn) >>= fun t ->
      Lwt.catch
        (fun () ->
-          (handle ca t >|= function
-            | Error (`Msg msg) -> Logs.err (fun m -> m "error in handle %s" msg)
-            | Ok () -> ()) >>= fun () ->
+          handle ca t >>= fun () ->
           Vmm_tls_lwt.close t)
        (fun e ->
           Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
@@ -28,6 +26,6 @@ open Cmdliner
 
 let cmd =
   Term.(const jump $ cacert $ cert $ key),
-  Term.info "albatross_tls_inetd" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_tls_inetd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

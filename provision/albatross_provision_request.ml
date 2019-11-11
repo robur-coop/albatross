@@ -5,11 +5,9 @@ open Vmm_asn
 
 open Rresult.R.Infix
 
-let version = `AV4
-
 let csr priv name cmd =
   let ext =
-    let v = cert_extension_to_cstruct (version, cmd) in
+    let v = to_cert_extension cmd in
     X509.Extension.(singleton (Unsupported oid) (false, v))
   and name =
     [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
@@ -199,7 +197,7 @@ let default_cmd =
     `P "$(tname) creates a certificate signing request for Albatross" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_provision_request" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_provision_request" ~version ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

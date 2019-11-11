@@ -1,7 +1,5 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-let asn_version = `AV4
-
 let timestamps validity =
   let now = Ptime_clock.now () in
   match Ptime.add_span now (Ptime.Span.of_int_s (Duration.to_sec validity)) with
