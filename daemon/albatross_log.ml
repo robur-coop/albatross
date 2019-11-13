@@ -10,11 +10,10 @@
 
 open Lwt.Infix
 
-let my_version = `AV4
-
 let broadcast prefix wire t =
-  Lwt_list.fold_left_s (fun t (id, s) ->
-      Vmm_lwt.write_wire s wire >|= function
+  Lwt_list.fold_left_s (fun t (id, (version, s)) ->
+      let hdr = Vmm_commands.header ~version prefix in
+      Vmm_lwt.write_wire s (hdr, wire) >|= function
       | Ok () -> t
       | Error `Exception -> Vmm_trie.remove id t)
     t (Vmm_trie.collect prefix t)
@@ -47,7 +46,7 @@ let write_to_file mvar file =
          get_fd () >>= fun fd ->
          loop ~log_entry:(Ptime_clock.now (), `Hup) fd
        | `Entry log_entry -> Lwt.return log_entry) >>= fun log_entry ->
-    let data = Vmm_asn.log_to_disk my_version log_entry in
+    let data = Vmm_asn.log_to_disk log_entry in
     Lwt.catch
       (fun () ->
          write_complete fd data >>= fun () ->
@@ -67,7 +66,7 @@ let write_to_file mvar file =
   loop fd >|= fun _ ->
   ()
 
-let send_history s ring id what =
+let send_history s version ring id what =
   let tst event =
     let sub = Vmm_core.Log.name event in
     Vmm_core.Name.is_sub ~super:id ~sub
@@ -81,7 +80,7 @@ let send_history s ring id what =
   Lwt_list.fold_left_s (fun r (ts, event) ->
       match r with
       | Ok () ->
-        let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
+        let header = Vmm_commands.header ~version id in
         Vmm_lwt.write_wire s (header, `Data (`Log_data (ts, event)))
       | Error e -> Lwt.return (Error e))
     (Ok ()) elements
@@ -89,17 +88,12 @@ let send_history s ring id what =
 let tree = ref Vmm_trie.empty
 
 let handle_data s mvar ring hdr entry =
-  if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
-    Logs.warn (fun m -> m "unsupported version") ;
-    Lwt.return_unit
-  end else begin
-    Vmm_lwt.write_wire s (hdr, `Success `Empty) >>= fun _ ->
-    Vmm_ring.write ring entry ;
-    Lwt_mvar.put mvar (`Entry entry) >>= fun () ->
-    let data' = (hdr, `Data (`Log_data entry)) in
-    broadcast hdr.Vmm_commands.name data' !tree >|= fun tree' ->
-    tree := tree'
-  end
+  Vmm_lwt.write_wire s (hdr, `Success `Empty) >>= fun _ ->
+  Vmm_ring.write ring entry ;
+  Lwt_mvar.put mvar (`Entry entry) >>= fun () ->
+  let data' = `Data (`Log_data entry) in
+  broadcast hdr.Vmm_commands.name data' !tree >|= fun tree' ->
+  tree := tree'
 
 let read_data mvar ring s =
   let rec loop () =
@@ -122,27 +116,24 @@ let handle mvar ring s addr =
     | Error _ ->
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return_unit
-    | Ok (hdr, `Data (`Log_data entry)) ->
+    | Ok (hdr, `Data `Log_data entry) ->
       handle_data s mvar ring hdr entry >>= fun () ->
       read_data mvar ring s
-    | Ok (hdr, `Command (`Log_cmd lc)) ->
-      if not (Vmm_commands.version_eq hdr.Vmm_commands.version my_version) then begin
-        Logs.warn (fun m -> m "unsupported version") ;
-        Lwt.return_unit
-      end else begin
-        match lc with
-        | `Log_subscribe ts ->
-          let tree', ret = Vmm_trie.insert hdr.Vmm_commands.name s !tree in
-          tree := tree' ;
-          (match ret with
-           | None -> Lwt.return_unit
-           | Some s' -> Vmm_lwt.safe_close s') >>= fun () ->
-          let out = `Success `Empty in
-          Vmm_lwt.write_wire s (hdr, out) >>= function
+    | Ok (hdr, `Command `Log_cmd `Log_subscribe ts) ->
+      let tree', ret =
+        Vmm_trie.insert hdr.Vmm_commands.name (hdr.Vmm_commands.version, s) !tree
+      in
+      tree := tree' ;
+      (match ret with
+       | None -> Lwt.return_unit
+       | Some (_, s') -> Vmm_lwt.safe_close s') >>= fun () ->
+      let out = `Success `Empty in
+      begin
+        Vmm_lwt.write_wire s (hdr, out) >>= function
           | Error _ -> Logs.err (fun m -> m "error while sending reply for subscribe") ;
             Lwt.return_unit
           | Ok () ->
-            send_history s ring hdr.Vmm_commands.name ts >>= function
+            send_history s hdr.Vmm_commands.version ring hdr.Vmm_commands.name ts >>= function
             | Error _ -> Logs.err (fun m -> m "error while sending history") ; Lwt.return_unit
             | Ok () ->
               (* command processing is finished, but we leave the socket open
@@ -150,7 +141,7 @@ let handle mvar ring s addr =
               Vmm_lwt.read_wire s >|= fun _ -> ()
       end
     | Ok wire ->
-      Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
+      Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire);
       Lwt.return_unit
   end >>= fun () ->
   Vmm_lwt.safe_close s
@@ -201,6 +192,6 @@ let read_only =
 
 let cmd =
   Term.(const jump $ setup_log $ file $ read_only $ influx),
-  Term.info "albatross_log" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_log" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

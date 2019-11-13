@@ -17,14 +17,13 @@ val log_entry_to_cstruct : Log.t -> Cstruct.t
 
 val log_entry_of_cstruct : Cstruct.t -> (Log.t, [> `Msg of string ]) result
 
-val log_to_disk : Vmm_commands.version -> Log.t -> Cstruct.t
+val log_to_disk : Log.t -> Cstruct.t
 
 val logs_of_disk : Cstruct.t -> Log.t list
 
-type cert_extension = Vmm_commands.version * Vmm_commands.t
-
-val cert_extension_of_cstruct : Cstruct.t -> (cert_extension, [> `Msg of string ]) result
-val cert_extension_to_cstruct : cert_extension -> Cstruct.t
+val of_cert_extension :
+  Cstruct.t -> (Vmm_commands.version * Vmm_commands.t, [> `Msg of string ]) result
+val to_cert_extension : Vmm_commands.t -> Cstruct.t
 
 val unikernels_to_cstruct : Unikernel.config Vmm_trie.t -> Cstruct.t
 val unikernels_of_cstruct : Cstruct.t -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result

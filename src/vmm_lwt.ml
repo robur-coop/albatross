@@ -104,10 +104,15 @@ let read_wire s =
                          Cstruct.hexdump_pp (Cstruct.of_bytes buf)
                          Cstruct.hexdump_pp (Cstruct.of_bytes b)) ; *)
         match Vmm_asn.wire_of_cstruct (Cstruct.of_bytes b) with
-        | Ok w -> Ok w
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s while parsing data" msg) ;
           Error `Exception
+        | (Ok (hdr, _)) as w ->
+          if not Vmm_commands.(is_current hdr.version) then
+            Logs.warn (fun m -> m "version mismatch, received %a current %a"
+                          Vmm_commands.pp_version hdr.Vmm_commands.version
+                          Vmm_commands.pp_version Vmm_commands.current);
+          w
     end else begin
       Lwt.return (Error `Eof)
     end

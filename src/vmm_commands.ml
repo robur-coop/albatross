@@ -3,21 +3,23 @@
 (* the wire protocol *)
 open Vmm_core
 
-type version = [ `AV2 | `AV3 | `AV4 ]
+type version = [ `AV3 | `AV4 ]
+
+let current = `AV4
 
 let pp_version ppf v =
   Fmt.int ppf
     (match v with
      | `AV4 -> 4
-     | `AV3 -> 3
-     | `AV2 -> 2)
+     | `AV3 -> 3)
 
 let version_eq a b =
   match a, b with
   | `AV4, `AV4 -> true
   | `AV3, `AV3 -> true
-  | `AV2, `AV2 -> true
   | _ -> false
+
+let is_current = version_eq current
 
 type since_count = [ `Since of Ptime.t | `Count of int ]
 
@@ -124,6 +126,8 @@ type header = {
   name : Name.t ;
 }
 
+let header ?(version = current) ?(sequence = 0L) name = { version ; sequence ; name }
+
 type success = [
   | `Empty
   | `String of string
@@ -142,11 +146,14 @@ let pp_success ppf = function
   | `Unikernels vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Unikernel.pp_config)) ppf vms
   | `Block_devices blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
 
-type wire = header * [
-    | `Command of t
-    | `Success of success
-    | `Failure of string
-    | `Data of data ]
+type res = [
+  | `Command of t
+  | `Success of success
+  | `Failure of string
+  | `Data of data
+]
+
+type wire = header * res
 
 let pp_wire ppf (header, data) =
   let name = header.name in

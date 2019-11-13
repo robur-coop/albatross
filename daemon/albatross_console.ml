@@ -14,8 +14,6 @@ open Lwt.Infix
 
 open Astring
 
-let my_version = `AV4
-
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
 let active = ref String.Map.empty
@@ -31,8 +29,8 @@ let read_console id name ring fd =
         Vmm_ring.write ring (t, line) ;
         (match String.Map.find name !active with
          | None -> Lwt.return_unit
-         | Some fd ->
-           let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
+         | Some (version, fd) ->
+           let header = Vmm_commands.header ~version id in
            Vmm_lwt.write_wire fd (header, `Data (`Console_data (t, line))) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
@@ -87,21 +85,21 @@ let add_fifo id =
     Lwt.async (fun () -> read_console id name ring f >|= fun () -> fifos `Close) ;
     Ok ()
 
-let subscribe s id =
+let subscribe s version id =
   let name = Vmm_core.Name.to_string id in
   Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp id) ;
   match String.Map.find name !t with
   | None ->
-    active := String.Map.add name s !active ;
+    active := String.Map.add name (version, s) !active ;
     Lwt.return (None, "waiting for VM")
   | Some r ->
     (match String.Map.find name !active with
      | None -> Lwt.return_unit
-     | Some s -> Vmm_lwt.safe_close s) >|= fun () ->
-    active := String.Map.add name s !active ;
+     | Some (_, s) -> Vmm_lwt.safe_close s) >|= fun () ->
+    active := String.Map.add name (version, s) !active ;
     (Some r, "subscribed")
 
-let send_history s r id since =
+let send_history s version r id since =
   let entries =
     match since with
     | `Count n -> Vmm_ring.read_last r n
@@ -109,7 +107,7 @@ let send_history s r id since =
   in
   Logs.debug (fun m -> m "%a found %d history" Vmm_core.Name.pp id (List.length entries)) ;
   Lwt_list.iter_s (fun (i, v) ->
-      let header = Vmm_commands.{ version = my_version ; sequence = 0L ; name = id } in
+      let header = Vmm_commands.header ~version id in
       Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >>= function
       | Ok () -> Lwt.return_unit
       | Error _ -> Vmm_lwt.safe_close s)
@@ -123,10 +121,7 @@ let handle s addr =
       Logs.err (fun m -> m "exception while reading") ;
       Lwt.return_unit
     | Ok (header, `Command (`Console_cmd cmd)) ->
-      if not (Vmm_commands.version_eq header.Vmm_commands.version my_version) then begin
-        Logs.err (fun m -> m "ignoring data with bad version") ;
-        Lwt.return_unit
-      end else begin
+      begin
         let name = header.Vmm_commands.name in
         match cmd with
         | `Console_add ->
@@ -135,21 +130,21 @@ let handle s addr =
             let reply = match res with
               | Ok () -> `Success `Empty
               | Error (`Msg msg) -> `Failure msg
-            in
-            Vmm_lwt.write_wire s (header, reply) >>= function
-            | Ok () -> loop ()
-            | Error _ ->
-              Logs.err (fun m -> m "error while writing") ;
-              Lwt.return_unit
+          in
+          Vmm_lwt.write_wire s (header, reply) >>= function
+          | Ok () -> loop ()
+          | Error _ ->
+            Logs.err (fun m -> m "error while writing") ;
+            Lwt.return_unit
           end
         | `Console_subscribe ts ->
-          subscribe s name >>= fun (ring, res) ->
+          subscribe s header.Vmm_commands.version name >>= fun (ring, res) ->
           Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
           | Error _ -> Vmm_lwt.safe_close s
           | Ok () ->
             (match ring with
              | None -> Lwt.return_unit
-             | Some r -> send_history s r name ts) >>= fun () ->
+             | Some r -> send_history s header.Vmm_commands.version r name ts) >>= fun () ->
             (* now we wait for the next read and terminate*)
             Vmm_lwt.read_wire s >|= fun _ -> ()
       end
@@ -182,6 +177,6 @@ open Albatross_cli
 
 let cmd =
   Term.(term_result (const jump $ setup_log $ influx)),
-  Term.info "albatross_console" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_console" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -2,8 +2,6 @@
 
 open Lwt.Infix
 
-let version = `AV4
-
 let socket t = function
   | Some x -> x
   | None -> Vmm_core.socket_path t
@@ -11,7 +9,7 @@ let socket t = function
 let process fd =
   Vmm_lwt.read_wire fd >|= function
   | Error _ -> Error ()
-  | Ok wire -> Ok (Albatross_cli.print_result version wire)
+  | Ok wire -> Ok (Albatross_cli.print_result wire)
 
 let read fd =
   (* now we busy read and process output *)
@@ -32,7 +30,7 @@ let handle opt_socket name (cmd : Vmm_commands.t) =
     in
     Lwt.return err
   | Some fd ->
-    let header = Vmm_commands.{ version ; sequence = 0L ; name } in
+    let header = Vmm_commands.header name in
     Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
     | Error `Exception -> Lwt.return (Error (`Msg "exception"))
     | Ok () ->
@@ -248,7 +246,7 @@ let default_cmd =
     `P "$(tname) connects to albatrossd via a local socket" ]
   in
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_client_local" ~version:"%%VERSION_NUM%%" ~doc ~man
+  Term.info "albatross_client_local" ~version ~doc ~man
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

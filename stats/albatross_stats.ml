@@ -40,7 +40,7 @@ let handle s addr =
         Vmm_lwt.write_wire s (fst wire, `Success (`String out)) >>= function
         | Ok () ->
           (match close with
-           | Some s' ->
+           | Some (_, s') ->
              Vmm_lwt.safe_close s' >>= fun () ->
              (* read the next *)
              loop ()
@@ -90,6 +90,6 @@ let interval =
 
 let cmd =
   Term.(term_result (const jump $ setup_log $ interval $ influx)),
-  Term.info "albatross_stats" ~version:"%%VERSION_NUM%%"
+  Term.info "albatross_stats" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

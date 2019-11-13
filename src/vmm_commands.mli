@@ -3,10 +3,12 @@
 open Vmm_core
 
 (** The type of versions of the grammar defined below. *)
-type version = [ `AV2 | `AV3 | `AV4 ]
+type version = [ `AV3 | `AV4 ]
 
-(** [version_eq a b] is true if [a] and [b] are equal. *)
-val version_eq : version -> version -> bool
+(** [current] is the current version. *)
+val current : version
+
+val is_current : version -> bool
 
 (** [pp_version ppf version] pretty prints [version] onto [ppf]. *)
 val pp_version : version Fmt.t
@@ -72,6 +74,8 @@ type header = {
   name : Name.t ;
 }
 
+val header : ?version:version -> ?sequence:int64 -> Name.t -> header
+
 type success = [
   | `Empty
   | `String of string
@@ -80,11 +84,14 @@ type success = [
   | `Block_devices of (Name.t * int * bool) list
 ]
 
-type wire = header * [
-    | `Command of t
-    | `Success of success
-    | `Failure of string
-    | `Data of data ]
+type res = [
+  | `Command of t
+  | `Success of success
+  | `Failure of string
+  | `Data of data
+]
+
+type wire = header * res
 
 val pp_wire : wire Fmt.t
 
