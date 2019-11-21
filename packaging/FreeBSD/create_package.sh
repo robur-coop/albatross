@@ -1,12 +1,16 @@
 #!/bin/sh -e
 
-basedir=$(realpath "$(dirname "$0")"/..)
+basedir=$(realpath "$(dirname "$0")"/../..)
+pdir=$basedir/packaging/FreeBSD
+bdir=$basedir/_build/default
 #tmptmpl=$(basename "$0")
 #tmpd=$(mktemp -t "$tmptmpl")
 tmpd=$basedir/_build/stage
 manifest=$tmpd/+MANIFEST
 rootdir=$tmpd/rootdir
-
+sbindir=$rootdir/usr/local/sbin
+rcdir=$rootdir/usr/local/etc/rc.d
+libexecdir=$rootdir/usr/local/libexec/albatross
 
 trap 'rm -rf $tmpd' 0 INT EXIT
 
@@ -21,30 +25,29 @@ for f in albatross_log \
 	 albatross_daemon \
 	 albatross_influx \
 	 albatross_tls
-do install -U $basedir/packaging/rc.d/$f $rootdir/usr/local/etc/rc.d/$f; done
+do install -U $pdir/rc.d/$f $rcdir/$f; done
 
 # stage albatross app binaries
 for f in albatrossd albatross_log albatross_console albatross_influx; do
-    install -U $basedir/_build/default/daemon/$f.exe \
-	 $rootdir/usr/local/libexec/albatross/$f; done
+    install -U $bdir/daemon/$f.exe $libexecdir/$f;
+done
 
 for f in albatross_tls_endpoint albatross_tls_inetd; do
-    install -U $basedir/_build/default/tls/$f.exe \
-	 $rootdir/usr/local/libexec/albatross/$f; done
+    install -U $bdir/tls/$f.exe $libexecdir/$f;
+done
 
-install -U $basedir/_build/default/stats/albatross_stats.exe \
-	 $rootdir/usr/local/libexec/albatross/albatross_stats
+install -U $bdir/stats/albatross_stats.exe $libexecdir/albatross_stats
 
-install -U $basedir/_build/default/stats/albatross_stat_client.exe \
-	 $rootdir/usr/local/sbin/albatross_stat_client
+install -U $bdir/stats/albatross_stat_client.exe $sbindir/albatross_stat_client
 
-for f in albatross_client_local albatross_client_remote_tls albatross_client_bistro; do
-    install -U $basedir/_build/default/client/$f.exe \
-	$rootdir/usr/local/sbin/$f; done
+for f in albatross_client_local \
+             albatross_client_remote_tls \
+             albatross_client_bistro
+do install -U $bdir/client/$f.exe $sbindir/$f; done
 
 for f in albatross_provision_ca albatross_provision_request; do
-    install -U $basedir/_build/default/provision/$f.exe \
-	$rootdir/usr/local/sbin/$f; done
+    install -U $bdir/provision/$f.exe $sbindir/$f;
+done
 
 # create +MANIFEST
 flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |
@@ -53,7 +56,7 @@ flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |
 gitver=$(git rev-parse --short HEAD)
 
 sed -e "s:%%GITVER%%:${gitver}:" -e "s:%%FLATSIZE%%:${flatsize}:" \
-    "$basedir/packaging/MANIFEST" > "$manifest"
+    "$pdir/MANIFEST" > "$manifest"
 
 {
     printf '\nfiles {\n'
