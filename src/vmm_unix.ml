@@ -191,8 +191,15 @@ let prepare name vm =
     | Ok true -> Ok ()
     | Ok false -> R.error_msgf "file %a exists and is not a fifo" Fpath.pp fifo
     | Error _ ->
-      try Ok (mkfifo fifo) with
+      let old_umask = Unix.umask 0 in
+      let _ = Unix.umask (old_umask land 0o707) in
+      try
+        let f = mkfifo fifo in
+        let _ = Unix.umask old_umask in
+        Ok f
+      with
       | Unix.Unix_error (e, f, _) ->
+        let _ = Unix.umask old_umask in
         R.error_msgf "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e
   end >>= fun () ->
   List.fold_left (fun acc b ->
