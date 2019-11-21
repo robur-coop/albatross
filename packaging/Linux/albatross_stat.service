@@ -1,0 +1,34 @@
+[Unit]
+
+# To configure this service, please use the following command
+# to create an override configuration:
+# systemctl edit albatross_stat.service
+
+Description=Albatross stat daemon (albatross_stat)
+After=syslog.target
+[Service]
+Type=simple
+
+# TODO no need to run as root!
+#Environment="albatross_stat_user=root"
+User=root
+
+WorkingDirectory=/
+
+# TODO what does the following line do?
+Environment=albatross_prefix=/usr/local/sbin/albatross_stats.exe
+#ExecStartPre=id # the fbsd scripts do something here, not sure what
+ExecStart=/usr/local/sbin/albatross_stats.exe --tmpdir="%t/albatross/" -vv
+
+# state=%S
+# runtime=%t
+# small temp=%T
+# large temp=%V
+# PrivateTmp=yes
+
+RuntimeDirectoryPreserve=yes
+RuntimeDirectory=albatross albatross/fifo albatross/util
+PIDFile=%t/albatross/stat.pid
+
+[Install]
+WantedBy=multi-user.target
