@@ -1,0 +1,11 @@
+freebsd_instance:
+  image_family: freebsd-12-0
+
+task:
+  install_script: pkg install -y ocaml-opam gmp gmake
+  opam_switch_script: opam init -a --comp="4.09.0"
+  opam_deps_script: eval `opam env` && opam install -y --deps-only .
+  build_script: eval `opam env` && dune build
+  package_script: packaging/create_package.sh
+  albatross_artifacts:
+    path: _build/albatross*txz
