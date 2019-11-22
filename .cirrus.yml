@@ -1,10 +1,14 @@
 freebsd_instance:
   image_family: freebsd-12-0
 
-task:
-  install_script: pkg install -y ocaml-opam gmp gmake
-  opam_switch_script: opam init -a --comp="4.09.0"
-  opam_deps_script: eval `opam env` && opam install -y --deps-only .
+freebsd_task:
+  env:
+    matrix:
+      - OCAML_VERSION: 4.08.1
+      - OCAML_VERSION: 4.09.0
+  pkg_install_script: pkg install -y ocaml-opam gmp gmake
+  ocaml_script: opam init -a --comp=$OCAML_VERSION
+  dependencies_script: eval `opam env` && opam install -y --deps-only .
   build_script: eval `opam env` && dune build
   package_script: packaging/create_package.sh
   albatross_artifacts:
