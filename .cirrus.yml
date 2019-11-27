@@ -10,6 +10,6 @@ freebsd_task:
   ocaml_script: opam init -a --comp=$OCAML_VERSION
   dependencies_script: eval `opam env` && opam install -y --deps-only .
   build_script: eval `opam env` && dune build
-  package_script: packaging/create_package.sh
+  package_script: packaging/FreeBSD/create_package.sh
   albatross_artifacts:
     path: _build/albatross*txz
