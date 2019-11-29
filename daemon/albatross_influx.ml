@@ -101,6 +101,11 @@ module P = struct
     Printf.sprintf "resource_usage,vm=%s %s" vm (String.concat ~sep:"," fields)
 
   let encode_kinfo_mem vm mem =
+    let now = Unix.gettimeofday () in
+    let started =
+      Int64.to_float (fst mem.start) +. (float_of_int (snd mem.start) /. 1_000_000.)
+    in
+    let uptime = now -. started in
     let fields =
       [ "vsize", i64 mem.vsize ;
         "rss", i64 mem.rss ;
@@ -109,7 +114,7 @@ module P = struct
         "ssize", i64 mem.ssize ;
         "cow_fauls", string_of_int mem.cow ;
         "runtime", i64 mem.runtime ;
-        "start", tv mem.start ;
+        "uptime", Printf.sprintf "%f" uptime ;
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
