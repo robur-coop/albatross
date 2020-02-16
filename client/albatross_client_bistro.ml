@@ -63,35 +63,35 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
       let extensions = Signing_request.Ext.(singleton Extensions extensions) in
       Signing_request.create name ~extensions (`RSA tmpkey)
     in
-    let mycert =
-      let valid_from, valid_until = timestamps 300 in
-      let extensions =
-        let capub = match key with `RSA key -> Nocrypto.Rsa.pub_of_priv key in
-        key_ids extensions Signing_request.((info csr).public_key) (`RSA capub)
-      in
-      let issuer = Certificate.subject cert in
-      Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer
+    let valid_from, valid_until = timestamps 300 in
+    let extensions =
+      let capub = match key with `RSA key -> Nocrypto.Rsa.pub_of_priv key in
+      key_ids extensions Signing_request.((info csr).public_key) (`RSA capub)
     in
-    let certificates = `Single ([ mycert ; cert ], tmpkey) in
-    X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-    Lwt_unix.gethostbyname host >>= fun host_entry ->
-    let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-    let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
-    Vmm_lwt.connect host_entry.h_addrtype sockaddr >>= function
-    | None ->
-      let err =
-        Rresult.R.error_msgf "connection failed to %a" Vmm_lwt.pp_sockaddr sockaddr
-      in
-      Lwt.return err
-    | Some fd ->
-      Logs.debug (fun m -> m "connecting to remote host") ;
-      (* reneg true to allow re-negotiation over the server-authenticated TLS
-         channel (to transport client certificate encrypted), once TLS 1.3 is in
-         (and required) be removed! *)
-      let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-      Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
-      Logs.debug (fun m -> m "finished tls handshake") ;
-      read t
+    let issuer = Certificate.subject cert in
+    match Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer with
+    | Error _ as e -> Lwt.return e
+    | Ok mycert ->
+      let certificates = `Single ([ mycert ; cert ], tmpkey) in
+      X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
+      Lwt_unix.gethostbyname host >>= fun host_entry ->
+      let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
+      let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
+      Vmm_lwt.connect host_entry.h_addrtype sockaddr >>= function
+      | None ->
+        let err =
+          Rresult.R.error_msgf "connection failed to %a" Vmm_lwt.pp_sockaddr sockaddr
+        in
+        Lwt.return err
+      | Some fd ->
+        Logs.debug (fun m -> m "connecting to remote host") ;
+        (* reneg true to allow re-negotiation over the server-authenticated TLS
+           channel (to transport client certificate encrypted), once TLS 1.3 is in
+           (and required) be removed! *)
+        let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+        Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
+        Logs.debug (fun m -> m "finished tls handshake") ;
+        read t
 
 let jump endp cert key ca name cmd =
   Lwt_main.run (handle endp cert key ca name cmd)

@@ -52,7 +52,7 @@ let sign ?dbname ?certname extensions issuer key csr delta =
         let capub = `RSA (Nocrypto.Rsa.pub_of_priv priv) in
         key_ids extensions X509.Signing_request.((info csr).public_key) capub
   in
-  let cert = X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer in
+  X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer >>= fun cert ->
   (match dbname with
    | None -> Ok () (* no DB! *)
    | Some dbname ->
