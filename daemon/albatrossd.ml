@@ -135,8 +135,10 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ influx =
+let jump _ influx tmpdir dbdir =
   Sys.(set_signal sigpipe Signal_ignore);
+  Albatross_cli.set_tmpdir tmpdir;
+  Albatross_cli.set_dbdir dbdir;
   Rresult.R.error_msg_to_invalid_arg
     (Vmm_unix.check_commands ());
   match Vmm_vmmd.restore_unikernels () with
@@ -199,7 +201,7 @@ let jump _ influx =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ setup_log $ influx),
+  Term.(const jump $ setup_log $ influx $ tmpdir $ dbdir),
   Term.info "albatrossd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

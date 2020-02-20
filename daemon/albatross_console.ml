@@ -158,8 +158,9 @@ let handle s addr =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ influx =
+let jump _ influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
+  Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_console" influx;
      Vmm_lwt.server_socket `Console >>= fun s ->
@@ -176,7 +177,7 @@ open Cmdliner
 open Albatross_cli
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ influx)),
+  Term.(term_result (const jump $ setup_log $ influx $ tmpdir)),
   Term.info "albatross_console" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

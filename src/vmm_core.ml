@@ -19,8 +19,9 @@ let conn_metrics kind =
 
 open Astring
 
-let tmpdir = Fpath.(v "/var" / "run" / "albatross")
-let sockdir = Fpath.(tmpdir / "util")
+let tmpdir = ref (Fpath.v "/nonexisting")
+
+let set_tmpdir path = tmpdir := path
 
 type service = [ `Console | `Log | `Stats | `Vmmd ]
 
@@ -31,7 +32,7 @@ let socket_path t =
     | `Stats -> "stat"
     | `Log -> "log"
   in
-  Fpath.to_string Fpath.(sockdir / path + "sock")
+  Fpath.to_string Fpath.(!tmpdir / "util" / path + "sock")
 
 let pp_socket ppf t =
   let name = socket_path t in
@@ -106,11 +107,11 @@ module Name = struct
 
   let image_file name =
     let file = to_string name in
-    Fpath.(tmpdir / file + "img")
+    Fpath.(!tmpdir / file + "img")
 
   let fifo_file name =
     let file = to_string name in
-    Fpath.(tmpdir / "fifo" / file)
+    Fpath.(!tmpdir / "fifo" / file)
 
   let block_name vm_name dev =
     List.rev (dev :: List.rev (domain vm_name))

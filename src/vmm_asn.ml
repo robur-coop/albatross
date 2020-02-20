@@ -353,7 +353,7 @@ let v3_unikernel_config =
     let typ = `Solo5
     and compressed = match fst image with `Hvt_amd64_compressed -> true | _ -> false
     and image = snd image
-    and fail_behaviour = `Quit
+    and fail_behaviour = `Quit (* TODO maybe set to restart by default :) *)
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g vm =
