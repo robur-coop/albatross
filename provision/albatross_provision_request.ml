@@ -16,7 +16,7 @@ let csr priv name cmd =
   X509.Signing_request.create name ~extensions priv
 
 let jump id cmd =
-  Nocrypto_entropy_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize () ;
   let name = Vmm_core.Name.to_string id in
   priv_key None name >>= fun priv ->
   let csr = csr priv name cmd in

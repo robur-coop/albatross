@@ -49,7 +49,7 @@ let sign ?dbname ?certname extensions issuer key csr delta =
     | Some _ ->
       match key with
       | `RSA priv ->
-        let capub = `RSA (Nocrypto.Rsa.pub_of_priv priv) in
+        let capub = `RSA (Mirage_crypto_pk.Rsa.pub_of_priv priv) in
         key_ids extensions X509.Signing_request.((info csr).public_key) capub
   in
   X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer >>= fun cert ->
@@ -69,7 +69,7 @@ let priv_key ?(bits = 2048) fn name =
   Bos.OS.File.exists file >>= function
   | false ->
     Logs.info (fun m -> m "creating new RSA key %a" Fpath.pp file) ;
-    let priv = `RSA (Nocrypto.Rsa.generate bits) in
+    let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits ()) in
     Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string (X509.Private_key.encode_pem priv)) >>= fun () ->
     Ok priv
   | true ->

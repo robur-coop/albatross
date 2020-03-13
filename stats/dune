@@ -26,7 +26,8 @@ let () =
   (package albatross)
   (modules albatross_stat_client)
   %s
-  (libraries albatross.cli albatross.stats albatross)) |}
+  (libraries albatross.cli albatross.stats albatross))
+ |}
   (if freebsd then "(link_flags (-ccopt \"-lvmmapi\"))" else "")
   (if freebsd then "(link_flags (-ccopt \"-lvmmapi\"))" else "")
 

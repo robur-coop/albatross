@@ -4,7 +4,7 @@
   (public_name albatross.provision)
   (wrapped false)
   (modules albatross_provision)
-  (libraries albatross.cli x509 nocrypto.unix))
+  (libraries albatross.cli x509 mirage-crypto-pk mirage-crypto-rng.unix))
 
 (executable
   (name albatross_provision_ca)

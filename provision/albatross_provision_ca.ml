@@ -59,7 +59,7 @@ let sign_csr dbname cacert key csr days =
   | Error e -> Error e
 
 let sign_main _ db cacert cakey csrname days =
-  Nocrypto_entropy_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize () ;
   Bos.OS.File.read (Fpath.v cacert) >>= fun cacert ->
   Certificate.decode_pem (Cstruct.of_string cacert) >>= fun cacert ->
   Bos.OS.File.read (Fpath.v cakey) >>= fun pk ->
@@ -74,7 +74,7 @@ let help _ man_format cmds = function
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
 let generate _ name db days sname sdays =
-  Nocrypto_entropy_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize () ;
   priv_key ~bits:4096 None name >>= fun key ->
   let name = [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
   let csr = Signing_request.create name key in

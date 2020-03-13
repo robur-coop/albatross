@@ -47,7 +47,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   | _, Error (`Msg e) ->
     Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
   | Ok cert, Ok key ->
-    let tmpkey = Nocrypto.Rsa.generate 4096 in
+    let tmpkey = Mirage_crypto_pk.Rsa.generate ~bits:4096 () in
     let name = Vmm_core.Name.to_string id in
     let extensions =
       let v = Vmm_asn.to_cert_extension cmd in
@@ -65,7 +65,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
     in
     let valid_from, valid_until = timestamps 300 in
     let extensions =
-      let capub = match key with `RSA key -> Nocrypto.Rsa.pub_of_priv key in
+      let capub = match key with `RSA key -> Mirage_crypto_pk.Rsa.pub_of_priv key in
       key_ids extensions Signing_request.((info csr).public_key) (`RSA capub)
     in
     let issuer = Certificate.subject cert in

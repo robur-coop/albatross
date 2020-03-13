@@ -15,7 +15,7 @@ let tls_config cacert cert priv_key =
 
 let client_auth ca tls =
   let authenticator =
-    let time = Ptime_clock.now () in
+    let time () = Some (Ptime_clock.now ()) in
     X509.Authenticator.chain_of_trust ~time (* ~crls:!state.Vmm_engine.crls *) [ca]
   in
   Lwt.catch

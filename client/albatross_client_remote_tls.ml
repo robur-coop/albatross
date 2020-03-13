@@ -14,7 +14,6 @@ let rec read_tls_write_cons t =
     read_tls_write_cons t
 
 let client cas host port cert priv_key =
-  Nocrypto_entropy_lwt.initialize () >>= fun () ->
   let auth = if Sys.is_directory cas then `Ca_dir cas else `Ca_file cas in
   X509_lwt.authenticator auth >>= fun authenticator ->
   Lwt.catch (fun () ->
@@ -52,6 +51,7 @@ let run_client _ cas cert key (host, port) =
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
       | _ -> None) ;
   Sys.(set_signal sigpipe Signal_ignore) ;
+  Mirage_crypto_rng_unix.initialize ();
   Lwt_main.run (client cas host port cert key)
 
 open Cmdliner
