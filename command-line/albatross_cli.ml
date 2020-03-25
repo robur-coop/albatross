@@ -73,7 +73,7 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
     let exits = match exit_codes with [] -> None | xs -> Some (IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
-  let config = Unikernel.{ typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
+  let config = { Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then `Unikernel_force_create config else `Unikernel_create config
 
 let policy vms memory cpus block bridges =
@@ -216,9 +216,17 @@ let block =
   let doc = "Block device name" in
   Arg.(value & opt_all string [] & info [ "block" ] ~doc)
 
+let srv_bridge_c =
+  let parse s = match Astring.String.cut ~sep:":" s with
+    | None -> `Ok (s, None)
+    | Some (srv, bri) -> `Ok (srv, Some bri)
+  in
+  (parse, fun ppf (srv, bri) -> Fmt.pf ppf "%s:%s" srv
+       (match bri with None -> srv | Some bri -> bri))
+
 let net =
-  let doc = "Network device names" in
-  Arg.(value & opt_all string [] & info [ "net" ] ~doc)
+  let doc = "Network device names (bridge or name:bridge)" in
+  Arg.(value & opt_all srv_bridge_c [] & info [ "net" ] ~doc)
 
 let restart_on_fail =
   let doc = "Restart on fail" in

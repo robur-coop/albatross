@@ -82,9 +82,11 @@ module Unikernel : sig
     cpuid : int ;
     memory : int ;
     block_devices : string list ;
-    bridges : string list ;
+    bridges : (string * string option) list ;
     argv : string list option ;
   }
+
+  val bridges : config -> string list
 
   val pp_config : config Fmt.t
 

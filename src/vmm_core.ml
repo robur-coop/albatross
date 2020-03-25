@@ -207,9 +207,14 @@ module Unikernel = struct
     cpuid : int ;
     memory : int ;
     block_devices : string list ;
-    bridges : string list ;
+    bridges : (string * string option) list ;
     argv : string list option ;
   }
+
+  let bridges (vm : config) =
+    List.map
+      (fun (net, bri) -> match bri with None -> net | Some s -> s)
+      vm.bridges
 
   let pp_config ppf (vm : config) =
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a"
@@ -219,7 +224,9 @@ module Unikernel = struct
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       Fmt.(list ~sep:(unit ", ") string) vm.block_devices
-      Fmt.(list ~sep:(unit ", ") string) vm.bridges
+      Fmt.(list ~sep:(unit ", ")
+             (pair ~sep:(unit " -> ") string string))
+      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) vm.bridges)
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
   let restart_handler config =

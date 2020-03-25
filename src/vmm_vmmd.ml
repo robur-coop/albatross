@@ -117,7 +117,7 @@ let setup_stats t name vm =
     let name = match Vmm_unix.vm_device vm with
       | Error _ -> ""
       | Ok name -> name
-    and ifs = Unikernel.(List.combine vm.config.bridges vm.taps)
+    and ifs = Unikernel.(List.combine (List.map fst vm.config.bridges) vm.taps)
     in
     `Stats_add (name, vm.Unikernel.pid, ifs)
   in
@@ -138,7 +138,9 @@ let handle_create t name vm_config =
   Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_unix.prepare name vm_config >>= fun taps ->
-  Logs.debug (fun m -> m "prepared vm with taps %a" Fmt.(list ~sep:(unit ",@ ") string) taps) ;
+  Logs.debug (fun m -> m "prepared vm with taps %a"
+                 Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit " -> ") string string))
+                 taps) ;
   let cons_out =
     let header = Vmm_commands.header ~sequence:t.console_counter name in
     (header, `Command (`Console_cmd `Console_add))
@@ -151,26 +153,25 @@ let handle_create t name vm_config =
        --> if either the first or second fails, then the fail continuation
            below needs to be called *)
     Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
-    let ifs = List.combine vm_config.bridges taps
-    and block_devices =
+    let block_devices =
       List.map (fun d -> d, Name.block_name name d)
         vm_config.Unikernel.block_devices
     in
-    Vmm_unix.exec name vm_config ifs block_devices >>| fun vm ->
+    Vmm_unix.exec name vm_config taps block_devices >>| fun vm ->
     Logs.debug (fun m -> m "exec()ed vm") ;
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
     dump_unikernels t ;
     let t, log_out =
       let start =
-        `Unikernel_start (name, vm.Unikernel.pid, ifs, block_devices)
+        `Unikernel_start (name, vm.Unikernel.pid, taps, block_devices)
       in
       log t name start
     in
     let t, stat_out = setup_stats t name vm in
     (t, stat_out, log_out, `Success (`String "created VM"), name, vm)
   and fail () =
-    match Vmm_unix.free_system_resources name taps with
+    match Vmm_unix.free_system_resources name (List.map snd taps) with
     | Ok () -> `Failure "could not create VM: console failed"
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in

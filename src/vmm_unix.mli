@@ -12,7 +12,8 @@ val set_dbdir : Fpath.t -> unit
 
 val check_commands : unit -> (unit, [> R.msg ]) result
 
-val prepare : Name.t -> Unikernel.config -> (string list, [> R.msg ]) result
+val prepare : Name.t -> Unikernel.config ->
+  ((string * string) list, [> R.msg ]) result
 
 val exec : Name.t -> Unikernel.config -> (string * string) list ->
   (string * Name.t) list -> (Unikernel.t, [> R.msg ]) result

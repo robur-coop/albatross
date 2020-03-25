@@ -202,10 +202,11 @@ let prepare name vm =
         let _ = Unix.umask old_umask in
         R.error_msgf "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e
   end >>= fun () ->
-  List.fold_left (fun acc b ->
+  List.fold_left (fun acc (net, bri) ->
       acc >>= fun acc ->
-      create_tap b >>= fun tap ->
-      Ok (tap :: acc))
+      let bridge = match bri with None -> net | Some b -> b in
+      create_tap bridge >>= fun tap ->
+      Ok ((net, tap) :: acc))
     (Ok []) vm.Unikernel.bridges >>= fun taps ->
   Ok (List.rev taps)
 

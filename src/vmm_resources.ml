@@ -6,8 +6,6 @@ open Rresult.R.Infix
 
 open Vmm_core
 
-let flipped_set_mem set s = String.Set.mem s set
-
 type t = {
   policies : Policy.t Vmm_trie.t ;
   block_devices : (int * bool) Vmm_trie.t ;
@@ -135,6 +133,8 @@ let remove_block t name = match find_block t name with
       report_vms t' name;
       Ok t'
 
+let bridge_allowed set s = String.Set.mem s set
+
 let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.config) =
   if succ running_vms > p.Policy.vms then
     Error (`Msg "maximum amount of unikernels reached")
@@ -142,7 +142,7 @@ let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.confi
     Error (`Msg "maximum allowed memory reached")
   else if not (IS.mem vm.Unikernel.cpuid p.Policy.cpuids) then
     Error (`Msg "CPUid is not allowed by policy")
-  else if not (List.for_all (flipped_set_mem p.Policy.bridges) vm.Unikernel.bridges) then
+  else if not (List.for_all (bridge_allowed p.Policy.bridges) (Unikernel.bridges vm)) then
     Error (`Msg "network not allowed by policy")
   else Ok ()
 
@@ -261,7 +261,7 @@ let check_vms t name p =
     Vmm_trie.fold name t.unikernels
       (fun _ vm (bridges, cpuids) ->
          let config = vm.Unikernel.config in
-         (String.Set.(union (of_list config.Unikernel.bridges) bridges),
+         (String.Set.(union (of_list (Unikernel.bridges config)) bridges),
           IS.add config.Unikernel.cpuid cpuids))
       (String.Set.empty, IS.empty)
   in

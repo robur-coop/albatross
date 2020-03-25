@@ -328,7 +328,7 @@ let fail_behaviour =
            (explicit 1 (set_of int)))
 
 (* this is part of the state file! *)
-let v3_unikernel_config =
+let v0_unikernel_config =
   let image =
     let f = function
       | `C1 x -> `Hvt_amd64, x
@@ -347,7 +347,7 @@ let v3_unikernel_config =
   in
   let open Unikernel in
   let f (cpuid, memory, block_device, network_interfaces, image, argv) =
-    let bridges = match network_interfaces with None -> [] | Some xs -> xs
+    let bridges = match network_interfaces with None -> [] | Some xs -> List.map (fun n -> n, None) xs
     and block_devices = match block_device with None -> [] | Some b -> [ b ]
     in
     let typ = `Solo5
@@ -357,7 +357,7 @@ let v3_unikernel_config =
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g vm =
-    let network_interfaces = match vm.bridges with [] -> None | xs -> Some xs
+    let network_interfaces = match vm.bridges with [] -> None | xs -> Some (List.map fst xs)
     and block_device = match vm.block_devices with [] -> None | x::_ -> Some x
     and typ = if vm.compressed then `Hvt_amd64_compressed else `Hvt_amd64
     in
@@ -376,6 +376,30 @@ let v3_unikernel_config =
 
 (* this is part of the state file (and unikernel_create command)
    be aware if this (or a dependent grammar) is changed! *)
+let v1_unikernel_config =
+  let open Unikernel in
+  let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
+    let bridges = match bridges with None -> [] | Some xs -> List.map (fun b -> b, None) xs
+    and block_devices = match blocks with None -> [] | Some xs -> xs
+    in
+    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+  and g vm =
+    let bridges = match vm.bridges with [] -> None | xs -> Some (List.map fst xs)
+    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
+    in
+    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
+  in
+  Asn.S.(map f g @@ sequence @@
+           (required ~label:"typ" typ)
+         @ (required ~label:"compressed" bool)
+         @ (required ~label:"image" octet_string)
+         @ (required ~label:"fail behaviour" fail_behaviour)
+         @ (required ~label:"cpuid" int)
+         @ (required ~label:"memory" int)
+         @ (optional ~label:"blocks" (explicit 0 (set_of utf8_string)))
+         @ (optional ~label:"bridges" (explicit 1 (set_of utf8_string)))
+        -@ (optional ~label:"arguments"(explicit 2 (sequence_of utf8_string))))
+
 let unikernel_config =
   let open Unikernel in
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
@@ -397,7 +421,11 @@ let unikernel_config =
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
          @ (optional ~label:"blocks" (explicit 0 (set_of utf8_string)))
-         @ (optional ~label:"bridges" (explicit 1 (set_of utf8_string)))
+         @ (optional ~label:"bridges"
+              (explicit 1 (sequence_of
+                             (sequence2
+                                (required ~label:"netif" utf8_string)
+                                (optional ~label:"bridge" utf8_string)))))
         -@ (optional ~label:"arguments"(explicit 2 (sequence_of utf8_string))))
 
 let unikernel_cmd =
@@ -406,18 +434,22 @@ let unikernel_cmd =
     | `C2 vm -> `Unikernel_create vm
     | `C3 vm -> `Unikernel_force_create vm
     | `C4 () -> `Unikernel_destroy
+    | `C5 vm -> `Unikernel_create vm
+    | `C6 vm -> `Unikernel_force_create vm
   and g = function
     | `Unikernel_info -> `C1 ()
-    | `Unikernel_create vm -> `C2 vm
-    | `Unikernel_force_create vm -> `C3 vm
+    | `Unikernel_create vm -> `C5 vm
+    | `Unikernel_force_create vm -> `C6 vm
     | `Unikernel_destroy -> `C4 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice6
            (explicit 0 null)
-           (explicit 1 unikernel_config)
-           (explicit 2 unikernel_config)
-           (explicit 3 null))
+           (explicit 1 v1_unikernel_config)
+           (explicit 2 v1_unikernel_config)
+           (explicit 3 null)
+           (explicit 4 unikernel_config)
+           (explicit 5 unikernel_config))
 
 let policy_cmd =
   let f = function
@@ -632,9 +664,11 @@ let trie e =
               (required ~label:"name" utf8_string)
               (required ~label:"value" e)))
 
-let version0_unikernels = trie v3_unikernel_config
+let version0_unikernels = trie v0_unikernel_config
 
-let version1_unikernels = trie unikernel_config
+let version1_unikernels = trie v1_unikernel_config
+
+let version2_unikernels = trie unikernel_config
 
 let unikernels =
    (* the choice is the implicit version + migration... be aware when
@@ -642,13 +676,15 @@ let unikernels =
   let f = function
     | `C1 data -> data
     | `C2 data -> data
+    | `C3 data -> data
   and g data =
-    `C1 data
+    `C3 data
   in
   Asn.S.map f g @@
-  Asn.S.(choice2
+  Asn.S.(choice3
            (explicit 0 version1_unikernels)
-           (explicit 1 version0_unikernels))
+           (explicit 1 version0_unikernels)
+           (explicit 2 version2_unikernels))
 
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
 
