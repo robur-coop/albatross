@@ -5,8 +5,8 @@ open Rresult.R.Infix
 
 open Vmm_core
 
-external sysctl_rusage : int -> Stats.rusage = "vmmanage_sysctl_rusage"
-external sysctl_kinfo_mem : int -> Stats.kinfo_mem = "vmmanage_sysctl_kinfo_mem"
+external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
+  "vmmanage_sysctl_kinfo_proc"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
 external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
@@ -100,8 +100,12 @@ let try_open_vmmapi pid_nic =
     pid_nic IM.empty
 
 let gather pid vmctx nics =
-  wrap sysctl_rusage pid,
-  wrap sysctl_kinfo_mem pid,
+  let ru, mem =
+    match wrap sysctl_kinfo_proc pid with
+    | None -> None, None
+    | Some (mem, ru) -> Some mem, Some ru
+  in
+  ru, mem,
   (match vmctx with
    | Error _ -> None
    | Ok vmctx -> wrap vmmapi_stats vmctx),

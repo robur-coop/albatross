@@ -4,9 +4,8 @@ open Albatross_stats_pure
 let old_rt = ref 0L
 
 let timer pid vmmapi interval =
-  let rusage = sysctl_rusage pid in
+  let rusage, kinfo_mem = sysctl_kinfo_proc pid in
   Logs.app (fun m -> m "sysctl rusage: %a" Stats.pp_rusage_mem rusage) ;
-  let kinfo_mem = sysctl_kinfo_mem pid in
   Logs.app (fun m -> m "kinfo mem: %a" Stats.pp_kinfo_mem kinfo_mem) ;
   let delta, pct =
     if !old_rt = 0L then
