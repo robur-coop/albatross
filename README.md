@@ -3,25 +3,38 @@
 [![Build Status](https://travis-ci.org/hannesm/albatross.svg?branch=master)](https://travis-ci.org/hannesm/albatross)
 
 The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
-unikernels using [Solo5](https://github.com/solo5/solo5), including precise
-error handling of failures. The code running under superuser privileges is
-minimimal. Albatross is supposed to be run on a machine in the dom0, next to the
-hypervisor. Albatross keeps track of unikernel resource usage (memory, CPUs,
-bridges, block storage and active block devices). Policies restricting these
-resources for administrative domains are available. Local and remote deployments
-are supported, remote ones are authenticated and encrypted via a mutually
-authenticated TLS connection using X.509 client certificates.  Multi-tenancy
-deployments are possible, tenants do not need any other access to the machine:
-console output and statistics gathered by the host are accessible via TLS.
-Albatross keeps the information of running unikernels persistently, and starts
-these unikernels when the albatross daemon is started. This means that whenever
-a unikernel was started, it keeps running until it crashes or an explicit
-destroy command is issued.
+unikernels using [Solo5](https://github.com/solo5/solo5). Resources managed
+by albatross are network interfaces of kind `tap`, which are connected to
+already existing bridges, block devices, memory, and CPU. Each unikernel is
+pinned (`cpuset` / `taskset`) to a specific core.
 
-The administrative domain is similar to DNS: each unikernel has a name (e.g.
-`foo.hello`), which consists of labels separated by dots. Policies and
-access is done on a name basis - if access to `foo` is granted, `foo.hello`,
-`foo.bar.hello`, etc. can be accessed, but not `bar` or `bar.hello`.
+Albatross allows remote management, to deploy or destroy a unikernel, no shell
+access is necessary. The remote channel is a mutually authenticated (with X.509
+certificates) TLS connection. Console output of the unikernels is stored in
+memory in a ring buffer, and accessible from remote. Monitoring data (CPU and
+memory usage) of the unikernels can be collected as well, and pushed into a
+Influx time series database.
+
+Albatross consists of multiple processes, each running with the least
+privileges. Albatross can be run next to other orchestration systems, it does
+not assume to be the single instance on a dom0 which creates and destroys
+virtual machines. Resource policies can be dynamically configured for each
+administrative domain (similar to DNS, a hierarchical naming scheme), and is
+statically checked (to decrease while going down the tree) and dynamically when
+a new unikernel is to be deployed.
+
+When a unikernel was deployed on albatross, it tries the best to keep this
+running, even when the physical hardware reboots, or albatross is restarted.
+When the unikernel exits, depending on configuration and its exit code, it is
+re-started. The current set of running unikernels is persisted on disk, though
+there is no dependency or order how to restart them.
+
+The scope of albatross is to provide a minimal orchestration system that avoids
+the need of shell access on the dom0. This leads to mostly immutable - or only
+mutable via albatross which writes a log for every administrative change -
+infrastructure. Further dissemination of albatross into virtual machines, and
+a communication interface for deploying and destroying unikernels, is being
+researched on.
 
 ## Components
 
@@ -31,8 +44,7 @@ request-response style over Unix domain sockets, are run in the host system:
 - `albatross_console`: reads the console output of unikernels
 - `albatross_log`: event log
 - `albatross_stats`: statistics gathering (rusage, ifstat, BHyve debug counters)
-- `albatross_tls_endpoint`: remote deployment via TLS with client certificate, and proxies to local daemons
-- `albatross_tls_inetd`: remote deployment via TLS and inetd (alternative to `albatross_tls_endpoint`)
+- `albatross_tls_inetd`: remote deployment via TLS and inetd (an alternative is `albatross_tls_endpoint`)
 - `albatross_influx`: statistic reporting from `albatross_stats` to influx
 
 The main daemon is the privileged `albatrossd`, which supervises unikernels. It opens
@@ -55,11 +67,13 @@ write their standard output to.
 `Albatross_stats` gathers periodically statistics (memory, CPU, network, hypervisor)
 from all running unikernels.
 
-`Albatross_tls_endpoint` and `albatross_tls_inetd` listen on a TCP port, and proxy requests from
-remote clients to the respective daemons described above. They enforce client
-authentication, and use the commen names of the client certificate chain as
-administrative domain. The policies are embedded in CA certificates, the command
-is embedded in the leaf certificate.
+`Albatross_tls_inetd` is executed via inetd (socket activation), and proxy
+requests from remote clients to the respective daemons described above. It
+enforce client authentication, and use the commen names of the client
+certificate chain as administrative domain. The policies are embedded in CA
+certificates, the command is embedded in the leaf certificate. The
+`albatross_tls_endpoint` is an alternative, which listen on a TCP port and
+executes an asynchronous task for each incoming request.
 
 The following command-line applications for local and remote management are provided:
 - `albatross_client_local`: sends a command locally to the Unix domain sockets
@@ -73,9 +87,10 @@ The following command-line applications for local and remote management are prov
 To install Albatross, run `opam pin add albatross
 https://github.com/hannesm/albatross`.
 
-Init scripts for FreeBSD are provided in the `packaging/rc.d` subdirectory.
-
-TODO: from here on, this documentation is not up to date.
+Init scripts for FreeBSD are provided in the `packaging/FreeBSD/rc.d`
+subdirectory, and a script to create a FreeBSD package
+`packaging/FreeBSD/create_package.sh`.
+For Linux, systemd service scripts are available in `packaging/Linux`.
 
 It may help to read [the _outdated_ blog article](https://hannes.nqsb.io/Posts/VMM)
 for motivation of albatross and an overview over its functionality.
