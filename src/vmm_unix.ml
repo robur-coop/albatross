@@ -145,9 +145,9 @@ let create_tap bridge =
       | Ok _ -> find_n (succ x)
     in
     let tap = find_n 0 in
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % "mode" % "tap" % tap) >>= fun () ->
+    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % tap % "mode" % "tap") >>= fun () ->
     (* TODO maybe: ip link set $tap master $bridge -- no brctl *)
-    (* TODO also needed? ip link set dev $tap up -- or is it auto-up? *)
+    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "up") >>= fun () ->
     Bos.OS.Cmd.run Bos.Cmd.(v "brctl" % "addif" % bridge % tap) >>= fun () ->
     Ok tap
 
