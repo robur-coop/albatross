@@ -32,7 +32,7 @@ let check_commands () =
   Bos.OS.Cmd.must_exist uname_cmd >>= fun _ ->
   let cmds =
     match Lazy.force uname with
-    | Linux -> [ "ip" ; "brctl" ; "taskset" ]
+    | Linux -> [ "ip" ; "taskset" ]
     | FreeBSD -> [ "ifconfig" ; "cpuset" ]
   in
   List.fold_left
@@ -146,9 +146,8 @@ let create_tap bridge =
     in
     let tap = find_n 0 in
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % tap % "mode" % "tap") >>= fun () ->
-    (* TODO maybe: ip link set $tap master $bridge -- no brctl *)
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "up") >>= fun () ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "brctl" % "addif" % bridge % tap) >>= fun () ->
+    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "master" % bridge) >>= fun () ->
     Ok tap
 
 let destroy_tap tap =
