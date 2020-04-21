@@ -69,7 +69,10 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
       key_ids extensions Signing_request.((info csr).public_key) (`RSA capub)
     in
     let issuer = Certificate.subject cert in
-    match Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer with
+    match
+      Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
+        (Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
+    with
     | Error _ as e -> Lwt.return e
     | Ok mycert ->
       let certificates = `Single ([ mycert ; cert ], tmpkey) in
