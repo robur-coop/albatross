@@ -140,7 +140,8 @@ let create_tap bridge =
     let prefix = "vmmtap" in
     let rec find_n x =
       let nam = prefix ^ string_of_int x in
-      match Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "show" % nam) with
+      let err = Bos.OS.Cmd.err_null in
+      match Bos.OS.Cmd.run ~err Bos.Cmd.(v "ip" % "link" % "show" % nam) with
       | Error _ -> nam
       | Ok _ -> find_n (succ x)
     in
