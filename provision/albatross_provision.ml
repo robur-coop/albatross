@@ -52,7 +52,8 @@ let sign ?dbname ?certname extensions issuer key csr delta =
         let capub = `RSA (Mirage_crypto_pk.Rsa.pub_of_priv priv) in
         key_ids extensions X509.Signing_request.((info csr).public_key) capub
   in
-  X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer >>= fun cert ->
+  Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
+    (X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer) >>= fun cert ->
   (match dbname with
    | None -> Ok () (* no DB! *)
    | Some dbname ->
