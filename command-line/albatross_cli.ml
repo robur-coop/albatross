@@ -281,7 +281,7 @@ let set_tmpdir = function
     Vmm_core.set_tmpdir path
 
 let dbdir =
-  let doc = "Albatross database directory (defaults to /var/db/albatross on FreeBSD, /run/albatross on Linux)" in
+  let doc = "Albatross database directory (defaults to /var/db/albatross on FreeBSD, /var/lib/albatross on Linux)" in
   Arg.(value & opt (some dir) None & info [ "dbdir" ] ~doc)
 
 let set_dbdir = function
