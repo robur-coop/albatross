@@ -137,15 +137,17 @@ let create_tap bridge =
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) >>= fun () ->
     Ok name
   | Linux ->
+    Bos.(OS.Cmd.(run_out Cmd.(v "ip" % "tuntap" % "show") |> out_lines)) >>= fun (taps, _) ->
     let prefix = "vmmtap" in
-    let rec find_n x =
-      let nam = prefix ^ string_of_int x in
-      let err = Bos.OS.Cmd.err_null in
-      match Bos.OS.Cmd.run ~err Bos.Cmd.(v "ip" % "link" % "show" % nam) with
-      | Error _ -> nam
-      | Ok _ -> find_n (succ x)
+    let plen = String.length prefix in
+    let num acc n =
+      match Astring.String.(cut ~sep:":" (snd (span ~min:plen ~max:plen n))) with
+      | Some (x, _) -> (try IS.add (int_of_string x) acc with Failure _ -> acc)
+      | None -> acc
     in
-    let tap = find_n 0 in
+    let taps = List.fold_left num IS.empty taps in
+    let rec find_n x = if IS.mem x taps then find_n (succ x) else x in
+    let tap = prefix ^ string_of_int (find_n 0) in
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % tap % "mode" % "tap") >>= fun () ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "up") >>= fun () ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "master" % bridge) >>= fun () ->
