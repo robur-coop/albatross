@@ -3,7 +3,7 @@
   (public_name albatross-client-bistro)
   (package albatross)
   (modules albatross_client_bistro)
-  (libraries albatross.cli albatross albatross.tls))
+  (libraries albatross.cli albatross albatross.tls albatross_tls_cli))
 
 (executable
   (name albatross_client_local)
@@ -17,4 +17,4 @@
   (public_name albatross-client-remote-tls)
   (package albatross)
   (modules albatross_client_remote_tls)
-  (libraries albatross.cli albatross albatross.tls))
+  (libraries albatross.cli albatross albatross.tls albatross_tls_cli))

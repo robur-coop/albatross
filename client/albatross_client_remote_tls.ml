@@ -6,12 +6,13 @@ let rec read_tls_write_cons t =
   Vmm_tls_lwt.read_tls t >>= function
   | Error `Eof ->
     Logs.warn (fun m -> m "eof from server");
-    Lwt.return (Ok ())
+    Lwt.return Albatross_cli.Success
   | Error _ ->
-    Lwt.return (Error (`Msg ("read failure")))
+    Lwt.return Albatross_cli.Communication_failed
   | Ok wire ->
-    Albatross_cli.print_result wire ;
-    read_tls_write_cons t
+    match Albatross_cli.output_result wire with
+    | Ok () -> read_tls_write_cons t
+    | Error e -> Lwt.return e
 
 let client cas host port cert priv_key =
   let auth = if Sys.is_directory cas then `Ca_dir cas else `Ca_file cas in
@@ -28,22 +29,16 @@ let client cas host port cert priv_key =
     let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
     Vmm_lwt.connect host_entry.Lwt_unix.h_addrtype sockaddr >>= function
     | None ->
-      let err =
-        Rresult.R.error_msgf "couldn't connect to %a" Vmm_lwt.pp_sockaddr sockaddr
-      in
-      Lwt.return err
+      Logs.err (fun m -> m "couldn't connect to %a"
+                   Vmm_lwt.pp_sockaddr sockaddr);
+      Lwt.return Albatross_cli.Connect_failed
     | Some fd ->
       X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
       let certificates = `Single cert in
       let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
       Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
       read_tls_write_cons t)
-    (fun exn ->
-      let err =
-        Rresult.R.error_msgf "failed to establish TLS connection: %s"
-          (Printexc.to_string exn)
-      in
-      Lwt.return err)
+    (fun exn -> Lwt.return (Albatross_tls_common.classify_tls_error exn))
 
 let run_client _ cas cert key (host, port) =
   Printexc.register_printer (function
@@ -79,9 +74,11 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to an Albatross server and initiates a TLS handshake" ]
   in
-  Term.(pure run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "albatross_client_remote_tls" ~version ~doc ~man
+  let exits = auth_exits @ exits in
+  Term.(const run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
+  Term.info "albatross_client_remote_tls" ~version ~doc ~man ~exits
 
 let () =
-  match Term.eval cmd
-  with `Error _ -> exit 1 | _ -> exit 0
+  match Term.eval cmd with
+  | `Ok x -> exit (exit_status_to_int x)
+  | y -> exit (Term.exit_status_of_result y)

@@ -8,23 +8,15 @@ let read_tls t =
     if l = 0 then
       Lwt.return (Ok ())
     else
-      Lwt.catch (fun () ->
-          Tls_lwt.Unix.read t (Cstruct.shift buf off) >>= function
-          | 0 ->
-            Logs.debug (fun m -> m "TLS: end of file") ;
-            Lwt.return (Error `Eof)
-          | x when x == l -> Lwt.return (Ok ())
-          | x when x < l -> r_n buf (off + x) tot
-          | _ ->
-            Logs.err (fun m -> m "TLS: read too much, shouldn't happen") ;
-            Lwt.return (Error `Toomuch))
-        (function
-          | Tls_lwt.Tls_failure a ->
-            Logs.err (fun m -> m "TLS read failure: %s" (Tls.Engine.string_of_failure a)) ;
-            Lwt.return (Error `Exception)
-          | e ->
-            Logs.err (fun m -> m "TLS read exception %s" (Printexc.to_string e)) ;
-            Lwt.return (Error `Exception))
+      Tls_lwt.Unix.read t (Cstruct.shift buf off) >>= function
+      | 0 ->
+        Logs.debug (fun m -> m "TLS: end of file") ;
+        Lwt.return (Error `Eof)
+      | x when x == l -> Lwt.return (Ok ())
+      | x when x < l -> r_n buf (off + x) tot
+      | _ ->
+        Logs.err (fun m -> m "TLS: read too much, shouldn't happen") ;
+        Lwt.return (Error `Toomuch)
   in
   let buf = Cstruct.create 4 in
   r_n buf 0 4 >>= function

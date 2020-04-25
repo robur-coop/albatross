@@ -48,12 +48,31 @@ let init_influx name data =
     in
     Lwt.async report
 
-let print_result ((_, reply) as wire) =
+type exit_status =
+  | Success
+  | Local_authentication_failed
+  | Remote_authentication_failed
+  | Communication_failed
+  | Connect_failed
+  | Remote_command_failed
+  | Cli_failed
+  | Internal_error
+
+let output_result ((_, reply) as wire) =
   match reply with
-  | `Success _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire)
-  | `Data _ -> Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire)
-  | `Failure _ -> Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire wire)
-  | `Command _ -> Logs.err (fun m -> m "unexpected command %a" Vmm_commands.pp_wire wire)
+  | `Success _ ->
+    Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    Ok ()
+  | `Data _ ->
+    Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    Ok ()
+  | `Failure _ ->
+    Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    Error Remote_command_failed
+  | `Command _ ->
+    Logs.err (fun m -> m "received unexpected command %a"
+                 Vmm_commands.pp_wire wire);
+    Error Internal_error
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -296,3 +315,48 @@ let set_dbdir = function
       | Linux -> Fpath.(v "/var" / "lib" / "albatross")
     in
     Vmm_unix.set_dbdir path
+
+let exit_status = function
+  | Ok () -> Ok Success
+  | Error e -> Ok e
+
+(* exit status already in use:
+   - 0 success
+   - 2 OCaml exception
+   - 124 "cli error"
+   - 125 "internal error"
+   - 126 (bash) command invoked cannot execute
+   - 127 (bash) command not found
+   - 255 OCaml abort
+*)
+let local_authentication_failed = 119
+let remote_authentication_failed = 120
+let communication_failed = 121
+let connect_failed = 122
+let remote_command_failed = 123
+
+let exit_status_to_int = function
+  | Success -> 0
+  | Local_authentication_failed -> local_authentication_failed
+  | Remote_authentication_failed -> remote_authentication_failed
+  | Communication_failed -> communication_failed
+  | Connect_failed -> connect_failed
+  | Remote_command_failed -> remote_command_failed
+  | Cli_failed -> Term.exit_status_cli_error
+  | Internal_error -> Term.exit_status_internal_error
+
+let exits =
+  Term.exit_info ~doc:"on communication (read or write) failure"
+    communication_failed ::
+  Term.exit_info ~doc:"on connection failure" connect_failed ::
+  Term.exit_info ~doc:"on remote command execution failure"
+    remote_command_failed ::
+  Term.default_exits
+
+let auth_exits =
+  [ Term.exit_info ~doc:"on local authentication failure \
+                         (certificate not accepted by remote)"
+      local_authentication_failed ;
+    Term.exit_info ~doc:"on remote authentication failure \
+                         (couldn't validate trust anchor)"
+      remote_authentication_failed ]

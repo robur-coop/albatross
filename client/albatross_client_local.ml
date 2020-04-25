@@ -8,14 +8,14 @@ let socket t = function
 
 let process fd =
   Vmm_lwt.read_wire fd >|= function
-  | Error _ -> Error ()
-  | Ok wire -> Ok (Albatross_cli.print_result wire)
+  | Error _ -> Error Albatross_cli.Communication_failed
+  | Ok wire -> Albatross_cli.output_result wire
 
 let read fd =
   (* now we busy read and process output *)
   let rec loop () =
     process fd >>= function
-    | Error _ -> Lwt.return ()
+    | Error _ as e -> Lwt.return e
     | Ok () -> loop ()
   in
   loop ()
@@ -25,20 +25,20 @@ let handle opt_socket name (cmd : Vmm_commands.t) =
   let sockaddr = Lwt_unix.ADDR_UNIX (socket sock opt_socket) in
   Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
   | None ->
-    let err =
-      Rresult.R.error_msgf "couldn't connect to %a" Vmm_lwt.pp_sockaddr sockaddr
-    in
-    Lwt.return err
+    Logs.err (fun m -> m "couldn't connect to %a"
+                 Vmm_lwt.pp_sockaddr sockaddr);
+    Lwt.return (Ok Albatross_cli.Connect_failed)
   | Some fd ->
     let header = Vmm_commands.header name in
     Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
-    | Error `Exception -> Lwt.return (Error (`Msg "exception"))
+    | Error `Exception ->
+      Lwt.return (Ok Albatross_cli.Communication_failed)
     | Ok () ->
       (match next with
        | `Read -> read fd
-       | `End -> process fd >|= ignore) >>= fun () ->
+       | `End -> process fd) >>= fun r ->
       Vmm_lwt.safe_close fd >|= fun () ->
-      Ok ()
+      Albatross_cli.exit_status r
 
 let jump opt_socket name cmd tmpdir =
   Albatross_cli.set_tmpdir tmpdir;
@@ -92,7 +92,10 @@ let block_destroy _ opt_socket block_name =
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
   | Some t when List.mem t cmds -> `Help (man_format, Some t)
-  | Some _ -> List.iter print_endline cmds; `Ok ()
+  | Some x ->
+    print_endline ("unknown command '" ^ x ^ "', available commands:");
+    List.iter print_endline cmds;
+    `Ok Albatross_cli.Cli_failed
 
 open Cmdliner
 open Albatross_cli
@@ -108,7 +111,7 @@ let destroy_cmd =
      `P "Destroy a virtual machine."]
   in
   Term.(term_result (const destroy $ setup_log $ socket $ vm_name $ tmpdir)),
-  Term.info "destroy" ~doc ~man
+  Term.info "destroy" ~doc ~man ~exits
 
 let remove_policy_cmd =
   let doc = "removes a policy" in
@@ -117,7 +120,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "remove_policy" ~doc ~man
+  Term.info "remove_policy" ~doc ~man ~exits
 
 let info_cmd =
   let doc = "information about VMs" in
@@ -126,7 +129,7 @@ let info_cmd =
      `P "Shows information about VMs."]
   in
   Term.(term_result (const info_ $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "info" ~doc ~man
+  Term.info "info" ~doc ~man ~exits
 
 let policy_cmd =
   let doc = "active policies" in
@@ -135,7 +138,7 @@ let policy_cmd =
      `P "Shows information about policies."]
   in
   Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "policy" ~doc ~man
+  Term.info "policy" ~doc ~man ~exits
 
 let add_policy_cmd =
   let doc = "Add a policy" in
@@ -144,7 +147,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir)),
-  Term.info "add_policy" ~doc ~man
+  Term.info "add_policy" ~doc ~man ~exits
 
 let create_cmd =
   let doc = "creates a virtual machine" in
@@ -153,7 +156,7 @@ let create_cmd =
      `P "Creates a virtual machine."]
   in
   Term.(term_result (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir)),
-  Term.info "create" ~doc ~man
+  Term.info "create" ~doc ~man ~exits
 
 let console_cmd =
   let doc = "console of a VM" in
@@ -162,7 +165,7 @@ let console_cmd =
      `P "Shows console output of a VM."]
   in
   Term.(term_result (const console $ setup_log $ socket $ vm_name $ since $ count $ tmpdir)),
-  Term.info "console" ~doc ~man
+  Term.info "console" ~doc ~man ~exits
 
 let stats_subscribe_cmd =
   let doc = "statistics of VMs" in
@@ -171,7 +174,7 @@ let stats_subscribe_cmd =
      `P "Shows statistics of VMs."]
   in
   Term.(term_result (const stats_subscribe $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "stats" ~doc ~man
+  Term.info "stats" ~doc ~man ~exits
 
 let stats_remove_cmd =
   let doc = "remove statistics of VM" in
@@ -180,7 +183,7 @@ let stats_remove_cmd =
      `P "Removes statistics of VM."]
   in
   Term.(term_result (const stats_remove $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "stats_remove" ~doc ~man
+  Term.info "stats_remove" ~doc ~man ~exits
 
 let stats_add_cmd =
   let doc = "Add VM to statistics gathering" in
@@ -189,7 +192,7 @@ let stats_add_cmd =
      `P "Add VM to statistics gathering."]
   in
   Term.(term_result (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps $ tmpdir)),
-  Term.info "stats_add" ~doc ~man
+  Term.info "stats_add" ~doc ~man ~exits
 
 let log_cmd =
   let doc = "Event log" in
@@ -198,7 +201,7 @@ let log_cmd =
      `P "Shows event log of VM."]
   in
   Term.(term_result (const event_log $ setup_log $ socket $ opt_vm_name $ since $ count $ tmpdir)),
-  Term.info "log" ~doc ~man
+  Term.info "log" ~doc ~man ~exits
 
 let block_info_cmd =
   let doc = "Information about block devices" in
@@ -207,7 +210,7 @@ let block_info_cmd =
      `P "Block device information."]
   in
   Term.(term_result (const block_info $ setup_log $ socket $ opt_block_name $ tmpdir)),
-  Term.info "block" ~doc ~man
+  Term.info "block" ~doc ~man ~exits
 
 let block_create_cmd =
   let doc = "Create a block device" in
@@ -216,7 +219,7 @@ let block_create_cmd =
      `P "Creation of a block device."]
   in
   Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ tmpdir)),
-  Term.info "create_block" ~doc ~man
+  Term.info "create_block" ~doc ~man ~exits
 
 let block_destroy_cmd =
   let doc = "Destroys a block device" in
@@ -225,7 +228,7 @@ let block_destroy_cmd =
      `P "Destroys a block device."]
   in
   Term.(term_result (const block_destroy $ setup_log $ socket $ block_name $ tmpdir)),
-  Term.info "destroy_block" ~doc ~man
+  Term.info "destroy_block" ~doc ~man ~exits
 
 let help_cmd =
   let topic =
@@ -238,7 +241,7 @@ let help_cmd =
      `P "Prints help about albatross local client commands and subcommands"]
   in
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ topic)),
-  Term.info "help" ~doc ~man
+  Term.info "help" ~doc ~man ~exits
 
 let default_cmd =
   let doc = "VMM local client" in
@@ -247,7 +250,7 @@ let default_cmd =
     `P "$(tname) connects to albatrossd via a local socket" ]
   in
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_client_local" ~version ~doc ~man
+  Term.info "albatross_client_local" ~version ~doc ~man ~exits
 
 let cmds = [ help_cmd ; info_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
@@ -257,5 +260,6 @@ let cmds = [ help_cmd ; info_cmd ;
              stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ; log_cmd ]
 
 let () =
-  match Term.eval_choice default_cmd cmds
-  with `Ok () -> exit 0 | _ -> exit 1
+  match Term.eval_choice default_cmd cmds with
+  | `Ok x -> exit (exit_status_to_int x)
+  | y -> exit (Term.exit_status_of_result y)
