@@ -224,7 +224,9 @@ let handle_unikernel_cmd t id = function
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let vms =
       Vmm_trie.fold id t.resources.Vmm_resources.unikernels
-        (fun id vm vms -> (id, vm.Unikernel.config) :: vms)
+        (fun id vm vms ->
+           let cfg = { vm.Unikernel.config with image = Cstruct.empty } in
+           (id, cfg) :: vms)
         []
     in
     begin match vms with
