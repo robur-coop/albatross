@@ -12,10 +12,10 @@ type supported = FreeBSD | Linux
 
 let uname =
   let cmd = Bos.Cmd.(v "uname" % "-s") in
-  lazy (match Bos.OS.Cmd.(run_out cmd |> out_string) with
-      | Ok (s, _) when s = "FreeBSD" -> FreeBSD
-      | Ok (s, _) when s = "Linux" -> Linux
-      | Ok (s, _) -> invalid_arg (Printf.sprintf "OS %s not supported" s)
+  lazy (match Bos.OS.Cmd.(run_out cmd |> out_string |> success) with
+      | Ok s when s = "FreeBSD" -> FreeBSD
+      | Ok s when s = "Linux" -> Linux
+      | Ok s -> invalid_arg (Printf.sprintf "OS %s not supported" s)
       | Error (`Msg m) -> invalid_arg m)
 
 let check_solo5_cmd name =
@@ -133,11 +133,11 @@ let create_tap bridge =
   match Lazy.force uname with
   | FreeBSD ->
     let cmd = Bos.Cmd.(v "ifconfig" % "tap" % "create") in
-    Bos.OS.Cmd.run_out cmd |> Bos.OS.Cmd.out_string >>= fun (name, _) ->
+    Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun name ->
     Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) >>= fun () ->
     Ok name
   | Linux ->
-    Bos.(OS.Cmd.(run_out Cmd.(v "ip" % "tuntap" % "show") |> out_lines)) >>= fun (taps, _) ->
+    Bos.(OS.Cmd.(run_out Cmd.(v "ip" % "tuntap" % "show") |> out_lines |> success)) >>= fun taps ->
     let prefix = "vmmtap" in
     let plen = String.length prefix in
     let num acc n =
@@ -166,7 +166,7 @@ type solo5_target = Spt | Hvt
 let solo5_image_target image =
   check_solo5_cmd "solo5-elftool" >>= fun cmd ->
   let cmd = Bos.Cmd.(cmd % "query-abi" % p image) in
-  Bos.OS.Cmd.(run_out cmd |> out_string) >>= fun (s, _) ->
+  Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun s ->
   R.error_to_msg ~pp_error:Jsonm.pp_error
     (Vmm_json.json_of_string s) >>= fun data ->
   Vmm_json.find_string_value "target" data >>= function
