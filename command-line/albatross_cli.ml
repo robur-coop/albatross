@@ -353,6 +353,10 @@ let exits =
     remote_command_failed ::
   Term.default_exits
 
+let disable_stats =
+  let doc = "Don't try to connect to albatross-stats to report statistics" in
+  Arg.(value & flag & info [ "disable-stats" ] ~doc)
+
 let auth_exits =
   [ Term.exit_info ~doc:"on local authentication failure \
                          (certificate not accepted by remote)"

@@ -135,7 +135,7 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ influx tmpdir dbdir =
+let jump _ influx tmpdir dbdir disable_stats =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
@@ -180,7 +180,12 @@ let jump _ influx tmpdir dbdir =
        (unix_connect ~retries:(-1) `Console >|= function
          | None -> invalid_arg "cannot connect to console socket"
          | Some c -> c) >>= fun c ->
-       unix_connect ~retries:1 `Stats >>= fun s ->
+
+       (if (not disable_stats) then
+         unix_connect ~retries:(-1) `Stats
+       else
+         Lwt.return_none)
+       >>= fun s ->
 
        let log_out txt wire = write_reply "log" l txt wire >|= fun _ -> ()
        and cons_out = write_reply "cons" c
@@ -212,7 +217,7 @@ let jump _ influx tmpdir dbdir =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ setup_log $ influx $ tmpdir $ dbdir),
+  Term.(const jump $ setup_log $ influx $ tmpdir $ dbdir $ disable_stats),
   Term.info "albatrossd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
