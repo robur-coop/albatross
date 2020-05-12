@@ -145,12 +145,23 @@ let jump _ influx tmpdir dbdir =
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->
     Lwt_main.run
-      (let unix_connect s =
-         Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX (socket_path s))
+      (let rec unix_connect ~retries s =
+         Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX (socket_path s)) >>= fun x ->
+         (match x with
+         | Some x -> Lwt.return (Some x)
+         | None -> if (retries-1 != 0) then begin
+                     Logs.err (fun m -> m "unable to connect to %s, retrying in 5 seconds" (socket_path s));
+                     Lwt_unix.sleep 5.0 >>= fun () ->
+                     unix_connect ~retries:(retries-1) s
+                   end else
+                     Lwt.return_none)
        in
        init_influx "albatross" influx;
-       Vmm_lwt.server_socket `Vmmd >>= fun ss ->
-       (unix_connect `Log >|= function
+       Lwt.catch (fun () ->
+               Vmm_lwt.server_socket `Vmmd)
+        (fun _ -> invalid_arg ("unable to create server socket " ^ (socket_path `Vmmd)))
+       >>= fun ss ->
+       (unix_connect ~retries:(-1) `Log >|= function
          | None -> invalid_arg "cannot connect to log socket"
          | Some l -> l) >>= fun l ->
        let self_destruct_mutex = Lwt_mutex.create () in
@@ -166,10 +177,10 @@ let jump _ influx tmpdir dbdir =
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       (unix_connect `Console >|= function
+       (unix_connect ~retries:(-1) `Console >|= function
          | None -> invalid_arg "cannot connect to console socket"
          | Some c -> c) >>= fun c ->
-       unix_connect `Stats >>= fun s ->
+       unix_connect ~retries:1 `Stats >>= fun s ->
 
        let log_out txt wire = write_reply "log" l txt wire >|= fun _ -> ()
        and cons_out = write_reply "cons" c
