@@ -157,13 +157,19 @@ let jump _ influx tmpdir dbdir disable_stats =
                      Lwt.return_none)
        in
        init_influx "albatross" influx;
+
+       (unix_connect ~retries:(-1) `Log >|= function
+         | None -> invalid_arg "cannot connect to log socket"
+         | Some l -> l) >>= fun l ->
+
+       (unix_connect ~retries:(-1) `Console >|= function
+         | None -> invalid_arg "cannot connect to console socket"
+         | Some c -> c) >>= fun c ->
+
        Lwt.catch (fun () ->
                Vmm_lwt.server_socket `Vmmd)
         (fun _ -> invalid_arg ("unable to create server socket " ^ (socket_path `Vmmd)))
        >>= fun ss ->
-       (unix_connect ~retries:(-1) `Log >|= function
-         | None -> invalid_arg "cannot connect to log socket"
-         | Some l -> l) >>= fun l ->
        let self_destruct_mutex = Lwt_mutex.create () in
        let self_destruct () =
          Lwt_mutex.with_lock self_destruct_mutex (fun () ->
@@ -177,9 +183,6 @@ let jump _ influx tmpdir dbdir disable_stats =
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       (unix_connect ~retries:(-1) `Console >|= function
-         | None -> invalid_arg "cannot connect to console socket"
-         | Some c -> c) >>= fun c ->
 
        (if (not disable_stats) then
          unix_connect ~retries:(-1) `Stats
