@@ -353,6 +353,14 @@ let exits =
     remote_command_failed ::
   Term.default_exits
 
+let enable_stats =
+  let doc = "Connect to albatross-stats to report statistics" in
+  Arg.(value & flag & info [ "enable-stats" ] ~doc)
+
+let retry_connections =
+  let doc = "Number of retries when connecting to other daemons (log, console, stats etc). 0 aborts after one failure, -1 is unlimited retries." in
+  Arg.(value & opt int 3 & info [ "retry-connections" ] ~doc)
+
 let auth_exits =
   [ Term.exit_info ~doc:"on local authentication failure \
                          (certificate not accepted by remote)"

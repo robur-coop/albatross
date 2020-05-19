@@ -135,7 +135,7 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ influx tmpdir dbdir =
+let jump _ influx tmpdir dbdir retries enable_stats =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
@@ -145,14 +145,37 @@ let jump _ influx tmpdir dbdir =
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->
     Lwt_main.run
-      (let unix_connect s =
-         Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX (socket_path s))
+      (let rec unix_connect ~retries s =
+        (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX (socket_path s)) >>= function
+         | Some x -> Lwt.return (Some x)
+         | None when (retries <> 0) ->
+                    (Logs.err (fun m -> m "unable to connect to %s, retrying in 5 seconds" (socket_path s));
+                     Lwt_unix.sleep 5.0 >>= fun () ->
+                     unix_connect ~retries:(retries - 1) s)
+         | None -> Lwt.return_none)
        in
        init_influx "albatross" influx;
-       Vmm_lwt.server_socket `Vmmd >>= fun ss ->
-       (unix_connect `Log >|= function
+
+       (unix_connect ~retries `Log >|= function
          | None -> invalid_arg "cannot connect to log socket"
          | Some l -> l) >>= fun l ->
+
+       (unix_connect ~retries `Console >|= function
+         | None -> invalid_arg "cannot connect to console socket"
+         | Some c -> c) >>= fun c ->
+
+       (if enable_stats then
+         (unix_connect ~retries `Stats >|= function
+           | None -> invalid_arg "cannot connect to stats socket"
+           | Some c -> Some c)
+       else
+         Lwt.return_none)
+       >>= fun s ->
+
+       Lwt.catch (fun () ->
+               Vmm_lwt.server_socket `Vmmd)
+        (fun _ -> invalid_arg ("unable to create server socket " ^ (socket_path `Vmmd)))
+       >>= fun ss ->
        let self_destruct_mutex = Lwt_mutex.create () in
        let self_destruct () =
          Lwt_mutex.with_lock self_destruct_mutex (fun () ->
@@ -166,10 +189,6 @@ let jump _ influx tmpdir dbdir =
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       (unix_connect `Console >|= function
-         | None -> invalid_arg "cannot connect to console socket"
-         | Some c -> c) >>= fun c ->
-       unix_connect `Stats >>= fun s ->
 
        let log_out txt wire = write_reply "log" l txt wire >|= fun _ -> ()
        and cons_out = write_reply "cons" c
@@ -201,7 +220,7 @@ let jump _ influx tmpdir dbdir =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ setup_log $ influx $ tmpdir $ dbdir),
+  Term.(const jump $ setup_log $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats),
   Term.info "albatrossd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
