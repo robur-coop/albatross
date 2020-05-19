@@ -8,7 +8,7 @@ let jump cacert cert priv_key tmpdir =
   Mirage_crypto_rng_unix.initialize ();
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
-    (tls_config cacert cert priv_key >>= fun (config, ca) ->
+    (tls_config cacert cert priv_key >>= fun config ->
      let fd = Lwt_unix.of_unix_file_descr Unix.stdin in
      Lwt.catch
        (fun () -> Tls_lwt.Unix.server_of_fd config fd)
@@ -17,7 +17,7 @@ let jump cacert cert priv_key tmpdir =
           Lwt.fail exn) >>= fun t ->
      Lwt.catch
        (fun () ->
-          handle ca t >>= fun () ->
+          handle t >>= fun () ->
           Vmm_tls_lwt.close t)
        (fun e ->
           Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;

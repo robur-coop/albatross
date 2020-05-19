@@ -19,7 +19,7 @@ let jump _ cacert cert priv_key port tmpdir =
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
     (server_socket port >>= fun socket ->
-     tls_config cacert cert priv_key >>= fun (config, ca) ->
+     tls_config cacert cert priv_key >>= fun config ->
      let rec loop () =
        Lwt.catch (fun () ->
            Lwt_unix.accept socket >>= fun (fd, _addr) ->
@@ -31,7 +31,7 @@ let jump _ cacert cert priv_key port tmpdir =
            Lwt.async (fun () ->
                Lwt.catch
                  (fun () ->
-                    handle ca t >>= fun () ->
+                    handle t >>= fun () ->
                     Vmm_tls_lwt.close t)
                  (fun e ->
                     Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
