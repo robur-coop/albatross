@@ -146,36 +146,32 @@ let jump _ influx tmpdir dbdir retries enable_stats =
   | Ok old_unikernels ->
     Lwt_main.run
       (let rec unix_connect ~retries s =
-        (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX (socket_path s)) >>= function
-         | Some x -> Lwt.return (Some x)
+         let path = socket_path s in
+         Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX path) >>= function
+         | Some x -> Lwt.return x
          | None when (retries <> 0) ->
-                    (Logs.err (fun m -> m "unable to connect to %s, retrying in 5 seconds" (socket_path s));
-                     Lwt_unix.sleep 5.0 >>= fun () ->
-                     unix_connect ~retries:(retries - 1) s)
-         | None -> Lwt.return_none)
+           Logs.err (fun m -> m "unable to connect to %a, retrying in 5 seconds"
+                        pp_socket s);
+           Lwt_unix.sleep 5.0 >>= fun () ->
+           unix_connect ~retries:(retries - 1) s
+         | None -> Lwt.fail_with (Fmt.strf "cannot connect to %a" pp_socket s)
        in
        init_influx "albatross" influx;
-
-       (unix_connect ~retries `Log >|= function
-         | None -> invalid_arg "cannot connect to log socket"
-         | Some l -> l) >>= fun l ->
-
-       (unix_connect ~retries `Console >|= function
-         | None -> invalid_arg "cannot connect to console socket"
-         | Some c -> c) >>= fun c ->
-
+       unix_connect ~retries `Log >>= fun l ->
+       unix_connect ~retries `Console >>= fun c ->
        (if enable_stats then
-         (unix_connect ~retries `Stats >|= function
-           | None -> invalid_arg "cannot connect to stats socket"
-           | Some c -> Some c)
-       else
-         Lwt.return_none)
-       >>= fun s ->
-
-       Lwt.catch (fun () ->
-               Vmm_lwt.server_socket `Vmmd)
-        (fun _ -> invalid_arg ("unable to create server socket " ^ (socket_path `Vmmd)))
-       >>= fun ss ->
+          unix_connect ~retries `Stats >|= fun s ->
+          Some s
+        else
+          Lwt.return_none) >>= fun s ->
+       Lwt.catch
+         (fun () -> Vmm_lwt.server_socket `Vmmd)
+         (fun e ->
+            let str =
+              Fmt.strf "unable to create server socket %a: %s"
+                pp_socket `Vmmd (Printexc.to_string e)
+            in
+            invalid_arg str) >>= fun ss ->
        let self_destruct_mutex = Lwt_mutex.create () in
        let self_destruct () =
          Lwt_mutex.with_lock self_destruct_mutex (fun () ->
@@ -188,20 +184,21 @@ let jump _ influx tmpdir dbdir retries enable_stats =
                 Lwt.return_unit) >>= fun () ->
              Vmm_lwt.safe_close ss)
        in
-       Sys.(set_signal sigterm (Signal_handle (fun _ -> Lwt.async self_destruct)));
-
+       Sys.(set_signal sigterm
+              (Signal_handle (fun _ -> Lwt.async self_destruct)));
        let log_out txt wire = write_reply "log" l txt wire >|= fun _ -> ()
        and cons_out = write_reply "cons" c
        and stat_out txt wire = match s with
-         | None -> Logs.info (fun m -> m "ignoring stat %s %a" txt Vmm_commands.pp_wire wire) ; Lwt.return_unit
+         | None ->
+           Logs.info (fun m -> m "ignoring stat %s %a" txt
+                         Vmm_commands.pp_wire wire);
+           Lwt.return_unit
          | Some s -> write_reply "stat" s txt wire >|= fun _ -> ()
        in
-
        Lwt_list.iter_s (fun (name, config) ->
            Lwt_mutex.with_lock create_lock (fun () ->
                create stat_out log_out cons_out stub_data_out name config))
          (Vmm_trie.all old_unikernels) >>= fun () ->
-
        Lwt.catch (fun () ->
            let rec loop () =
              Lwt_unix.accept ss >>= fun (fd, addr) ->
@@ -214,7 +211,8 @@ let jump _ influx tmpdir dbdir retries enable_stats =
            in
            loop ())
          (fun e ->
-            Logs.err (fun m -> m "exception %s, shutting down" (Printexc.to_string e));
+            Logs.err (fun m -> m "exception %s, shutting down"
+                         (Printexc.to_string e));
             self_destruct ()))
 
 open Cmdliner
