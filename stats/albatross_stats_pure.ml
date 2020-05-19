@@ -99,6 +99,45 @@ let try_open_vmmapi pid_nic =
       IM.add pid (vmctx, vmmdev, nics) fresh)
     pid_nic IM.empty
 
+let string_of_file filename =
+  try
+    let fh = open_in filename in
+    let content = input_line fh in
+    close_in_noerr fh ;
+    Ok content
+  with _ -> Rresult.R.error_msgf "Error reading file %S" filename
+
+let linux_rusage pid =
+  (* reading /proc/<pid>/stat - since it may disappear mid-time,
+     best to have it in memory *)
+  string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") >>= fun data ->
+  let vals = Astring.String.cuts ~sep:" " data in
+  let i64 s = try Ok (Int64.of_string s) with
+      Failure _ -> Error (`Msg "couldn't parse integer")
+  in
+  if List.length vals >= 52 then
+    i64 (List.nth vals 9) >>= fun minflt ->
+    i64 (List.nth vals 11) >>= fun majflt ->
+    i64 (List.nth vals 13) >>= fun utime ->
+    i64 (List.nth vals 14) >>= fun stime ->
+    (* i64 (List.nth vals 21) >>= fun starttime -> *)
+    i64 (List.nth vals 31) >>= fun rss ->
+    i64 (List.nth vals 35) >>= fun nswap ->
+    Ok { Stats.utime = (utime, 0) ; stime = (stime, 0) ; maxrss = rss ; ixrss = 0L ;
+         idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
+         msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw = 0L ; nivcsw = 0L }
+  else
+    Error (`Msg "couldn't read /proc/<pid>/stat")
+
+let rusage pid =
+  match Lazy.force Vmm_unix.uname with
+  | Vmm_unix.FreeBSD -> wrap sysctl_kinfo_proc pid
+  | Vmm_unix.Linux -> match linux_rusage pid with
+    | Ok _x -> assert false
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error %s while reading rusage" msg);
+      None
+
 let gather pid vmctx nics =
   let ru, mem =
     match wrap sysctl_kinfo_proc pid with
