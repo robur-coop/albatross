@@ -7,7 +7,7 @@ bug-reports: "https://github.com/hannesm/albatross/issues"
 license: "ISC"
 
 depends: [
-  "ocaml" {>= "4.07.0"}
+  "ocaml" {>= "4.08.0"}
   "dune"
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "4.0.0"}
