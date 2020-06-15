@@ -5,10 +5,10 @@ open Albatross_tls_common
 
 let jump cacert cert priv_key tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
-  Mirage_crypto_rng_unix.initialize ();
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
-    (tls_config cacert cert priv_key >>= fun config ->
+    (Mirage_crypto_rng_lwt.initialize () >>= fun () ->
+     tls_config cacert cert priv_key >>= fun config ->
      let fd = Lwt_unix.of_unix_file_descr Unix.stdin in
      Lwt.catch
        (fun () -> Tls_lwt.Unix.server_of_fd config fd)
