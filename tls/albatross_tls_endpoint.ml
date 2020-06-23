@@ -17,8 +17,7 @@ let jump _ cacert cert priv_key port tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
-    (Mirage_crypto_rng_lwt.initialize () >>= fun () ->
-     server_socket port >>= fun socket ->
+    (server_socket port >>= fun socket ->
      tls_config cacert cert priv_key >>= fun config ->
      let rec loop () =
        Lwt.catch (fun () ->

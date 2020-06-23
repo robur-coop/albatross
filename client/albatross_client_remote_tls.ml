@@ -15,7 +15,6 @@ let rec read_tls_write_cons t =
     | Error e -> Lwt.return e
 
 let client cas host port cert priv_key =
-  Mirage_crypto_rng_lwt.initialize () >>= fun () ->
   let auth = if Sys.is_directory cas then `Ca_dir cas else `Ca_file cas in
   X509_lwt.authenticator auth >>= fun authenticator ->
   Lwt.catch (fun () ->
