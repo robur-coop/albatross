@@ -96,16 +96,22 @@ let close_no_err fd = try close fd with _ -> ()
 
 let dump, restore =
   let open R.Infix in
-  (fun data ->
-     let state_file = Fpath.(!dbdir / "state") in
+  let state_file ?(name = "state") () =
+    if Fpath.is_seg name then
+      Fpath.(!dbdir / name)
+    else
+      Fpath.v name
+  in
+  (fun ?name data ->
+     let state_file = state_file ?name () in
      Bos.OS.File.exists state_file >>= fun exists ->
      (if exists then begin
         let bak = Fpath.(state_file + "bak") in
         Bos.OS.U.(error_to_msg @@ rename state_file bak)
       end else Ok ()) >>= fun () ->
      Bos.OS.File.write state_file (Cstruct.to_string data)),
-  (fun () ->
-     let state_file = Fpath.(!dbdir / "state") in
+  (fun ?name () ->
+     let state_file = state_file ?name () in
      Bos.OS.File.exists state_file >>= fun exists ->
      if exists then
        Bos.OS.File.read state_file >>| fun data ->
