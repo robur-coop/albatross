@@ -356,13 +356,7 @@ let v0_unikernel_config =
     and fail_behaviour = `Quit (* TODO maybe set to restart by default :) *)
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g vm =
-    let network_interfaces = match vm.bridges with [] -> None | xs -> Some (List.map fst xs)
-    and block_device = match vm.block_devices with [] -> None | x::_ -> Some x
-    and typ = if vm.compressed then `Hvt_amd64_compressed else `Hvt_amd64
-    in
-    let image = typ, vm.image in
-    (vm.cpuid, vm.memory, block_device, network_interfaces, image, vm.argv)
+  and g _vm = failwith "cannot encode v0 unikernel configs"
   in
   Asn.S.map f g @@
   Asn.S.(sequence6
@@ -383,11 +377,7 @@ let v1_unikernel_config =
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g vm =
-    let bridges = match vm.bridges with [] -> None | xs -> Some (List.map fst xs)
-    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
-    in
-    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
+  and g _vm = failwith "cannot encode v1 unikernel configs"
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
