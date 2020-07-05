@@ -236,6 +236,13 @@ let handle_unikernel_cmd t id = function
       | _ ->
         Ok (t, `End (`Success (`Unikernels vms)))
     end
+  | `Unikernel_get ->
+    Logs.debug (fun m -> m "get %a" Name.pp id) ;
+    begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
+      | None -> Error (`Msg "get: no unikernel found")
+      | Some u ->
+        Ok (t, `End (`Success (`Unikernels [ (id, u.Unikernel.config) ])))
+    end
   | `Unikernel_create vm_config -> Ok (t, `Create (id, vm_config))
   | `Unikernel_force_create vm_config ->
     begin

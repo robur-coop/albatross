@@ -280,7 +280,7 @@ let log_event =
                                    (sequence2
                                       (required ~label:"name" utf8_string)
                                       (required ~label:"device" utf8_string))))))
-              (explicit 7 null)))
+              (explicit 7 null (* placeholder *) )))
 
 
 let log_cmd =
@@ -420,26 +420,33 @@ let unikernel_config =
 
 let unikernel_cmd =
   let f = function
-    | `C1 () -> `Unikernel_info
-    | `C2 vm -> `Unikernel_create vm
-    | `C3 vm -> `Unikernel_force_create vm
-    | `C4 () -> `Unikernel_destroy
-    | `C5 vm -> `Unikernel_create vm
-    | `C6 vm -> `Unikernel_force_create vm
+    | `C1 `C1 () -> `Unikernel_info
+    | `C1 `C2 vm -> `Unikernel_create vm
+    | `C1 `C3 vm -> `Unikernel_force_create vm
+    | `C1 `C4 () -> `Unikernel_destroy
+    | `C1 `C5 vm -> `Unikernel_create vm
+    | `C1 `C6 vm -> `Unikernel_force_create vm
+    | `C2 `C1 () -> `Unikernel_get
+    | `C2 `C2 () -> assert false (* placeholder *)
   and g = function
-    | `Unikernel_info -> `C1 ()
-    | `Unikernel_create vm -> `C5 vm
-    | `Unikernel_force_create vm -> `C6 vm
-    | `Unikernel_destroy -> `C4 ()
+    | `Unikernel_info -> `C1 (`C1 ())
+    | `Unikernel_create vm -> `C1 (`C5 vm)
+    | `Unikernel_force_create vm -> `C1 (`C6 vm)
+    | `Unikernel_destroy -> `C1 (`C4 ())
+    | `Unikernel_get -> `C2 (`C1 ())
   in
   Asn.S.map f g @@
-  Asn.S.(choice6
-           (explicit 0 null)
-           (explicit 1 v1_unikernel_config)
-           (explicit 2 v1_unikernel_config)
-           (explicit 3 null)
-           (explicit 4 unikernel_config)
-           (explicit 5 unikernel_config))
+  Asn.S.(choice2
+          (choice6
+             (explicit 0 null)
+             (explicit 1 v1_unikernel_config)
+             (explicit 2 v1_unikernel_config)
+             (explicit 3 null)
+             (explicit 4 unikernel_config)
+             (explicit 5 unikernel_config))
+          (choice2
+             (explicit 6 null)
+             (explicit 7 null (* placeholder *) )))
 
 let policy_cmd =
   let f = function

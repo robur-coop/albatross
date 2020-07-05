@@ -35,6 +35,8 @@ let add_policy _ name vms memory cpus block bridges =
 
 let info_ _ name = jump name (`Unikernel_cmd `Unikernel_info)
 
+let get _ name = jump name (`Unikernel_cmd `Unikernel_get)
+
 let destroy _ name =
   jump name (`Unikernel_cmd `Unikernel_destroy)
 
@@ -95,6 +97,15 @@ let info_cmd =
   in
   Term.(term_result (const info_ $ setup_log $ opt_vm_name)),
   Term.info "info" ~doc ~man
+
+let get_cmd =
+  let doc = "retrieve a VM" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Downloads a VM."]
+  in
+  Term.(term_result (const get $ setup_log $ vm_name)),
+  Term.info "get" ~doc ~man ~exits
 
 let policy_cmd =
   let doc = "active policies" in
@@ -199,9 +210,9 @@ let default_cmd =
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
   Term.info "albatross_provision_request" ~version ~doc ~man
 
-let cmds = [ help_cmd ; info_cmd ;
+let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
-             destroy_cmd ; create_cmd ;
+             info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              console_cmd ; stats_cmd ; log_cmd ]
 

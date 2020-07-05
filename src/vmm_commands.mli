@@ -35,6 +35,7 @@ type unikernel_cmd = [
   | `Unikernel_create of Unikernel.config
   | `Unikernel_force_create of Unikernel.config
   | `Unikernel_destroy
+  | `Unikernel_get
 ]
 
 type policy_cmd = [
