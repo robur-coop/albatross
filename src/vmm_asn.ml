@@ -1,5 +1,86 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+(* please read this before changing this module:
+
+   Data encoded by this module is persisted in (a) log entry (b) dump file
+   (c) certificates (and subCA). It is important to be aware of backward and
+   forward compatibility when modifying this module. There are various version
+   fields around which are mostly useless in retrospect. On a server deployment,
+   upgrades are supported while downgrades are not (there could be a separate
+   tool reading newer data and dumping it for older albatross versions). The
+   assumption is that a server deployment moves forward. For the clients, older
+   clients should best be support smoothly, or an error from the server should
+   be issued informing about a too old version. Clients which support newer
+   wire version should as well be notified (it may be suitable to have a
+   --use-version command-line flag - so new clients can talk to old servers).
+
+   The log (a) is append-only, whenever a new log entry is added, the choice
+   log_entry should be extended. New entries just use the new choice. The dump
+   on disk (dumped via log_to_disk, restored logs_of_disk) prepends a (rather
+   useless) version field. Restoring a new log entry with an old albatross_log
+   will result in a warning (but restores the other log entries).
+
+   It should be ensured that old unikernels dumped to disk (b) can be read by
+   new albatross daemons. The functions unikernels_to_cstruct and
+   unikernels_of_cstruct are used for dump and restore, each an explicit choice.
+   They use the trie of unikernel_config, dump always uses the latest version in
+   the explicit choice. There's no version field involved.
+
+   The data in transit (certificates and commands) is out of control of a single
+   operator. This means that best effort should be done to support old clients
+   (and old servers - eventually with a command-line argument --use-version). If
+   a server receives a command (via TLS cert_extension), this is prefixed by a
+   version. The non-TLS command is a sequence of header and payload, where the
+   header includes a version. At the moment, the commands are all explicit
+   choices, adding new ones by extending the choice works in a
+   backwards-compatible way.
+*)
+
+(* The version field could be used (at the moment, decoding a newer version
+   leads to a decoding failure):
+
+   Now, to achieve version-dependent parsing, what is missing is a way to decode
+   the first element of a sequence only (i.e. treat the second element as
+   "any"). This is something missing for PKCS12 from the asn1 library. A
+   "quick hack" is to extract length information of the first element, and use
+   that decoder on the sub-buffer. The following implements this.
+
+let seq_hd cs =
+  (* we assume a ASN.1 DER/BER encoded sequence starting in cs:
+     - 0x30
+     - length (definite length field - not 0x80)
+     - <data> (of length length)
+
+     retrieve data to decode only the first element: <data>, which is cs offset
+     (at least 2, 0x30 0xLL), and length encoded before
+  *)
+  guard (Cstruct.len cs > 2) (`Msg "too short") >>= fun () ->
+  guard (Cstruct.get_uint8 cs 0 = 0x30) (`Msg "not a sequence") >>= fun () ->
+  let l1 = Cstruct.get_uint8 cs 1 in
+  (if l1 < 0x80 then
+     Ok (2, l1)
+   else if l1 = 0x80 then
+     Error (`Msg "indefinite length")
+   else
+     let octets = l1 land 0x7F in
+     guard (Cstruct.len cs > octets + 2) (`Msg "data too short") >>= fun () ->
+     let rec go off acc =
+       if off = octets then
+         Ok (2 + octets, acc)
+       else
+         go (succ off) (Cstruct.get_uint8 cs (off + 2) + acc lsl 8)
+     in
+     go 0 0) >>= fun (off, l) ->
+  guard (Cstruct.len cs >= l + off) (`Msg "buffer too small") >>= fun () ->
+  Ok (Cstruct.sub cs off l)
+
+let decode_version cs =
+  let c = Asn.codec Asn.der version in
+  match Asn.decode c cs with
+  | Ok (a, _) -> Ok a
+  | Error (`Parse msg) -> Error (`Msg msg)
+*)
+
 open Vmm_core
 open Vmm_commands
 
@@ -367,7 +448,6 @@ let v0_unikernel_config =
            (required ~label:"image" image)
            (optional ~label:"arguments" (sequence_of utf8_string)))
 
-
 (* this is part of the state file (and unikernel_create command)
    be aware if this (or a dependent grammar) is changed! *)
 let v1_unikernel_config =
@@ -618,9 +698,9 @@ let log_entry =
 
 let log_entry_of_cstruct, log_entry_to_cstruct = projections_of log_entry
 
-(* data is persisted to disk, we need to ensure to be able to decode (and
-   encode) properly without conflicts! *)
 let log_disk =
+  (* data is persisted to disk, we need to ensure to be able to decode (and
+     encode) properly without conflicts! *)
   Asn.S.(sequence2
            (required ~label:"version" version)
            (required ~label:"entry" log_entry))
@@ -668,7 +748,7 @@ let version1_unikernels = trie v1_unikernel_config
 let version2_unikernels = trie unikernel_config
 
 let unikernels =
-   (* the choice is the implicit version + migration... be aware when
+  (* the choice is the implicit version + migration... be aware when
      any dependent data layout changes .oO(/o\) *)
   let f = function
     | `C1 data -> data
@@ -686,6 +766,8 @@ let unikernels =
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
 
 let cert_extension =
+  (* note that subCAs are deployed out there, thus modifying the encoding of
+     commands may break them. *)
   Asn.S.(sequence2
            (required ~label:"version" version)
            (required ~label:"command" wire_command))
