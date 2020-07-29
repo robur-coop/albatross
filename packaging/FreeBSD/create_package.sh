@@ -42,7 +42,8 @@ install -U $bdir/stats/albatross_stat_client.exe $sbindir/albatross_stat_client
 
 for f in albatross_client_local \
              albatross_client_remote_tls \
-             albatross_client_bistro
+             albatross_client_bistro \
+             albatross_client_inspect_dump
 do install -U $bdir/client/$f.exe $sbindir/$f; done
 
 for f in albatross_provision_ca albatross_provision_request; do
