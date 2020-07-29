@@ -46,32 +46,7 @@
    that decoder on the sub-buffer. The following implements this.
 
 let seq_hd cs =
-  (* we assume a ASN.1 DER/BER encoded sequence starting in cs:
-     - 0x30
-     - length (definite length field - not 0x80)
-     - <data> (of length length)
-
-     retrieve data to decode only the first element: <data>, which is cs offset
-     (at least 2, 0x30 0xLL), and length encoded before
-  *)
-  guard (Cstruct.len cs > 2) (`Msg "too short") >>= fun () ->
-  guard (Cstruct.get_uint8 cs 0 = 0x30) (`Msg "not a sequence") >>= fun () ->
-  let l1 = Cstruct.get_uint8 cs 1 in
-  (if l1 < 0x80 then
-     Ok (2, l1)
-   else if l1 = 0x80 then
-     Error (`Msg "indefinite length")
-   else
-     let octets = l1 land 0x7F in
-     guard (Cstruct.len cs > octets + 2) (`Msg "data too short") >>= fun () ->
-     let rec go off acc =
-       if off = octets then
-         Ok (2 + octets, acc)
-       else
-         go (succ off) (Cstruct.get_uint8 cs (off + 2) + acc lsl 8)
-     in
-     go 0 0) >>= fun (off, l) ->
-  guard (Cstruct.len cs >= l + off) (`Msg "buffer too small") >>= fun () ->
+  decode_seq_len cs >>= fun (l, off) ->
   Ok (Cstruct.sub cs off l)
 
 let decode_version cs =
@@ -92,6 +67,32 @@ let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
 open Rresult.R.Infix
 
 let guard p err = if p then Ok () else Error err
+
+let decode_seq_len cs =
+  (* we assume a ASN.1 DER/BER encoded sequence starting in cs:
+     - 0x30
+     - length (definite length field - not 0x80)
+     - <data> (of length length)
+  *)
+  guard (Cstruct.len cs > 2) (`Msg "buffer too short") >>= fun () ->
+  guard (Cstruct.get_uint8 cs 0 = 0x30) (`Msg "not a sequence") >>= fun () ->
+  let l1 = Cstruct.get_uint8 cs 1 in
+  (if l1 < 0x80 then
+     Ok (2, l1)
+   else if l1 = 0x80 then
+     Error (`Msg "indefinite length")
+   else
+     let octets = l1 land 0x7F in
+     guard (Cstruct.len cs > octets + 2) (`Msg "data too short") >>= fun () ->
+     let rec go off acc =
+       if off = octets then
+         Ok (2 + octets, acc)
+       else
+         go (succ off) (Cstruct.get_uint8 cs (off + 2) + acc lsl 8)
+     in
+     go 0 0) >>= fun (off, l) ->
+  guard (Cstruct.len cs >= l + off) (`Msg "buffer too small") >>= fun () ->
+  Ok (l, off)
 
 let decode_strict codec cs =
   match Asn.decode codec cs with
@@ -711,6 +712,10 @@ let log_disk_of_cstruct, log_disk_to_cstruct =
 
 let log_to_disk entry = log_disk_to_cstruct (current, entry)
 
+let skip_seq cs =
+  decode_seq_len cs >>= fun (l, off) ->
+  Ok (Cstruct.shift cs (l + off))
+
 let logs_of_disk buf =
   let rec next acc buf =
     match log_disk_of_cstruct buf with
@@ -719,7 +724,9 @@ let logs_of_disk buf =
       next (entry :: acc) cs
     | Error (`Parse msg) ->
       Logs.warn (fun m -> m "parse error %s while parsing log" msg) ;
-      acc (* ignore *)
+      match skip_seq buf with
+      | Ok cs' -> next acc cs'
+      | Error _ -> acc (* ignore *)
   in
   next [] buf
 
