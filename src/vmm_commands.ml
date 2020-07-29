@@ -61,6 +61,7 @@ type unikernel_cmd = [
   | `Unikernel_create of Unikernel.config
   | `Unikernel_force_create of Unikernel.config
   | `Unikernel_destroy
+  | `Unikernel_get
 ]
 
 let pp_unikernel_cmd ppf = function
@@ -68,6 +69,7 @@ let pp_unikernel_cmd ppf = function
   | `Unikernel_create config -> Fmt.pf ppf "unikernel create %a" Unikernel.pp_config config
   | `Unikernel_force_create config -> Fmt.pf ppf "vm force create %a" Unikernel.pp_config config
   | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
+  | `Unikernel_get -> Fmt.string ppf "unikernel get"
 
 type policy_cmd = [
   | `Policy_info

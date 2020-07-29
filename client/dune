@@ -17,4 +17,11 @@
   (public_name albatross-client-remote-tls)
   (package albatross)
   (modules albatross_client_remote_tls)
-  (libraries albatross.cli albatross albatross.tls albatross_tls_cli mirage-crypto-rng.lwt))
+  (libraries albatross.cli albatross albatross.tls albatross_tls_cli))
+
+(executable
+  (name albatross_client_inspect_dump)
+  (public_name albatross-client-inspect-dump)
+  (package albatross)
+  (modules albatross_client_inspect_dump)
+  (libraries albatross.cli albatross))

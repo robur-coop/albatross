@@ -115,6 +115,9 @@ let add_policy _ endp cert key ca name vms memory cpus block bridges =
 let info_ _ endp cert key ca name =
   jump endp cert key ca name (`Unikernel_cmd `Unikernel_info)
 
+let get _ endp cert key ca name =
+  jump endp cert key ca name (`Unikernel_cmd `Unikernel_get)
+
 let destroy _ endp cert key ca name =
   jump endp cert key ca name (`Unikernel_cmd `Unikernel_destroy)
 
@@ -196,6 +199,15 @@ let info_cmd =
   in
   Term.(const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name),
   Term.info "info" ~doc ~man ~exits
+
+let get_cmd =
+  let doc = "retrieve a VM" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Downloads a VM."]
+  in
+  Term.(const get $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name),
+  Term.info "get" ~doc ~man ~exits
 
 let policy_cmd =
   let doc = "active policies" in
@@ -300,9 +312,9 @@ let default_cmd =
   Term.(ret (const help $ setup_log $ destination $ Term.man_format $ Term.choice_names $ Term.pure None)),
   Term.info "albatross_client_bistro" ~version ~doc ~man ~exits
 
-let cmds = [ help_cmd ; info_cmd ;
+let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
-             destroy_cmd ; create_cmd ;
+             info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              console_cmd ; stats_cmd ; log_cmd ]
 

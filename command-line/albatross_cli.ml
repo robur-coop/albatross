@@ -60,8 +60,29 @@ type exit_status =
 
 let output_result ((_, reply) as wire) =
   match reply with
-  | `Success _ ->
+  | `Success s ->
     Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    begin match s with
+      | `Unikernels vms ->
+        List.iter (fun (name, cfg) ->
+            if Cstruct.len cfg.Unikernel.image > 0 then
+              let filename =
+                let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
+                Fpath.(v (Filename.get_temp_dir_name ()) / Name.to_string name + ts)
+              in
+              let write data =
+                match Bos.OS.File.write filename data with
+                | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
+                | Error (`Msg msg) -> Logs.err (fun m -> m "failed to write image: %s" msg)
+              in
+              if cfg.Unikernel.compressed then
+                match Vmm_compress.uncompress (Cstruct.to_string cfg.Unikernel.image) with
+                | Ok blob -> write blob
+                | Error () -> Logs.err (fun m -> m "failed to uncompress unikernel image")
+              else
+                write (Cstruct.to_string cfg.Unikernel.image)) vms
+      | _ -> ()
+    end;
     Ok ()
   | `Data _ ->
     Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
