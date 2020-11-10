@@ -1,5 +1,8 @@
 #!/bin/sh
+ALBATROSS_USER=albatross
+
 sudo mkdir -m 0700 -p /var/lib/albatross/block
+sudo install -o "$ALBATROSS_USER" -- /dev/null /var/lib/albatross/albatross.log
 
 sudo cp ../../_build/install/default/bin/* /usr/local/sbin/
 sudo cp ./albatross_*.service  /etc/systemd/system/
