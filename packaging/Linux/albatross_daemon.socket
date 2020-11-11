@@ -1,0 +1,11 @@
+[Unit]
+Description=Albatross daemon socket
+PartOf=albatross_daemon.service
+
+[Socket]
+ListenStream=%t/albatross/util/vmmd.sock
+#SocketMode= # FIXME: permissions
+Accept=no
+
+[Install]
+WantedBy=sockets.target

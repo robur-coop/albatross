@@ -1,6 +1,6 @@
 [Unit]
 Description=Albatross VMM daemon (albatrossd)
-Requires=albatross_console.service albatross_log.service
+Requires=albatross_console.socket albatross_log.socket
 After=syslog.target albatross_console.service albatross_log.service
 
 [Service]
@@ -8,7 +8,7 @@ Type=simple
 # TODO not necessarily needs to be run as root, anything that can solo5-spt/hvt,
 #  create tap interfaces should be fine!
 User=root
-ExecStart=/usr/local/sbin/albatrossd --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/local/sbin/albatrossd --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 #RuntimeDirectoryPreserve=yes
 #RuntimeDirectory=albatross
 PIDFile=%t/albatross/daemon.pid
@@ -27,4 +27,5 @@ IgnoreSIGPIPE=true
 #RuntimeDirectoryMode=0700
 
 [Install]
+Also=albatross_daemon.socket
 WantedBy=multi-user.target

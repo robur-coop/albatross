@@ -1,0 +1,12 @@
+[Unit]
+Description=Albatross stats socket
+PartOf=albatross_stat.service
+
+[Socket]
+ListenStream=%t/albatross/util/stat.sock
+SocketUser=albatross
+#SocketMode= # FIXME: permissions
+Accept=no
+
+[Install]
+WantedBy=sockets.target

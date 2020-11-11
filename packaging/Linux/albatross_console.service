@@ -8,7 +8,7 @@ After=syslog.target
 [Service]
 Type=simple
 User=albatross
-ExecStart=/usr/local/sbin/albatross-console --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/local/sbin/albatross-console --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross
 ExecStartPre=/bin/mkdir -p %t/albatross/fifo
@@ -18,4 +18,5 @@ PIDFile=%t/albatross/console.pid
 RestrictAddressFamilies=AF_UNIX
 
 [Install]
+Also=albatross_console.socket
 WantedBy=multi-user.target
