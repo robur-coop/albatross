@@ -1,0 +1,12 @@
+[Unit]
+Description=Albatross log socket
+PartOf=albatross_log.service
+
+[Socket]
+ListenStream=%t/albatross/util/log.sock
+SocketUser=albatross
+#SocketMode= # FIXME: permissions
+Accept=no
+
+[Install]
+WantedBy=sockets.target

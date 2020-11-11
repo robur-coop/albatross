@@ -24,4 +24,4 @@
   (public_name albatross-log)
   (package albatross)
   (modules albatross_log)
-  (libraries albatross.cli albatross))
+  (libraries albatross.cli albatross systemd))

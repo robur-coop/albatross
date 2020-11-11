@@ -17,4 +17,5 @@ PIDFile=%t/albatross/log.pid
 RestrictAddressFamilies=AF_UNIX
 
 [Install]
+Also=albatross_log.socket
 WantedBy=multi-user.target
