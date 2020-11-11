@@ -5,11 +5,11 @@
 Description=Albatross log daemon (albatross_log)
 After=syslog.target albatross_console.service
 Requires=albatross_console.socket
+AssertPathExists=/var/lib/albatross/albatross.log
 
 [Service]
 Type=simple
 User=albatross
-AssertPathExists=/var/lib/albatross/albatross.log
 ExecStart=/usr/local/sbin/albatross-log --systemd-socket-activation --logfile="/var/lib/albatross/albatross.log" --tmpdir="%t/albatross/" -vv
 RuntimeDirectory=albatross albatross/util
 #RuntimeDirectoryPreserve=yes # avoid albatross.log being cleaned up
