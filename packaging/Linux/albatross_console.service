@@ -3,6 +3,7 @@
 # to create an override configuration:
 # systemctl edit albatross_console.service
 Description=Albatross console daemon (albatross_console)
+Requires=albatross_console.socket
 After=syslog.target
 
 [Service]
