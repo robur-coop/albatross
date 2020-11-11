@@ -3,4 +3,5 @@
   (public_name albatross)
   (wrapped false)
   (libraries rresult logs ipaddr bos hex ptime astring duration cstruct jsonm
-             decompress lwt lwt.unix ptime.clock.os asn1-combinators metrics))
+             decompress lwt lwt.unix ptime.clock.os asn1-combinators metrics
+	     systemd))

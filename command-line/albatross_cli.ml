@@ -345,6 +345,10 @@ let retry_connections =
   let doc = "Number of retries when connecting to other daemons (log, console, stats etc). 0 aborts after one failure, -1 is unlimited retries." in
   Arg.(value & opt int 0 & info [ "retry-connections" ] ~doc)
 
+let systemd_socket_activation =
+  let doc = "Pass this flag when systemd socket activation is being used" in
+  Arg.(value & flag & info [ "systemd-socket-activation" ] ~doc)
+
 let exit_status = function
   | Ok () -> Ok Success
   | Error e -> Ok e

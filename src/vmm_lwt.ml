@@ -12,20 +12,25 @@ let safe_close fd =
     (fun () -> Lwt_unix.close fd)
     (fun _ -> Lwt.return_unit)
 
-let server_socket sock =
-  let name = Vmm_core.socket_path sock in
-  (Lwt_unix.file_exists name >>= function
-    | true -> Lwt_unix.unlink name
-    | false -> Lwt.return_unit) >>= fun () ->
-  let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-  Lwt_unix.set_close_on_exec s ;
-  let old_umask = Unix.umask 0 in
-  let _ = Unix.umask (old_umask land 0o707) in
-  Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
-  Logs.app (fun m -> m "listening on %s" name);
-  let _ = Unix.umask old_umask in
-  Lwt_unix.listen s 1 ;
-  s
+let server_socket systemd sock =
+  if systemd
+  then match Daemon.listen_fds () with
+    | [fd] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)
+    | _ -> failwith "Systemd socket activation error" (* FIXME *)
+  else
+    let name = Vmm_core.socket_path sock in
+    (Lwt_unix.file_exists name >>= function
+      | true -> Lwt_unix.unlink name
+      | false -> Lwt.return_unit) >>= fun () ->
+    let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+    Lwt_unix.set_close_on_exec s ;
+    let old_umask = Unix.umask 0 in
+    let _ = Unix.umask (old_umask land 0o707) in
+    Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
+    Logs.app (fun m -> m "listening on %s" name);
+    let _ = Unix.umask old_umask in
+    Lwt_unix.listen s 1 ;
+    s
 
 let connect addrtype sockaddr =
   let c = Lwt_unix.(socket addrtype SOCK_STREAM 0) in

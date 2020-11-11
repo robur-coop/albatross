@@ -135,7 +135,7 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ influx tmpdir dbdir retries enable_stats =
+let jump _ systemd influx tmpdir dbdir retries enable_stats =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
@@ -165,7 +165,7 @@ let jump _ influx tmpdir dbdir retries enable_stats =
         else
           Lwt.return_none) >>= fun s ->
        Lwt.catch
-         (fun () -> Vmm_lwt.server_socket `Vmmd)
+         (fun () -> Vmm_lwt.server_socket systemd `Vmmd)
          (fun e ->
             let str =
               Fmt.strf "unable to create server socket %a: %s"
@@ -218,7 +218,7 @@ let jump _ influx tmpdir dbdir retries enable_stats =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ setup_log $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats),
+  Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats),
   Term.info "albatrossd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
