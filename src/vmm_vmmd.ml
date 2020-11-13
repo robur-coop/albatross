@@ -215,7 +215,7 @@ let handle_policy_cmd t id = function
     match policies with
     | [] ->
       Logs.debug (fun m -> m "policies: couldn't find %a" Name.pp id) ;
-      Ok (t, `End (`Success (`String "no policies found")))
+      Ok (t, `End (`Success (`Policies policies)))
     | _ ->
       Ok (t, `End (`Success (`Policies policies)))
 
@@ -232,7 +232,7 @@ let handle_unikernel_cmd t id = function
     begin match vms with
       | [] ->
         Logs.debug (fun m -> m "info: couldn't find %a" Name.pp id) ;
-        Ok (t, `End (`Success (`String "no unikernels found")))
+        Ok (t, `End (`Success (`Unikernels vms)))
       | _ ->
         Ok (t, `End (`Success (`Unikernels vms)))
     end
@@ -307,7 +307,7 @@ let handle_block_cmd t id = function
     match blocks with
     | [] ->
       Logs.debug (fun m -> m "block: couldn't find %a" Name.pp id) ;
-      Ok (t, `End (`Success (`String "no block devices found")))
+      Ok (t, `End (`Success (`Block_devices blocks)))
     | _ ->
       Ok (t, `End (`Success (`Block_devices blocks)))
 
