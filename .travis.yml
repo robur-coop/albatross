@@ -7,7 +7,7 @@ services:
 env:
   global:
     - PACKAGE="albatross"
-    - DISTRO=ubuntu
+    - DISTRO=ubuntu-lts
     - TESTS=false
   matrix:
     - OCAML_VERSION=4.08
