@@ -212,12 +212,7 @@ let handle_policy_cmd t id = function
         (fun prefix policy policies-> (prefix, policy) :: policies)
         []
     in
-    match policies with
-    | [] ->
-      Logs.debug (fun m -> m "policies: couldn't find %a" Name.pp id) ;
-      Ok (t, `End (`Success (`Policies policies)))
-    | _ ->
-      Ok (t, `End (`Success (`Policies policies)))
+    Ok (t, `End (`Success (`Policies policies)))
 
 let handle_unikernel_cmd t id = function
   | `Unikernel_info ->
@@ -229,13 +224,7 @@ let handle_unikernel_cmd t id = function
            (id, cfg) :: vms)
         []
     in
-    begin match vms with
-      | [] ->
-        Logs.debug (fun m -> m "info: couldn't find %a" Name.pp id) ;
-        Ok (t, `End (`Success (`Unikernels vms)))
-      | _ ->
-        Ok (t, `End (`Success (`Unikernels vms)))
-    end
+    Ok (t, `End (`Success (`Unikernels vms)))
   | `Unikernel_get ->
     Logs.debug (fun m -> m "get %a" Name.pp id) ;
     begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
@@ -304,12 +293,7 @@ let handle_block_cmd t id = function
         (fun prefix (size, active) blocks -> (prefix, size, active) :: blocks)
         []
     in
-    match blocks with
-    | [] ->
-      Logs.debug (fun m -> m "block: couldn't find %a" Name.pp id) ;
-      Ok (t, `End (`Success (`Block_devices blocks)))
-    | _ ->
-      Ok (t, `End (`Success (`Block_devices blocks)))
+    Ok (t, `End (`Success (`Block_devices blocks)))
 
 let handle_command t (header, payload) =
   let msg_to_err = function
