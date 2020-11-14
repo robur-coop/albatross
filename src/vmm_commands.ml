@@ -141,12 +141,17 @@ type success = [
 let pp_block ppf (id, size, active) =
   Fmt.pf ppf "block %a size %d MB active %B" Name.pp id size active
 
+let my_fmt_list empty pp_elt ppf xs =
+  match xs with
+  | [] -> Fmt.string ppf empty
+  | _ -> Fmt.(list ~sep:(unit "@.") pp_elt ppf xs)
+
 let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
-  | `Policies ps -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Policy.pp)) ppf ps
-  | `Unikernels vms -> Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") Name.pp Unikernel.pp_config)) ppf vms
-  | `Block_devices blocks -> Fmt.(list ~sep:(unit "@.") pp_block) ppf blocks
+  | `Policies ps -> my_fmt_list "no policies" Fmt.(pair ~sep:(unit ": ") Name.pp Policy.pp) ppf ps
+  | `Unikernels vms -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_config) ppf vms
+  | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
 
 type res = [
   | `Command of t
