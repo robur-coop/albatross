@@ -39,7 +39,10 @@ let sd_listen_fds () =
     | Some listen_pid, Some listen_fds ->
       if listen_pid = Unix.getpid ()
       then Some (List.init listen_fds
-                   (fun i -> fd_of_int (sd_listen_fds_start + i)))
+                   (fun i ->
+                      let fd = fd_of_int (sd_listen_fds_start + i) in
+                      let () = Unix.set_close_on_exec fd in
+                      fd))
       else None
 
 
