@@ -14,8 +14,8 @@ let safe_close fd =
 
 let server_socket systemd sock =
   if systemd
-  then match Daemon.listen_fds () with
-    | [fd] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)
+  then match Vmm_unix.sd_listen_fds () with
+    | Some [fd] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)
     | _ -> failwith "Systemd socket activation error" (* FIXME *)
   else
     let name = Vmm_core.socket_path sock in
