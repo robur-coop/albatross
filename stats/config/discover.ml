@@ -4,18 +4,30 @@ let write_sexp (conf : C.Pkg_config.package_conf) =
   C.Flags.write_sexp "c_flags.sexp" conf.cflags;
   C.Flags.write_sexp "c_library_flags.sexp" conf.libs
 
+let pkg_config_combine ~default deps =
+  let deps =
+    List.map (Result.fold ~ok:(fun x -> x) ~error:(fun e -> C.die "pkg-config: %s" e))
+      deps in
+  List.fold_left (fun conf dep ->
+      C.Pkg_config.{ libs = conf.libs @ dep.libs;
+                     cflags = conf.cflags @ dep.cflags })
+    default deps
+
 let freebsd _c =
   let conf = { C.Pkg_config.libs = ["-lvmmapi"]; cflags = [] } in
   write_sexp conf
 
 let linux c =
+  (* FIXME: cflags -I *)
+  let default = { C.Pkg_config.libs = ["-lnl-3"; "-lnl-route-3"]; cflags = [] } in
   let conf =
     match C.Pkg_config.get c with
-    | None -> { C.Pkg_config.libs = ["-lnl-3"]; cflags = [] }
+    | None -> default
     | Some pc ->
-      match C.Pkg_config.query_expr_err pc ~package:"libnl-3.0" ~expr:"libnl-3.0" with
-      | Error err -> failwith err
-      | Ok deps -> deps
+      pkg_config_combine ~default [
+        C.Pkg_config.query_expr_err pc ~package:"libnl-3.0" ~expr:"libnl-3.0";
+        C.Pkg_config.query_expr_err pc ~package:"libnl-route-3.0" ~expr:"libnl-route-3.0";
+      ]
   in
   write_sexp conf
 
