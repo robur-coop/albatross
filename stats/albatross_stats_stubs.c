@@ -211,7 +211,97 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
   CAMLreturn(res);
 }
-#else /* FreeBSD */
+#elif __linux__ /* FreeBSD */
+#include <netlink/netlink.h>
+#include <netlink/socket.h>
+#include <netlink/route/link.h>
+
+#define get_stat(link, stat) rtnl_link_get_stat(link, RTNL_LINK_##stat)
+
+CAMLprim value vmmanage_sysctl_ifcount(value unit) {
+  CAMLparam1(unit);
+  int err;
+  struct nl_sock *nl_sock;
+  struct nl_cache *link_cache;
+
+  nl_sock = nl_socket_alloc();
+  if (nl_sock == 0)
+    uerror("nl_socket_alloc", Nothing);
+  err = nl_connect(nl_sock, NETLINK_ROUTE);
+  if (err < 0)
+    uerror("nl_connect", Nothing);
+  err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
+  CAMLreturn(Val_long(nl_cache_nitems(link_cache)));
+}
+
+CAMLprim value vmmanage_sysctl_ifdata(value num) {
+  CAMLparam1(num);
+  CAMLlocal1(res);
+  int err;
+  struct nl_sock *nl_sock;
+  struct nl_cache *link_cache;
+  struct rtnl_link *link;
+
+  nl_sock = nl_socket_alloc();
+  if (nl_sock == 0)
+    uerror("nl_socket_alloc", Nothing);
+  err = nl_connect(nl_sock, NETLINK_ROUTE);
+  if (err < 0)
+    uerror("nl_connect", Nothing);
+  err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
+  if (err < 0)
+    uerror("rtnl_link_alloc_cache", Nothing);
+  link = rtnl_link_get(link_cache, Int_val(num));
+  if (link == NULL)
+    uerror("rtnl_link_get_by_name", Nothing);
+  res = caml_alloc(18, 0);
+  Store_field(res, 0, caml_copy_string(rtnl_link_get_name(link)));
+  Store_field(res, 1, Val32(rtnl_link_get_flags(link)));
+  Store_field(res, 2, Val32(0)); /* send_length */
+  Store_field(res, 3, Val32(0)); /* max_send_length */
+  Store_field(res, 4, Val32(0)); /* send_drops */
+  Store_field(res, 5, Val32(rtnl_link_get_mtu(link)));
+  Store_field(res, 6, Val64(0)); /* baudrate */
+  Store_field(res, 7, Val64(get_stat(link, RX_PACKETS)));
+  Store_field(res, 8, Val64(get_stat(link, RX_ERRORS)));
+  Store_field(res, 9, Val64(get_stat(link, TX_PACKETS)));
+  Store_field(res, 10, Val64(get_stat(link, TX_ERRORS)));
+  Store_field(res, 11, Val64(get_stat(link, COLLISIONS)));
+  Store_field(res, 12, Val64(get_stat(link, RX_BYTES)));
+  Store_field(res, 13, Val64(get_stat(link, TX_BYTES)));
+  Store_field(res, 14, Val64(get_stat(link, MULTICAST)));
+  Store_field(res, 15, Val64(0));
+  Store_field(res, 16, Val64(get_stat(link, RX_DROPPED)));
+  Store_field(res, 17, Val64(get_stat(link, TX_DROPPED)));
+  CAMLreturn(res);
+}
+
+CAMLprim value vmmanage_sysctl_kinfo_proc (value pid_r) {
+  CAMLparam1(pid_r);
+  uerror("sysctl_kinfo_proc", Nothing);
+}
+
+CAMLprim value vmmanage_vmmapi_open (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_open", Nothing);
+}
+
+CAMLprim value vmmanage_vmmapi_close (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_close", Nothing);
+}
+
+CAMLprim value vmmanage_vmmapi_stats (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_stats", Nothing);
+}
+
+CAMLprim value vmmanage_vmmapi_statnames (value name) {
+  CAMLparam1(name);
+  uerror("vmmapi_statnames", Nothing);
+}
+
+#else /* Linux */
 
 /* stub symbols for OS currently not supported */
 
