@@ -9,7 +9,7 @@ license: "ISC"
 depends: [
   "ocaml" {>= "4.08.0"}
   "dune"
-  "dune-configurator" { os = "linux" }
+  "dune-configurator"
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "4.0.0"}
   "hex"
