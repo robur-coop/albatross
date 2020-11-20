@@ -39,8 +39,7 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depexts: [
-  ["libnl-3-dev" "libnl-route-3-dev"] {os-family = "debian" & os-distribution != "ubuntu"}
-  ["libnl-3-200" "libnl-route-3-200"] {os-distribution = "ubuntu"}
+  ["libnl-3-dev" "libnl-route-3-dev"] {os-family = "debian"}
   ["libnl3" "libnl3-devel"] {os-family = "centos"}
 ]
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"
