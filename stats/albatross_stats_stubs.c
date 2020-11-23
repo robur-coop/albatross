@@ -231,6 +231,9 @@ CAMLprim value vmmanage_sysctl_ifcount(value unit) {
   if (err < 0)
     uerror("nl_connect", Nothing);
   err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
+  if (err < 0)
+    uerror("rtnl_link_alloc_cache", Nothing);
+
   CAMLreturn(Val_long(nl_cache_nitems(link_cache)));
 }
 
@@ -253,7 +256,7 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
     uerror("rtnl_link_alloc_cache", Nothing);
   link = rtnl_link_get(link_cache, Int_val(num));
   if (link == NULL)
-    uerror("rtnl_link_get_by_name", Nothing);
+    uerror("rtnl_link_get", Nothing);
   res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(rtnl_link_get_name(link)));
   Store_field(res, 1, Val32(rtnl_link_get_flags(link)));
