@@ -180,9 +180,9 @@ let rusage pid =
   match Lazy.force Vmm_unix.uname with
   | Vmm_unix.FreeBSD -> wrap sysctl_kinfo_proc pid
   | Vmm_unix.Linux -> match linux_rusage pid with
-    | Ok _x -> assert false
+    | Ok x -> Some x
     | Error (`Msg msg) ->
-      Logs.err (fun m -> m "error %s while reading rusage" msg);
+      Logs.err (fun m -> m "error %s while reading /proc/" msg);
       None
 
 let gather pid vmctx nics =
