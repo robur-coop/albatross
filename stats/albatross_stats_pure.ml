@@ -117,6 +117,22 @@ let parse_proc_stat s =
   in
   Option.to_result ~none:(`Msg "unable to parse /proc/<pid>/stat") stats_opt
 
+let read_proc_status pid =
+  try
+    let fh = open_in ("/proc/" ^ string_of_int pid ^ "/status") in
+    let lines =
+      let rec read_lines acc = try
+          read_lines (input_line fh :: acc)
+        with End_of_file -> acc in
+      read_lines []
+    in
+    List.map (Astring.String.cut ~sep:":\t") lines |>
+    List.fold_left (fun acc x -> match acc, x with
+        | Some acc, Some x -> Some (x :: acc)
+        | _ -> None) (Some []) |>
+    Option.to_result ~none:(`Msg "failed to parse /proc/<pid>/status")
+  with _ -> Rresult.R.error_msgf "error reading file /proc/%d/status" pid
+
 let linux_rusage pid =
   (match Unix.stat ("/proc/" ^ string_of_int pid) with
    | { Unix.st_ctime = start; _ } ->
@@ -129,6 +145,12 @@ let linux_rusage pid =
   parse_proc_stat data >>= fun stat_vals ->
   string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") >>= fun data ->
   let statm_vals = Astring.String.cuts ~sep:" " data in
+  read_proc_status pid >>= fun status ->
+  let assoc_i64 key : (int64, _) result =
+    let e x = Option.to_result ~none:(`Msg "error parsing /proc/<pid>/status") x in
+    e (List.assoc_opt key status) >>= fun v ->
+    e (Int64.of_string_opt v)
+  in
   let i64 s = try Ok (Int64.of_string s) with
       Failure _ -> Error (`Msg "couldn't parse integer")
   in
@@ -143,9 +165,11 @@ let linux_rusage pid =
     i64 (List.nth statm_vals 3) >>= fun tsize ->
     i64 (List.nth statm_vals 5) >>= fun dsize -> (* data + stack *)
     i64 (List.nth statm_vals 5) >>= fun ssize -> (* data + stack *)
+    assoc_i64 "voluntary_ctxt_switches" >>= fun nvcsw ->
+    assoc_i64 "nonvoluntary_ctxt_switches" >>= fun nivcsw ->
     let rusage = { Stats.utime = (utime, 0) ; stime = (stime, 0) ; maxrss = rss ; ixrss = 0L ;
          idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
-         msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw = 0L ; nivcsw = 0L }
+         msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw ; nivcsw }
     and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime = 0L; cow = 0; start }
     in
     Ok (rusage, kmem)
