@@ -5,7 +5,7 @@ PartOf=albatross_log.service
 [Socket]
 ListenStream=%t/albatross/util/log.sock
 SocketUser=albatross
-#SocketMode= # FIXME: permissions
+SocketMode=0600
 Accept=no
 
 [Install]

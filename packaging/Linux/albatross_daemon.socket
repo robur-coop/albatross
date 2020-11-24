@@ -4,7 +4,7 @@ PartOf=albatross_daemon.service
 
 [Socket]
 ListenStream=%t/albatross/util/vmmd.sock
-#SocketMode= # FIXME: permissions
+SocketMode=0600
 Accept=no
 
 [Install]
