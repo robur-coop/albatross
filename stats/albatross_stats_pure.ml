@@ -107,25 +107,48 @@ let string_of_file filename =
     Ok content
   with _ -> Rresult.R.error_msgf "Error reading file %S" filename
 
+let parse_proc_stat s =
+  let stats_opt =
+    let ( let* ) = Option.bind in
+    let* (pid, rest) = Astring.String.cut ~sep:" (" s in
+    let* (tcomm, rest) = Astring.String.cut ~rev:true ~sep:") " rest in
+    let rest = Astring.String.cuts ~sep:" " rest in
+    Some (pid :: tcomm :: rest)
+  in
+  Option.to_result ~none:(`Msg "unable to parse /proc/<pid>/stat") stats_opt
+
 let linux_rusage pid =
+  (match Unix.stat ("/proc/" ^ string_of_int pid) with
+   | { Unix.st_ctime = start; _ } ->
+     let frac = Float.rem start 1. in
+     Ok (Int64.of_float start, int_of_float (frac *. 1_000_000.))
+   | exception Unix.Unix_error (Unix.ENOENT,_,_) -> Error (`Msg "failed to stat process") ) >>= fun start ->
   (* reading /proc/<pid>/stat - since it may disappear mid-time,
      best to have it in memory *)
   string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") >>= fun data ->
-  let vals = Astring.String.cuts ~sep:" " data in
+  parse_proc_stat data >>= fun stat_vals ->
+  string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") >>= fun data ->
+  let statm_vals = Astring.String.cuts ~sep:" " data in
   let i64 s = try Ok (Int64.of_string s) with
       Failure _ -> Error (`Msg "couldn't parse integer")
   in
-  if List.length vals >= 52 then
-    i64 (List.nth vals 9) >>= fun minflt ->
-    i64 (List.nth vals 11) >>= fun majflt ->
-    i64 (List.nth vals 13) >>= fun utime ->
-    i64 (List.nth vals 14) >>= fun stime ->
-    (* i64 (List.nth vals 21) >>= fun starttime -> *)
-    i64 (List.nth vals 31) >>= fun rss ->
-    i64 (List.nth vals 35) >>= fun nswap ->
-    Ok { Stats.utime = (utime, 0) ; stime = (stime, 0) ; maxrss = rss ; ixrss = 0L ;
+  if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
+    i64 (List.nth stat_vals 9) >>= fun minflt ->
+    i64 (List.nth stat_vals 11) >>= fun majflt ->
+    i64 (List.nth stat_vals 13) >>= fun utime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    i64 (List.nth stat_vals 14) >>= fun stime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    i64 (List.nth stat_vals 22) >>= fun vsize -> (* in bytes *)
+    i64 (List.nth stat_vals 23) >>= fun rss -> (* in pages *)
+    i64 (List.nth stat_vals 35) >>= fun nswap -> (* not maintained, 0 *)
+    i64 (List.nth statm_vals 3) >>= fun tsize ->
+    i64 (List.nth statm_vals 5) >>= fun dsize -> (* data + stack *)
+    i64 (List.nth statm_vals 5) >>= fun ssize -> (* data + stack *)
+    let rusage = { Stats.utime = (utime, 0) ; stime = (stime, 0) ; maxrss = rss ; ixrss = 0L ;
          idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
          msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw = 0L ; nivcsw = 0L }
+    and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime = 0L; cow = 0; start }
+    in
+    Ok (rusage, kmem)
   else
     Error (`Msg "couldn't read /proc/<pid>/stat")
 
@@ -140,7 +163,7 @@ let rusage pid =
 
 let gather pid vmctx nics =
   let ru, mem =
-    match wrap sysctl_kinfo_proc pid with
+    match rusage pid with
     | None -> None, None
     | Some (mem, ru) -> Some mem, Some ru
   in
