@@ -9,6 +9,7 @@ license: "ISC"
 depends: [
   "ocaml" {>= "4.08.0"}
   "dune"
+  "dune-configurator"
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "4.0.0"}
   "hex"
@@ -36,5 +37,9 @@ depends: [
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
+]
+depexts: [
+  ["libnl-3-dev" "libnl-route-3-dev"] {os-family = "debian"}
+  ["libnl3" "libnl3-devel"] {os-family = "centos"}
 ]
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"
