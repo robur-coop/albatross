@@ -17,6 +17,17 @@
 #define Val32 caml_copy_int32
 #define Val64 caml_copy_int64
 
+/* We only use sysconf(_SC_CLK_TCK) in Linux only, but it's well-defined in FreeBSD as well. */
+#include <unistd.h>
+CAMLprim value vmmanage_sysconf_clock_tick(value unit) {
+  CAMLparam1(unit);
+  long r;
+  r = sysconf(_SC_CLK_TCK);
+  if (r == 1)
+    uerror("sysconf", Nothing);
+  CAMLreturn(Val_long(r));
+}
+
 #ifdef __FreeBSD__
 #include <net/if_mib.h>
 #include <vmmapi.h>

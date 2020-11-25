@@ -5,6 +5,8 @@ open Rresult.R.Infix
 
 open Vmm_core
 
+external sysconf_clock_tick : unit -> int = "vmmanage_sysconf_clock_tick"
+
 external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
   "vmmanage_sysctl_kinfo_proc"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
@@ -154,11 +156,17 @@ let linux_rusage pid =
   let i64 s = try Ok (Int64.of_string s) with
       Failure _ -> Error (`Msg "couldn't parse integer")
   in
+  let time_of_int64 t =
+    let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
+    (Int64.div t clock_tick, Int64.to_int (Int64.rem t clock_tick) * 1_000_000)
+  in
   if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
     i64 (List.nth stat_vals 9) >>= fun minflt ->
     i64 (List.nth stat_vals 11) >>= fun majflt ->
     i64 (List.nth stat_vals 13) >>= fun utime -> (* divide by sysconf(_SC_CLK_TCK) *)
     i64 (List.nth stat_vals 14) >>= fun stime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    let utime = time_of_int64 utime
+    and stime = time_of_int64 stime in
     i64 (List.nth stat_vals 22) >>= fun vsize -> (* in bytes *)
     i64 (List.nth stat_vals 23) >>= fun rss -> (* in pages *)
     i64 (List.nth stat_vals 35) >>= fun nswap -> (* not maintained, 0 *)
@@ -167,7 +175,7 @@ let linux_rusage pid =
     i64 (List.nth statm_vals 5) >>= fun ssize -> (* data + stack *)
     assoc_i64 "voluntary_ctxt_switches" >>= fun nvcsw ->
     assoc_i64 "nonvoluntary_ctxt_switches" >>= fun nivcsw ->
-    let rusage = { Stats.utime = (utime, 0) ; stime = (stime, 0) ; maxrss = rss ; ixrss = 0L ;
+    let rusage = { Stats.utime ; stime ; maxrss = rss ; ixrss = 0L ;
          idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
          msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw ; nivcsw }
     and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime = 0L; cow = 0; start }
