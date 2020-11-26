@@ -346,8 +346,11 @@ let retry_connections =
   Arg.(value & opt int 0 & info [ "retry-connections" ] ~doc)
 
 let systemd_socket_activation =
-  let doc = "Pass this flag when systemd socket activation is being used" in
-  Arg.(value & flag & info [ "systemd-socket-activation" ] ~doc)
+  match Lazy.force Vmm_unix.uname with
+  | FreeBSD -> Term.const false
+  | Linux ->
+    let doc = "Pass this flag when systemd socket activation is being used" in
+    Arg.(value & flag & info [ "systemd-socket-activation" ] ~doc)
 
 let exit_status = function
   | Ok () -> Ok Success
