@@ -165,6 +165,7 @@ let linux_rusage pid =
     i64 (List.nth stat_vals 11) >>= fun majflt ->
     i64 (List.nth stat_vals 13) >>= fun utime -> (* divide by sysconf(_SC_CLK_TCK) *)
     i64 (List.nth stat_vals 14) >>= fun stime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    let runtime = fst (time_of_int64 Int64.(add utime stime)) in
     let utime = time_of_int64 utime
     and stime = time_of_int64 stime in
     i64 (List.nth stat_vals 22) >>= fun vsize -> (* in bytes *)
@@ -178,7 +179,7 @@ let linux_rusage pid =
     let rusage = { Stats.utime ; stime ; maxrss = rss ; ixrss = 0L ;
          idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
          msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw ; nivcsw }
-    and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime = 0L; cow = 0; start }
+    and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime; cow = 0; start }
     in
     Ok (rusage, kmem)
   else
