@@ -4,7 +4,7 @@
 # systemctl edit albatross_log.service
 Description=Albatross log daemon (albatross_log)
 After=syslog.target albatross_console.service
-Requires=albatross_console.socket albatross_log.socket
+Requires=albatross_log.socket
 AssertPathExists=/var/lib/albatross/albatross.log
 
 [Service]
