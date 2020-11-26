@@ -72,7 +72,7 @@ let jump _ systemd interval influx tmpdir =
   let interval = Duration.(to_f (of_sec interval)) in
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_stats" influx;
-     Vmm_lwt.server_socket systemd `Stats >>= fun s ->
+     Vmm_lwt.server_socket ~systemd `Stats >>= fun s ->
      let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async timer) in
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->

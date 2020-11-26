@@ -12,7 +12,7 @@ let safe_close fd =
     (fun () -> Lwt_unix.close fd)
     (fun _ -> Lwt.return_unit)
 
-let server_socket systemd sock =
+let server_socket ~systemd sock =
   if systemd
   then match Vmm_unix.sd_listen_fds () with
     | Some [fd] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)

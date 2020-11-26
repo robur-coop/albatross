@@ -163,7 +163,7 @@ let jump _ systemd influx tmpdir =
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_console" influx;
-     Vmm_lwt.server_socket systemd `Console >>= fun s ->
+     Vmm_lwt.server_socket ~systemd `Console >>= fun s ->
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        m `Open;

@@ -161,7 +161,7 @@ let jump _ systemd file read_only influx tmpdir =
        Lwt.return_unit
      end else begin
        Albatross_cli.init_influx "albatross_log" influx;
-       Vmm_lwt.server_socket systemd `Log >>= fun s ->
+       Vmm_lwt.server_socket ~systemd `Log >>= fun s ->
        let ring = Vmm_ring.create `Startup () in
        List.iter (Vmm_ring.write ring) entries ;
        let mvar = Lwt_mvar.create_empty () in
