@@ -37,3 +37,6 @@ val dump : ?name:string -> Cstruct.t -> (unit, [> R.msg ]) result
 val restore : ?name:string -> unit -> (Cstruct.t, [> R.msg | `NoFile ]) result
 
 val vm_device : Unikernel.t -> (string, [> R.msg ]) result
+
+(* XXX: remove? *)
+val solo5_image_devices : Fpath.t -> (string list * (string * string option) list , [> R.msg]) result

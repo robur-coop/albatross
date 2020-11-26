@@ -201,6 +201,23 @@ let solo5_image_target image =
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
 
+let solo5_image_devices image =
+  check_solo5_cmd "solo5-elftool" >>= fun cmd ->
+  let cmd = Bos.Cmd.(cmd % "query-manifest" % p image) in
+  Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun s ->
+  R.error_to_msg ~pp_error:Jsonm.pp_error
+    (Vmm_json.json_of_string s) >>= fun data ->
+  Vmm_json.find_devices data
+
+let equal_blocks b1 b2 =
+  let open Astring in
+  String.Set.(equal (of_list b1) (of_list b2))
+
+let equal_networks n1 n2 =
+  let open Astring in
+  let n1 = List.map fst n1 and n2 = List.map fst n2 in
+  String.Set.(equal (of_list n1) (of_list n2))
+
 let prepare name vm =
   (match vm.Unikernel.typ with
    | `Solo5 ->
@@ -214,6 +231,11 @@ let prepare name vm =
   Bos.OS.File.write filename (Cstruct.to_string image) >>= fun () ->
   solo5_image_target filename >>= fun target ->
   check_solo5_cmd (solo5_tender target) >>= fun _ ->
+  solo5_image_devices filename >>= fun (block_devices, networks) ->
+  (if equal_blocks vm.Unikernel.block_devices block_devices then Ok ()
+   else R.error_msg "specified block device(s) does not match with manifest") >>= fun () ->
+  (if equal_networks vm.Unikernel.bridges networks then Ok ()
+   else R.error_msg "specified bridge(s) does not match with the manifest") >>= fun () ->
   let fifo = Name.fifo_file name in
   begin match fifo_exists fifo with
     | Ok true -> Ok ()
