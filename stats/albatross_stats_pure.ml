@@ -158,7 +158,8 @@ let linux_rusage pid =
   in
   let time_of_int64 t =
     let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
-    (Int64.div t clock_tick, Int64.to_int (Int64.rem t clock_tick) * 1_000_000)
+    let ( * ) = Int64.mul and ( / ) = Int64.div in
+    (t / clock_tick, Int64.to_int (((Int64.rem t clock_tick) * 1_000_000L) / clock_tick))
   in
   if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
     i64 (List.nth stat_vals 9) >>= fun minflt ->
