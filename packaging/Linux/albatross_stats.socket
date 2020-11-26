@@ -1,6 +1,6 @@
 [Unit]
 Description=Albatross stats socket
-PartOf=albatross_stat.service
+PartOf=albatross_stats.service
 
 [Socket]
 ListenStream=%t/albatross/util/stat.sock
