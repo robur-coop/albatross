@@ -26,6 +26,26 @@ let check_solo5_cmd name =
   | Ok cmd, _ | _, Ok cmd -> Ok cmd
   | _ -> R.error_msgf "%s does not exist" name
 
+(* Pure OCaml implementation of SystemD's sd_listen_fds.
+ * Note: this implementation does not unset environment variables. *)
+let sd_listen_fds () =
+  let fd_of_int (fd : int) : Unix.file_descr = Obj.magic fd in
+  let sd_listen_fds_start = 3 in
+  match Sys.getenv_opt "LISTEN_PID", Sys.getenv_opt "LISTEN_FDS" with
+  | None, _ | _, None -> None
+  | Some listen_pid, Some listen_fds ->
+    match int_of_string_opt listen_pid, int_of_string_opt listen_fds with
+    | None, _ | _, None -> None
+    | Some listen_pid, Some listen_fds ->
+      if listen_pid = Unix.getpid ()
+      then Some (List.init listen_fds
+                   (fun i ->
+                      let fd = fd_of_int (sd_listen_fds_start + i) in
+                      let () = Unix.set_close_on_exec fd in
+                      fd))
+      else None
+
+
 (* here we check that the binaries we use in this file are actually present *)
 let check_commands () =
   let uname_cmd = Bos.Cmd.v "uname" in

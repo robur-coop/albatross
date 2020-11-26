@@ -148,7 +148,7 @@ let handle mvar ring s addr =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ file read_only influx tmpdir =
+let jump _ systemd file read_only influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run
@@ -161,7 +161,7 @@ let jump _ file read_only influx tmpdir =
        Lwt.return_unit
      end else begin
        Albatross_cli.init_influx "albatross_log" influx;
-       Vmm_lwt.server_socket `Log >>= fun s ->
+       Vmm_lwt.server_socket ~systemd `Log >>= fun s ->
        let ring = Vmm_ring.create `Startup () in
        List.iter (Vmm_ring.write ring) entries ;
        let mvar = Lwt_mvar.create_empty () in
@@ -192,7 +192,7 @@ let read_only =
   Arg.(value & flag & info [ "read-only" ] ~doc)
 
 let cmd =
-  Term.(const jump $ setup_log $ file $ read_only $ influx $ tmpdir),
+  Term.(const jump $ setup_log $ systemd_socket_activation $ file $ read_only $ influx $ tmpdir),
   Term.info "albatross_log" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

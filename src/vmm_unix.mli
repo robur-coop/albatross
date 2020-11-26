@@ -8,6 +8,8 @@ type supported = FreeBSD | Linux
 
 val uname : supported Lazy.t
 
+val sd_listen_fds : unit -> Unix.file_descr list option
+
 val set_dbdir : Fpath.t -> unit
 
 val check_commands : unit -> (unit, [> R.msg ]) result

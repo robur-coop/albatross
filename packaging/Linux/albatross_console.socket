@@ -1,0 +1,12 @@
+[Unit]
+Description=Albatross console socket
+PartOf=albatross_console.service
+
+[Socket]
+ListenStream=%t/albatross/util/console.sock
+SocketUser=albatross
+SocketMode=0600
+Accept=no
+
+[Install]
+WantedBy=sockets.target

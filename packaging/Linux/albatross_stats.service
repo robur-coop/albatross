@@ -3,16 +3,18 @@
 # to create an override configuration:
 # systemctl edit albatross_stat.service
 Description=Albatross stat daemon (albatross_stat)
+Requires=albatross_stat.socket
 After=syslog.target
 
 [Service]
 Type=simple
 User=albatross
-ExecStart=/usr/local/sbin/albatross-stats --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/local/sbin/albatross-stats --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross albatross/util
 PIDFile=%t/albatross/stat.pid
 RestrictAddressFamilies=AF_UNIX
 
 [Install]
+Also=albatross_stat.socket
 WantedBy=multi-user.target
