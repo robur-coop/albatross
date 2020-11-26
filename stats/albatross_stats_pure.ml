@@ -5,6 +5,8 @@ open Rresult.R.Infix
 
 open Vmm_core
 
+external sysconf_clock_tick : unit -> int = "vmmanage_sysconf_clock_tick"
+
 external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
   "vmmanage_sysctl_kinfo_proc"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
@@ -99,9 +101,103 @@ let try_open_vmmapi pid_nic =
       IM.add pid (vmctx, vmmdev, nics) fresh)
     pid_nic IM.empty
 
+let string_of_file filename =
+  try
+    let fh = open_in filename in
+    let content = input_line fh in
+    close_in_noerr fh ;
+    Ok content
+  with _ -> Rresult.R.error_msgf "Error reading file %S" filename
+
+let parse_proc_stat s =
+  let stats_opt =
+    let ( let* ) = Option.bind in
+    let* (pid, rest) = Astring.String.cut ~sep:" (" s in
+    let* (tcomm, rest) = Astring.String.cut ~rev:true ~sep:") " rest in
+    let rest = Astring.String.cuts ~sep:" " rest in
+    Some (pid :: tcomm :: rest)
+  in
+  Option.to_result ~none:(`Msg "unable to parse /proc/<pid>/stat") stats_opt
+
+let read_proc_status pid =
+  try
+    let fh = open_in ("/proc/" ^ string_of_int pid ^ "/status") in
+    let lines =
+      let rec read_lines acc = try
+          read_lines (input_line fh :: acc)
+        with End_of_file -> acc in
+      read_lines []
+    in
+    List.map (Astring.String.cut ~sep:":\t") lines |>
+    List.fold_left (fun acc x -> match acc, x with
+        | Some acc, Some x -> Some (x :: acc)
+        | _ -> None) (Some []) |>
+    Option.to_result ~none:(`Msg "failed to parse /proc/<pid>/status")
+  with _ -> Rresult.R.error_msgf "error reading file /proc/%d/status" pid
+
+let linux_rusage pid =
+  (match Unix.stat ("/proc/" ^ string_of_int pid) with
+   | { Unix.st_ctime = start; _ } ->
+     let frac = Float.rem start 1. in
+     Ok (Int64.of_float start, int_of_float (frac *. 1_000_000.))
+   | exception Unix.Unix_error (Unix.ENOENT,_,_) -> Error (`Msg "failed to stat process") ) >>= fun start ->
+  (* reading /proc/<pid>/stat - since it may disappear mid-time,
+     best to have it in memory *)
+  string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") >>= fun data ->
+  parse_proc_stat data >>= fun stat_vals ->
+  string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") >>= fun data ->
+  let statm_vals = Astring.String.cuts ~sep:" " data in
+  read_proc_status pid >>= fun status ->
+  let assoc_i64 key : (int64, _) result =
+    let e x = Option.to_result ~none:(`Msg "error parsing /proc/<pid>/status") x in
+    e (List.assoc_opt key status) >>= fun v ->
+    e (Int64.of_string_opt v)
+  in
+  let i64 s = try Ok (Int64.of_string s) with
+      Failure _ -> Error (`Msg "couldn't parse integer")
+  in
+  let time_of_int64 t =
+    let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
+    let ( * ) = Int64.mul and ( / ) = Int64.div in
+    (t / clock_tick, Int64.to_int (((Int64.rem t clock_tick) * 1_000_000L) / clock_tick))
+  in
+  if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
+    i64 (List.nth stat_vals 9) >>= fun minflt ->
+    i64 (List.nth stat_vals 11) >>= fun majflt ->
+    i64 (List.nth stat_vals 13) >>= fun utime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    i64 (List.nth stat_vals 14) >>= fun stime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    let runtime = fst (time_of_int64 Int64.(add utime stime)) in
+    let utime = time_of_int64 utime
+    and stime = time_of_int64 stime in
+    i64 (List.nth stat_vals 22) >>= fun vsize -> (* in bytes *)
+    i64 (List.nth stat_vals 23) >>= fun rss -> (* in pages *)
+    i64 (List.nth stat_vals 35) >>= fun nswap -> (* not maintained, 0 *)
+    i64 (List.nth statm_vals 3) >>= fun tsize ->
+    i64 (List.nth statm_vals 5) >>= fun dsize -> (* data + stack *)
+    i64 (List.nth statm_vals 5) >>= fun ssize -> (* data + stack *)
+    assoc_i64 "voluntary_ctxt_switches" >>= fun nvcsw ->
+    assoc_i64 "nonvoluntary_ctxt_switches" >>= fun nivcsw ->
+    let rusage = { Stats.utime ; stime ; maxrss = rss ; ixrss = 0L ;
+         idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
+         msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw ; nivcsw }
+    and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime; cow = 0; start }
+    in
+    Ok (rusage, kmem)
+  else
+    Error (`Msg "couldn't read /proc/<pid>/stat")
+
+let rusage pid =
+  match Lazy.force Vmm_unix.uname with
+  | Vmm_unix.FreeBSD -> wrap sysctl_kinfo_proc pid
+  | Vmm_unix.Linux -> match linux_rusage pid with
+    | Ok x -> Some x
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error %s while reading /proc/" msg);
+      None
+
 let gather pid vmctx nics =
   let ru, mem =
-    match wrap sysctl_kinfo_proc pid with
+    match rusage pid with
     | None -> None, None
     | Some (mem, ru) -> Some mem, Some ru
   in
