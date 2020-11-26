@@ -2,7 +2,7 @@ name:         albatross
 version:      1.0.%%GITVER%%_1
 origin:	      local/albatross
 comment:      Albatross: orchestrate and manage MirageOS unikernels with Solo5
-www:	      https://github.com/hannesm/albatross
+www:	      https://github.com/roburio/albatross
 maintainer:   Hannes Mehnert <hannes@mehnert.org>
 prefix:	      /usr/local
 licenselogic: single

@@ -1,7 +1,5 @@
 # Albatross: orchestrate and manage MirageOS unikernels with Solo5
 
-[![Build Status](https://travis-ci.org/hannesm/albatross.svg?branch=master)](https://travis-ci.org/hannesm/albatross)
-
 The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
 unikernels using [Solo5](https://github.com/solo5/solo5). Resources managed
 by albatross are network interfaces of kind `tap`, which are connected to
@@ -85,7 +83,7 @@ The following command-line applications for local and remote management are prov
 ## Installation
 
 To install Albatross, run `opam pin add albatross
-https://github.com/hannesm/albatross`.
+https://github.com/roburio/albatross`.
 
 Init scripts for FreeBSD are provided in the `packaging/FreeBSD/rc.d`
 subdirectory, and a script to create a FreeBSD package
