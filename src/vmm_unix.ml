@@ -227,6 +227,21 @@ let manifest_devices_match ~bridges ~block_devices image_file =
   let bridges = List.map fst bridges in
   devices_match ~bridges ~block_devices
 
+let bridge_name (service, b) = match b with None -> service | Some b -> b
+
+let bridge_exists bridge_name =
+  let cmd =
+    match Lazy.force uname with
+    | FreeBSD -> Bos.Cmd.(v "ifconfig" % bridge_name)
+    | Linux -> Bos.Cmd.(v "ip" % "tuntap" % "show" % bridge_name)
+  in
+  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+
+let bridges_exist bridges =
+  List.fold_left
+    (fun acc b -> acc >>= fun () -> bridge_exists (bridge_name b))
+    (Ok ()) bridges
+
 let prepare name vm =
   (match vm.Unikernel.typ with
    | `Solo5 ->
@@ -241,6 +256,7 @@ let prepare name vm =
   solo5_image_target filename >>= fun target ->
   check_solo5_cmd (solo5_tender target) >>= fun _ ->
   manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename >>= fun () ->
+  bridges_exist vm.Unikernel.bridges >>= fun () ->
   let fifo = Name.fifo_file name in
   begin match fifo_exists fifo with
     | Ok true -> Ok ()
@@ -257,11 +273,11 @@ let prepare name vm =
         let _ = Unix.umask old_umask in
         R.error_msgf "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e
   end >>= fun () ->
-  List.fold_left (fun acc (net, bri) ->
+  List.fold_left (fun acc arg ->
       acc >>= fun acc ->
-      let bridge = match bri with None -> net | Some b -> b in
+      let bridge = bridge_name arg in
       create_tap bridge >>= fun tap ->
-      Ok ((net, tap) :: acc))
+      Ok ((fst arg, tap) :: acc))
     (Ok []) vm.Unikernel.bridges >>= fun taps ->
   Ok (List.rev taps)
 
