@@ -102,7 +102,9 @@ let setup_log style_renderer level =
 
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let open Rresult.R.Infix in
-  Bos.OS.File.read (Fpath.v image) >>| fun image ->
+  let img_file = Fpath.v image in
+  Bos.OS.File.read img_file >>= fun image ->
+  Vmm_unix.manifest_devices_match ~bridges ~block_devices img_file >>| fun () ->
   let image, compressed = match compression with
     | 0 -> Cstruct.of_string image, false
     | level ->

@@ -209,14 +209,23 @@ let solo5_image_devices image =
     (Vmm_json.json_of_string s) >>= fun data ->
   Vmm_json.find_devices data
 
-let equal_blocks b1 b2 =
+let equal_string_lists b1 b2 err =
   let open Astring in
-  String.Set.(equal (of_list b1) (of_list b2))
+  if String.Set.(equal (of_list b1) (of_list b2)) then
+    Ok ()
+  else
+    R.error_msg err
 
-let equal_networks n1 n2 =
-  let open Astring in
-  let n1 = List.map fst n1 and n2 = List.map fst n2 in
-  String.Set.(equal (of_list n1) (of_list n2))
+let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
+  equal_string_lists manifest_block block_devices
+    "specified block device(s) does not match with manifest" >>= fun () ->
+  equal_string_lists manifest_net bridges
+    "specified bridge(s) does not match with the manifest"
+
+let manifest_devices_match ~bridges ~block_devices image_file =
+  solo5_image_devices image_file >>=
+  let bridges = List.map fst bridges in
+  devices_match ~bridges ~block_devices
 
 let prepare name vm =
   (match vm.Unikernel.typ with
@@ -231,11 +240,7 @@ let prepare name vm =
   Bos.OS.File.write filename (Cstruct.to_string image) >>= fun () ->
   solo5_image_target filename >>= fun target ->
   check_solo5_cmd (solo5_tender target) >>= fun _ ->
-  solo5_image_devices filename >>= fun (block_devices, networks) ->
-  (if equal_blocks vm.Unikernel.block_devices block_devices then Ok ()
-   else R.error_msg "specified block device(s) does not match with manifest") >>= fun () ->
-  (if equal_networks vm.Unikernel.bridges networks then Ok ()
-   else R.error_msg "specified bridge(s) does not match with the manifest") >>= fun () ->
+  manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename >>= fun () ->
   let fifo = Name.fifo_file name in
   begin match fifo_exists fifo with
     | Ok true -> Ok ()

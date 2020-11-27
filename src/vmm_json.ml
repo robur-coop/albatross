@@ -16,16 +16,12 @@ let find_string_value k = function
     | Some (_, `String value) -> Ok value
     | _ -> Rresult.R.error_msgf "couldn't find %s in json dictionary" k
 
-
 let find_devices x =
   let open Rresult in
   let device dev =
     find_string_value "name" dev >>= fun name ->
-    find_string_value "type" dev >>= fun typ ->
-    match typ with
-    | "BLOCK_BASIC" -> Ok (`Block name)
-    | "NET_BASIC" -> Ok (`Net name)
-    | _ -> Rresult.R.error_msgf "unknown device type %s in json" typ
+    find_string_value "type" dev >>| fun typ ->
+    name, typ
   in
   match x with
   | `Null | `Bool _ | `Float _ | `String _ | `A _ ->
@@ -36,9 +32,11 @@ let find_devices x =
       List.fold_left
         (fun acc dev ->
            acc >>= fun (block_devices, networks) ->
-           device dev >>= function
-           | `Block block -> Ok (block :: block_devices, networks)
-           | `Net net -> Ok (block_devices, (net, None) :: networks))
+           device dev >>= fun (name, typ) ->
+           match typ with
+           | "BLOCK_BASIC" -> Ok (name :: block_devices, networks)
+           | "NET_BASIC" -> Ok (block_devices, name :: networks)
+           | _ -> Rresult.R.error_msgf "unknown device type %s in json" typ)
         (Ok ([], [])) devices
     | _ -> Rresult.R.error_msg "devices field is not array in json"
 
