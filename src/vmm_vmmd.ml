@@ -17,11 +17,6 @@ type 'a t = {
 
 let in_shutdown = ref false
 
-let killall t =
-  match List.map snd (Vmm_trie.all t.resources.Vmm_resources.unikernels) with
-  | [] -> false
-  | vms -> in_shutdown := true ; List.iter Vmm_unix.destroy vms ; true
-
 let remove_resources t name =
   let resources = match Vmm_resources.remove_vm t.resources name with
     | Error (`Msg e) ->
@@ -62,6 +57,17 @@ let register_restart t id create =
   match String.Map.find name t.waiters with
   | Some _ -> Logs.err (fun m -> m "restart attempted to overwrite waiter"); None
   | _ -> Some (register t id create)
+
+let killall t create =
+  let vms = Vmm_trie.all t.resources.Vmm_resources.unikernels in
+  in_shutdown := true ;
+  let t, xs = List.fold_left
+      (fun (t, acc) (id, _) ->
+         let (t, a) = register t id create in
+         (t, a :: acc))
+      (t, []) vms in
+  List.iter Vmm_unix.destroy (List.map snd vms) ;
+  t, xs
 
 let init () =
   let t = {

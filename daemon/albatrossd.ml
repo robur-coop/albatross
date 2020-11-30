@@ -175,13 +175,11 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
        let self_destruct_mutex = Lwt_mutex.create () in
        let self_destruct () =
          Lwt_mutex.with_lock self_destruct_mutex (fun () ->
-             (if Vmm_vmmd.killall !state then
-                (* not too happy about the sleep here, but cleaning up resources
-                   is really important (fifos, vm images, tap devices) - which
-                   is done asynchronously (in the task waitpid() on the pid) *)
-                Lwt_unix.sleep 1.
-              else
-                Lwt.return_unit) >>= fun () ->
+             (let state', tasks = Vmm_vmmd.killall !state Lwt.task in
+              state := state';
+              Lwt_list.iter_s (fun exit_code ->
+                  exit_code >>= fun (_ : process_exit) -> Lwt.return_unit)
+                tasks) >>= fun () ->
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm
