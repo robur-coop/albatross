@@ -232,22 +232,22 @@ let ifdata =
   Asn.S.(sequence @@
          (required ~label:"bridge" utf8_string)
        @ (required ~label:"flags" int32)
-       @ (required ~label:"send_length" int32)
-       @ (required ~label:"max_send_length" int32)
-       @ (required ~label:"send_drops" int32)
+       @ (required ~label:"send-length" int32)
+       @ (required ~label:"max-send-length" int32)
+       @ (required ~label:"send-drops" int32)
        @ (required ~label:"mtu" int32)
        @ (required ~label:"baudrate" int64)
-       @ (required ~label:"input_packets" int64)
-       @ (required ~label:"input_errors" int64)
-       @ (required ~label:"output_packets" int64)
-       @ (required ~label:"output_errors" int64)
+       @ (required ~label:"input-packets" int64)
+       @ (required ~label:"input-errors" int64)
+       @ (required ~label:"output-packets" int64)
+       @ (required ~label:"output-errors" int64)
        @ (required ~label:"collisions" int64)
-       @ (required ~label:"input_bytes" int64)
-       @ (required ~label:"output_bytes" int64)
-       @ (required ~label:"input_mcast" int64)
-       @ (required ~label:"output_mcast" int64)
-       @ (required ~label:"input_dropped" int64)
-      -@ (required ~label:"output_dropped" int64))
+       @ (required ~label:"input-bytes" int64)
+       @ (required ~label:"output-bytes" int64)
+       @ (required ~label:"input-mcast" int64)
+       @ (required ~label:"output-mcast" int64)
+       @ (required ~label:"input-dropped" int64)
+      -@ (required ~label:"output-dropped" int64))
 
 let stats_cmd =
   let f = function
@@ -341,25 +341,25 @@ let log_event =
               (my_explicit 1 ~label:"login" endp)
               (my_explicit 2 ~label:"logout" endp)
               (* the old V3 unikernel start *)
-              (my_explicit 3 ~label:"unikernel_start_OLD"
+              (my_explicit 3 ~label:"unikernel-start-OLD"
                  (sequence4
                     (required ~label:"name" (sequence_of utf8_string))
                     (required ~label:"pid" int)
                     (required ~label:"taps" (sequence_of utf8_string))
                     (optional ~label:"block" utf8_string)))
-              (my_explicit 4 ~label:"unikernel_stop"
+              (my_explicit 4 ~label:"unikernel-stop"
                  (sequence3
                     (required ~label:"name" (sequence_of utf8_string))
                     (required ~label:"pid" int)
                     (required ~label:"status"
                        (choice3
-                          (my_explicit 0 ~label:"exit_code" int)
+                          (my_explicit 0 ~label:"exit-code" int)
                           (my_explicit 1 ~label:"signal" int)
                           (my_explicit 2 ~label:"stopped" int)))))
               (my_explicit 5 ~label:"hup" null))
            (choice2
               (* the new V4 unikernel start*)
-              (my_explicit 6 ~label:"unikernel_start"
+              (my_explicit 6 ~label:"unikernel-start"
                  (sequence4
                     (required ~label:"name" (sequence_of utf8_string))
                     (required ~label:"pid" int)
@@ -386,8 +386,8 @@ let log_cmd =
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-           (my_explicit 0 ~label:"subscribe_since" utc_time)
-           (my_explicit 1 ~label:"subscribe_count" int))
+           (my_explicit 0 ~label:"subscribe-since" utc_time)
+           (my_explicit 1 ~label:"subscribe-count" int))
 
 let typ =
   let f = function
@@ -422,7 +422,7 @@ let fail_behaviour =
   Asn.S.map f g @@
   Asn.S.(choice2
            (my_explicit 0 ~label:"quit" null)
-           (my_explicit 1 ~label:"restart_exit_codes" (set_of int)))
+           (my_explicit 1 ~label:"restart-exit-codes" (set_of int)))
 
 (* this is part of the state file! *)
 let v0_unikernel_config =
@@ -438,9 +438,9 @@ let v0_unikernel_config =
     in
     Asn.S.map f g @@
     Asn.S.(choice3
-             (my_explicit 0 ~label:"hvt_amd64" octet_string)
-             (my_explicit 1 ~label:"hvt_arm64" octet_string)
-             (my_explicit 2 ~label:"hvt_amd64_compressed" octet_string))
+             (my_explicit 0 ~label:"hvt-amd64" octet_string)
+             (my_explicit 1 ~label:"hvt-arm64" octet_string)
+             (my_explicit 2 ~label:"hvt-amd64-compressed" octet_string))
   in
   let open Unikernel in
   let f (cpuid, memory, block_device, network_interfaces, image, argv) =
@@ -460,7 +460,7 @@ let v0_unikernel_config =
            (required ~label:"cpu" int)
            (required ~label:"memory" int)
            (optional ~label:"block" utf8_string)
-           (optional ~label:"network_interfaces" (sequence_of utf8_string))
+           (optional ~label:"network-interfaces" (sequence_of utf8_string))
            (required ~label:"image" image)
            (optional ~label:"arguments" (sequence_of utf8_string)))
 
@@ -479,7 +479,7 @@ let v1_unikernel_config =
            (required ~label:"typ" typ)
          @ (required ~label:"compressed" bool)
          @ (required ~label:"image" octet_string)
-         @ (required ~label:"fail_behaviour" fail_behaviour)
+         @ (required ~label:"fail-behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
          @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
@@ -503,7 +503,7 @@ let unikernel_config =
            (required ~label:"typ" typ)
          @ (required ~label:"compressed" bool)
          @ (required ~label:"image" octet_string)
-         @ (required ~label:"fail_behaviour" fail_behaviour)
+         @ (required ~label:"fail-behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
          @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
@@ -535,11 +535,11 @@ let unikernel_cmd =
   Asn.S.(choice2
           (choice6
              (my_explicit 0 ~label:"info" null)
-             (my_explicit 1 ~label:"create_OLD" v1_unikernel_config)
-             (my_explicit 2 ~label:"force_create_OLD" v1_unikernel_config)
+             (my_explicit 1 ~label:"create-OLD" v1_unikernel_config)
+             (my_explicit 2 ~label:"force-create-OLD" v1_unikernel_config)
              (my_explicit 3 ~label:"destroy" null)
              (my_explicit 4 ~label:"create" unikernel_config)
-             (my_explicit 5 ~label:"force_create" unikernel_config))
+             (my_explicit 5 ~label:"force-create" unikernel_config))
           (choice2
              (my_explicit 6 ~label:"get" null)
              (my_explicit 7 ~label:"placeholder" null (* placeholder *) )))
@@ -573,7 +573,7 @@ let block_cmd =
   Asn.S.map f g @@
   Asn.S.(choice3
            (my_explicit 0 ~label:"info" null)
-           (my_explicit 1 ~label:"add_MB" int)
+           (my_explicit 1 ~label:"add" int)
            (my_explicit 2 ~label:"remove" null))
 
 let version =
@@ -630,13 +630,13 @@ let data =
                  (required ~label:"data" utf8_string)))
            (my_explicit 1 ~label:"statistics"
               (sequence4
-                 (required ~label:"resource_usage" ru)
+                 (required ~label:"resource-usage" ru)
                  (required ~label:"ifdata" (sequence_of ifdata))
-                 (optional ~label:"vmm_stats" @@ my_explicit 0
+                 (optional ~label:"vmm-stats" @@ my_explicit 0
                     (sequence_of (sequence2
                                     (required ~label:"key" utf8_string)
                                     (required ~label:"value" int64))))
-                 (optional ~label:"kinfo_mem" @@ implicit 1 kinfo_mem)))
+                 (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
            (my_explicit 2 ~label:"log"
               (sequence2
                  (required ~label:"timestamp" utc_time)
@@ -680,7 +680,7 @@ let success =
                  (sequence2
                     (required ~label:"name" (sequence_of utf8_string))
                     (required ~label:"config" unikernel_config))))
-           (my_explicit 4 ~label:"block_devices"
+           (my_explicit 4 ~label:"block-devices"
               (sequence_of
                  (sequence3
                     (required ~label:"name" (sequence_of utf8_string))
@@ -787,8 +787,8 @@ let unikernels =
   in
   Asn.S.map f g @@
   Asn.S.(choice3
-           (my_explicit 0 ~label:"unikernel_OLD1" version1_unikernels)
-           (my_explicit 1 ~label:"unikernel_OLD0" version0_unikernels)
+           (my_explicit 0 ~label:"unikernel-OLD1" version1_unikernels)
+           (my_explicit 1 ~label:"unikernel-OLD0" version0_unikernels)
            (my_explicit 2 ~label:"unikernel" version2_unikernels))
 
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
