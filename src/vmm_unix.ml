@@ -201,6 +201,48 @@ let solo5_image_target image =
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
 
+let solo5_image_devices image =
+  check_solo5_cmd "solo5-elftool" >>= fun cmd ->
+  let cmd = Bos.Cmd.(cmd % "query-manifest" % p image) in
+  Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun s ->
+  R.error_to_msg ~pp_error:Jsonm.pp_error
+    (Vmm_json.json_of_string s) >>= fun data ->
+  Vmm_json.find_devices data
+
+let equal_string_lists b1 b2 err =
+  let open Astring in
+  if String.Set.(equal (of_list b1) (of_list b2)) then
+    Ok ()
+  else
+    R.error_msg err
+
+let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
+  equal_string_lists manifest_block block_devices
+    "specified block device(s) does not match with manifest" >>= fun () ->
+  equal_string_lists manifest_net bridges
+    "specified bridge(s) does not match with the manifest"
+
+let manifest_devices_match ~bridges ~block_devices image_file =
+  solo5_image_devices image_file >>=
+  let bridges = List.map fst bridges in
+  devices_match ~bridges ~block_devices
+
+let bridge_name (service, b) = match b with None -> service | Some b -> b
+
+let bridge_exists bridge_name =
+  let cmd =
+    match Lazy.force uname with
+    | FreeBSD -> Bos.Cmd.(v "ifconfig" % bridge_name)
+    | Linux -> Bos.Cmd.(v "ip" % "link" % "show" % bridge_name)
+  in
+  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+  |> R.reword_error (fun _e -> R.msgf "interface %s does not exist" bridge_name)
+
+let bridges_exist bridges =
+  List.fold_left
+    (fun acc b -> acc >>= fun () -> bridge_exists (bridge_name b))
+    (Ok ()) bridges
+
 let prepare name vm =
   (match vm.Unikernel.typ with
    | `Solo5 ->
@@ -214,6 +256,8 @@ let prepare name vm =
   Bos.OS.File.write filename (Cstruct.to_string image) >>= fun () ->
   solo5_image_target filename >>= fun target ->
   check_solo5_cmd (solo5_tender target) >>= fun _ ->
+  manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename >>= fun () ->
+  bridges_exist vm.Unikernel.bridges >>= fun () ->
   let fifo = Name.fifo_file name in
   begin match fifo_exists fifo with
     | Ok true -> Ok ()
@@ -230,11 +274,11 @@ let prepare name vm =
         let _ = Unix.umask old_umask in
         R.error_msgf "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e
   end >>= fun () ->
-  List.fold_left (fun acc (net, bri) ->
+  List.fold_left (fun acc arg ->
       acc >>= fun acc ->
-      let bridge = match bri with None -> net | Some b -> b in
+      let bridge = bridge_name arg in
       create_tap bridge >>= fun tap ->
-      Ok ((net, tap) :: acc))
+      Ok ((fst arg, tap) :: acc))
     (Ok []) vm.Unikernel.bridges >>= fun taps ->
   Ok (List.rev taps)
 
