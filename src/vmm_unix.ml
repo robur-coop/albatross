@@ -233,7 +233,7 @@ let bridge_exists bridge_name =
   let cmd =
     match Lazy.force uname with
     | FreeBSD -> Bos.Cmd.(v "ifconfig" % bridge_name)
-    | Linux -> Bos.Cmd.(v "ip" % "tuntap" % "show" % bridge_name)
+    | Linux -> Bos.Cmd.(v "ip" % "link" % "show" % bridge_name)
   in
   Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
 
