@@ -236,6 +236,7 @@ let bridge_exists bridge_name =
     | Linux -> Bos.Cmd.(v "ip" % "link" % "show" % bridge_name)
   in
   Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+  |> R.reword_error (fun _e -> R.msgf "interface %s does not exist" bridge_name)
 
 let bridges_exist bridges =
   List.fold_left
