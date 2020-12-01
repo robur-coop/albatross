@@ -179,9 +179,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
                  let state', tasks = Vmm_vmmd.killall !state Lwt.task in
                  state := state';
                  Lwt.return tasks) >>= fun tasks ->
-             Lwt_list.iter_s (fun exit_code ->
-                 exit_code >>= fun (_ : process_exit) -> Lwt.return_unit)
-               tasks >>= fun () ->
+             Lwt.join (List.map (Lwt.map ignore) tasks) >>= fun () ->
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm
