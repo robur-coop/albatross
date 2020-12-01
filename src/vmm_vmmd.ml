@@ -15,6 +15,21 @@ type 'a t = {
   waiters : 'a String.Map.t ;
   restarting : String.Set.t ;
 }
+(* the life of a unikernel
+   - once started, if restart-on-fail is enabled, a waiter will be add to t.waiters
+   - if the waitpid () returns (i.e. unikernel has finished execution),
+     a lookup in the t.waiters map will potentially result in a Lwt.task to be notified
+   - if there is such a task, for this brief moment the t.restarting set will
+     be populated with the unikernel name. this allows to destroy boot-looping
+     unikernels (see #39)
+   - once the restart-on-fail task is triggered (executing), it will first look
+     whether the t.restarting set still contains the unikernel name, and then
+     remove that name from t.restarting and create the unikernel again
+
+   - the killall command (on albatross_daemon restart) uses the waiters map to
+     wait for all unikernels to have exited and resources are cleaned up (see
+     #37, since otherwise tap devices are kept around)
+*)
 
 let in_shutdown = ref false
 
