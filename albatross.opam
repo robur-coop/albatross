@@ -43,3 +43,10 @@ depexts: [
   ["libnl3" "libnl3-devel"] {os-family = "centos"}
 ]
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"
+description: """
+The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
+unikernels using [Solo5](https://github.com/solo5/solo5). Resources managed
+by albatross are network interfaces of kind `tap`, which are connected to
+already existing bridges, block devices, memory, and CPU. Each unikernel is
+pinned (`cpuset` / `taskset`) to a specific core.
+"""
