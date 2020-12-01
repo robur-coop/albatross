@@ -12,6 +12,8 @@ val register : 'a t -> Name.t -> (unit -> 'b * 'a) -> 'a t * 'b
 
 val register_restart : 'a t -> Name.t -> (unit -> 'b * 'a) -> ('a t * 'b) option
 
+val may_restart : 'a t -> Name.t -> 'a t * bool
+
 type 'a create =
   Vmm_commands.wire *
   ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *

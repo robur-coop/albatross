@@ -37,12 +37,14 @@ let rec create stat_out log_out cons_out data_out name config =
               state := state';
               Lwt.async (fun () ->
                   task >>= fun r ->
-                  if should_restart config name r then
-                    Lwt_mutex.with_lock create_lock (fun () ->
+                  Lwt_mutex.with_lock create_lock (fun () ->
+                      let state', may = Vmm_vmmd.may_restart !state name in
+                      state := state';
+                      if may && should_restart config name r then
                         create stat_out log_out cons_out stub_data_out
-                          name vm.Unikernel.config)
-                  else
-                    Lwt.return_unit));
+                          name vm.Unikernel.config
+                      else
+                        Lwt.return_unit)));
          stat_out "setting up stat" stat >>= fun () ->
          log_out "setting up log" log >|= fun () ->
          (Some vm, data)) >>= fun (started, data) ->
