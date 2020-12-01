@@ -32,7 +32,7 @@ val handle_command : 'a t -> Vmm_commands.wire ->
    | `Wait_and_create of Name.t * (Name.t * Unikernel.config) ],
    Vmm_commands.res) result
 
-val killall : 'a t -> (unit -> 'b * 'a) -> 'a t * ('b list)
+val killall : 'a t -> (unit -> 'b * 'a) -> 'a t * 'b list
 
 val restore_unikernels : unit -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
 
