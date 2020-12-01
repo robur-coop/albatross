@@ -13,6 +13,7 @@ type 'a t = {
   log_counter : int64 ;
   resources : Vmm_resources.t ;
   waiters : 'a String.Map.t ;
+  restarting : String.Set.t ;
 }
 
 let in_shutdown = ref false
@@ -45,7 +46,8 @@ let waiter t id =
   | None -> t, None
   | Some waiter ->
     let waiters = String.Map.remove name t.waiters in
-    { t with waiters }, Some waiter
+    let restarting = String.Set.add name t.restarting in
+    { t with waiters ; restarting }, Some waiter
 
 let register t id create =
   let name = Name.to_string id in
@@ -57,6 +59,28 @@ let register_restart t id create =
   match String.Map.find name t.waiters with
   | Some _ -> Logs.err (fun m -> m "restart attempted to overwrite waiter"); None
   | _ -> Some (register t id create)
+
+let may_restart t id =
+  let n = Name.to_string id in
+  if String.Set.mem n t.restarting then
+    let restarting = String.Set.remove n t.restarting in
+    { t with restarting }, true
+  else
+    t, false
+
+let stop_create t id =
+  let name = Name.to_string id in
+  match String.Map.find name t.waiters with
+  | None ->
+    let t, may = may_restart t id in
+    if may then
+      Ok (t, `End (`Success (`String "destroyed: removed from restarting")))
+    else
+      Error (`Msg "destroy: not found")
+  | Some _ ->
+    let waiters = String.Map.remove name t.waiters in
+    let t = { t with waiters } in
+    Ok (t, `End (`Success (`String "destroyed: removed waiter")))
 
 let killall t create =
   let vms = Vmm_trie.all t.resources.Vmm_resources.unikernels in
@@ -76,6 +100,7 @@ let init () =
     log_counter = 1L ;
     resources = Vmm_resources.empty ;
     waiters = String.Map.empty ;
+    restarting = String.Set.empty ;
   } in
   match Vmm_unix.find_block_devices () with
   | Error (`Msg msg) ->
@@ -247,7 +272,9 @@ let handle_unikernel_cmd t id = function
       in
       Vmm_resources.check_vm resources id vm_config >>= fun () ->
       match Vmm_resources.find_vm t.resources id with
-      | None -> Ok (t, `Create (id, vm_config))
+      | None ->
+        ignore (stop_create t id);
+        Ok (t, `Create (id, vm_config))
       | Some vm ->
         (match Vmm_unix.destroy vm with
          | exception Unix.Unix_error _ -> ()
@@ -256,7 +283,7 @@ let handle_unikernel_cmd t id = function
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
-    | None -> Error (`Msg "destroy: not found")
+    | None -> stop_create t id
     | Some vm ->
       let answer =
         try
