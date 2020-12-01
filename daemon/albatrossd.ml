@@ -175,11 +175,13 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
        let self_destruct_mutex = Lwt_mutex.create () in
        let self_destruct () =
          Lwt_mutex.with_lock self_destruct_mutex (fun () ->
-             (let state', tasks = Vmm_vmmd.killall !state Lwt.task in
-              state := state';
-              Lwt_list.iter_s (fun exit_code ->
-                  exit_code >>= fun (_ : process_exit) -> Lwt.return_unit)
-                tasks) >>= fun () ->
+             Lwt_mutex.with_lock create_lock (fun () ->
+                 let state', tasks = Vmm_vmmd.killall !state Lwt.task in
+                 state := state';
+                 Lwt.return tasks) >>= fun tasks ->
+             Lwt_list.iter_s (fun exit_code ->
+                 exit_code >>= fun (_ : process_exit) -> Lwt.return_unit)
+               tasks >>= fun () ->
              Vmm_lwt.safe_close ss)
        in
        Sys.(set_signal sigterm
