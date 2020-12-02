@@ -11,6 +11,7 @@ depends: [
   "dune"
   "dune-configurator"
   "conf-pkg-config" {build}
+  "conf-libnl3" {os = "linux"}
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "4.0.0"}
   "cstruct"
@@ -38,10 +39,6 @@ build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
 ]
-depexts: [
-  ["libnl-3-dev" "libnl-route-3-dev"] {os-family = "debian"}
-  ["libnl3" "libnl3-devel"] {os-family = "centos"}
-]
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"
 description: """
 The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
@@ -50,3 +47,6 @@ by albatross are network interfaces of kind `tap`, which are connected to
 already existing bridges, block devices, memory, and CPU. Each unikernel is
 pinned (`cpuset` / `taskset`) to a specific core.
 """
+available: [
+  arch != "ppc64" & arch != "x86_32" & arch != "arm32"
+]
