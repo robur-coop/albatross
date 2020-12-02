@@ -11,7 +11,11 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/user.h>
+#ifdef __Linux__
+#include <linux/sysctl.h>
+#else
 #include <sys/sysctl.h>
+#endif
 #include <net/if.h>
 
 #define Val32 caml_copy_int32
