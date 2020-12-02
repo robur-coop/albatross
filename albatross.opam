@@ -50,3 +50,4 @@ pinned (`cpuset` / `taskset`) to a specific core.
 available: [
   arch != "ppc64" & arch != "x86_32" & arch != "arm32"
 ]
+depexts: ["linux-headers"] {os-distribution = "alpine"}
