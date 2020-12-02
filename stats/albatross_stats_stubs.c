@@ -11,7 +11,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/user.h>
-#include <sys/sysctl.h>
 #include <net/if.h>
 
 #define Val32 caml_copy_int32
@@ -29,6 +28,7 @@ CAMLprim value vmmanage_sysconf_clock_tick(value unit) {
 }
 
 #ifdef __FreeBSD__
+#include <sys/sysctl.h>
 #include <net/if_mib.h>
 #include <vmmapi.h>
 
