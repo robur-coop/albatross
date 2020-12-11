@@ -63,7 +63,8 @@ let get _ opt_socket name =
 let destroy _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_destroy)
 
-let create _ opt_socket force name image cpuid memory argv block network compression restart_on_fail exit_code tmpdir =
+let create _ opt_socket dbdir force name image cpuid memory argv block network compression restart_on_fail exit_code tmpdir =
+  Albatross_cli.set_dbdir dbdir;
   match Albatross_cli.create_vm force image cpuid memory argv block network compression restart_on_fail exit_code with
   | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd) tmpdir
   | Error (`Msg msg) -> Error (`Msg msg)
@@ -167,7 +168,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(term_result (const create $ setup_log $ socket $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir)),
+  Term.(term_result (const create $ setup_log $ socket $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir)),
   Term.info "create" ~doc ~man ~exits
 
 let console_cmd =
