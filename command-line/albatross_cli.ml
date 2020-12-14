@@ -305,39 +305,33 @@ let version =
   Fmt.strf "version %%VERSION%% protocol version %a"
     Vmm_commands.pp_version Vmm_commands.current
 
-let tmpdir =
-  let doc = "Albatross temporary directory (defaults to /var/run/albatross on FreeBSD, /run/albatross on Linux)" in
-  Arg.(value & opt (some dir) None & info [ "tmpdir" ] ~doc)
+let default_tmpdir =
+  match Lazy.force Vmm_unix.uname with
+  | FreeBSD -> "/var/run/albatross"
+  | Linux -> "/run/albatross"
 
-let set_tmpdir = function
-  | Some path ->
-    begin match Fpath.of_string path with
-      | Ok path -> Vmm_core.set_tmpdir path
-      | Error `Msg m -> invalid_arg m
-    end
-  | None ->
-    let path = match Lazy.force Vmm_unix.uname with
-      | FreeBSD -> Fpath.(v "/var" / "run" / "albatross")
-      | Linux -> Fpath.(v "/run" / "albatross")
-    in
-    Vmm_core.set_tmpdir path
+let tmpdir =
+  let doc = "Albatross temporary directory" in
+  Arg.(value & opt dir default_tmpdir & info [ "tmpdir" ] ~doc)
+
+let set_tmpdir path =
+  match Fpath.of_string path with
+  | Ok path -> Vmm_core.set_tmpdir path
+  | Error `Msg m -> invalid_arg m
+
+let default_dbdir =
+  match Lazy.force Vmm_unix.uname with
+  | Vmm_unix.FreeBSD -> "/var/db/albatross"
+  | Linux -> "/var/lib/albatross"
 
 let dbdir =
-  let doc = "Albatross database directory (defaults to /var/db/albatross on FreeBSD, /var/lib/albatross on Linux)" in
-  Arg.(value & opt (some dir) None & info [ "dbdir" ] ~doc)
+  let doc = "Albatross database directory" in
+  Arg.(value & opt dir default_dbdir & info [ "dbdir" ] ~doc)
 
-let set_dbdir = function
-  | Some path ->
-    begin match Fpath.of_string path with
-      | Ok path -> Vmm_unix.set_dbdir path
-      | Error `Msg m -> invalid_arg m
-    end
-  | None ->
-    let path = match Lazy.force Vmm_unix.uname with
-      | Vmm_unix.FreeBSD -> Fpath.(v "/var" / "db" / "albatross")
-      | Linux -> Fpath.(v "/var" / "lib" / "albatross")
-    in
-    Vmm_unix.set_dbdir path
+let set_dbdir path =
+  match Fpath.of_string path with
+  | Ok path -> Vmm_unix.set_dbdir path
+  | Error `Msg m -> invalid_arg m
 
 let enable_stats =
   let doc = "Connect to albatross-stats to report statistics" in
