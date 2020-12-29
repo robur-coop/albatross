@@ -1,12 +1,7 @@
-freebsd_instance:
-  image_family: freebsd-12-1
-
-freebsd_task:
-  env:
-    matrix:
-      - OCAML_VERSION: 4.11.1
+pkg_install_task_template: &PKG_INSTALL_TASK_TEMPLATE
   pkg_install_script: pkg install -y ocaml-opam gmp gmake pkgconf bash
-  ocaml_script: opam init -a --comp=$OCAML_VERSION
+
+regular_task_template: &REGULAR_TASK_TEMPLATE
   dependencies_script: eval `opam env` && opam install -y --deps-only .
   build_script: eval `opam env` && dune build
   watermark_script: eval `opam env` && dune subst
@@ -14,3 +9,19 @@ freebsd_task:
   package_script: packaging/FreeBSD/create_package.sh
   albatross_artifacts:
     path: _build/albatross*txz
+
+task:
+  << : *PKG_INSTALL_TASK_TEMPLATE
+  ocaml_script: opam init -a --comp=4.11.1
+  << : *REGULAR_TASK_TEMPLATE
+  name: FreeBSD 12.1
+  freebsd_instance:
+    image_family: freebsd-12-1
+
+task:
+  << : *PKG_INSTALL_TASK_TEMPLATE
+  ocaml_script: opam init -a --comp=4.10.2
+  << : *REGULAR_TASK_TEMPLATE
+  name: FreeBSD 13
+  freebsd_instance:
+    image_family: freebsd-13-0-snap
