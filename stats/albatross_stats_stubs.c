@@ -30,6 +30,9 @@ CAMLprim value vmmanage_sysconf_clock_tick(value unit) {
 #ifdef __FreeBSD__
 #include <sys/sysctl.h>
 #include <net/if_mib.h>
+#include <vm/vm.h>
+#include <machine/vmm.h>
+#include <machine/vmm_dev.h>
 #include <vmmapi.h>
 
 CAMLprim value vmmanage_sysctl_kinfo_proc (value pid_r) {
