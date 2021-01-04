@@ -58,29 +58,36 @@ type exit_status =
   | Cli_failed
   | Internal_error
 
-let output_result ((_, reply) as wire) =
+let output_result ((hdr, reply) as wire) =
   match reply with
   | `Success s ->
     Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    let write_to_file name compressed data =
+      let filename =
+        let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
+        Fpath.(v (Filename.get_temp_dir_name ()) / Name.to_string name + ts)
+      in
+      let write data =
+        match Bos.OS.File.write filename data with
+        | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
+        | Error (`Msg e) -> Logs.err (fun m -> m "failed to write image: %s" e)
+      in
+      if compressed then
+        match Vmm_compress.uncompress (Cstruct.to_string data) with
+        | Ok blob -> write blob
+        | Error () -> Logs.err (fun m -> m "failed to uncompress image")
+      else
+        write (Cstruct.to_string data)
+    in
     begin match s with
-      | `Unikernels vms ->
+      | `Unikernel_image (compressed, image) ->
+        let name = hdr.Vmm_commands.name in
+        write_to_file name compressed image
+      | `Old_unikernels vms ->
         List.iter (fun (name, cfg) ->
             if Cstruct.len cfg.Unikernel.image > 0 then
-              let filename =
-                let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
-                Fpath.(v (Filename.get_temp_dir_name ()) / Name.to_string name + ts)
-              in
-              let write data =
-                match Bos.OS.File.write filename data with
-                | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
-                | Error (`Msg msg) -> Logs.err (fun m -> m "failed to write image: %s" msg)
-              in
-              if cfg.Unikernel.compressed then
-                match Vmm_compress.uncompress (Cstruct.to_string cfg.Unikernel.image) with
-                | Ok blob -> write blob
-                | Error () -> Logs.err (fun m -> m "failed to uncompress unikernel image")
-              else
-                write (Cstruct.to_string cfg.Unikernel.image)) vms
+              write_to_file name cfg.Unikernel.compressed cfg.Unikernel.image)
+          vms
       | _ -> ()
     end;
     Ok ()

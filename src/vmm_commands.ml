@@ -62,6 +62,8 @@ type unikernel_cmd = [
   | `Unikernel_force_create of Unikernel.config
   | `Unikernel_destroy
   | `Unikernel_get
+  | `Old_unikernel_info
+  | `Old_unikernel_get
 ]
 
 let pp_unikernel_cmd ppf = function
@@ -70,6 +72,8 @@ let pp_unikernel_cmd ppf = function
   | `Unikernel_force_create config -> Fmt.pf ppf "vm force create %a" Unikernel.pp_config config
   | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
   | `Unikernel_get -> Fmt.string ppf "unikernel get"
+  | `Old_unikernel_info -> Fmt.string ppf "old unikernel info"
+  | `Old_unikernel_get -> Fmt.string ppf "old unikernel get"
 
 type policy_cmd = [
   | `Policy_info
@@ -134,7 +138,9 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Unikernels of (Name.t * Unikernel.config) list
+  | `Old_unikernels of (Name.t * Unikernel.config) list
+  | `Unikernel_info of (Name.t * Unikernel.info) list
+  | `Unikernel_image of bool * Cstruct.t
   | `Block_devices of (Name.t * int * bool) list
 ]
 
@@ -150,7 +156,9 @@ let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
   | `Policies ps -> my_fmt_list "no policies" Fmt.(pair ~sep:(unit ": ") Name.pp Policy.pp) ppf ps
-  | `Unikernels vms -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_config) ppf vms
+  | `Old_unikernels vms -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_config) ppf vms
+  | `Unikernel_info infos -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_info) ppf infos
+  | `Unikernel_image (compressed, image) -> Fmt.pf ppf "image (compression %B) %d bytes" compressed (Cstruct.len image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
 
 type res = [

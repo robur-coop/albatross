@@ -183,7 +183,7 @@ let handle_create t name vm_config =
   Logs.debug (fun m -> m "now checking resource policies") ;
   Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_unix.prepare name vm_config >>= fun taps ->
+  Vmm_unix.prepare name vm_config >>= fun (taps, digest) ->
   Logs.debug (fun m -> m "prepared vm with taps %a"
                  Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit " -> ") string string))
                  taps) ;
@@ -203,7 +203,7 @@ let handle_create t name vm_config =
       List.map (fun d -> d, Name.block_name name d)
         vm_config.Unikernel.block_devices
     in
-    Vmm_unix.exec name vm_config taps block_devices >>| fun vm ->
+    Vmm_unix.exec name vm_config taps block_devices digest >>| fun vm ->
     Logs.debug (fun m -> m "exec()ed vm") ;
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
@@ -261,8 +261,8 @@ let handle_policy_cmd t id = function
     Ok (t, `End (`Success (`Policies policies)))
 
 let handle_unikernel_cmd t id = function
-  | `Unikernel_info ->
-    Logs.debug (fun m -> m "info %a" Name.pp id) ;
+  | `Old_unikernel_info ->
+    Logs.debug (fun m -> m "old info %a" Name.pp id) ;
     let vms =
       Vmm_trie.fold id t.resources.Vmm_resources.unikernels
         (fun id vm vms ->
@@ -270,13 +270,31 @@ let handle_unikernel_cmd t id = function
            (id, cfg) :: vms)
         []
     in
-    Ok (t, `End (`Success (`Unikernels vms)))
+    Ok (t, `End (`Success (`Old_unikernels vms)))
+  | `Old_unikernel_get ->
+    Logs.debug (fun m -> m "old get %a" Name.pp id) ;
+    begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
+      | None -> Error (`Msg "get: no unikernel found")
+      | Some u ->
+        Ok (t, `End (`Success (`Old_unikernels [ (id, u.Unikernel.config) ])))
+    end
+  | `Unikernel_info ->
+    Logs.debug (fun m -> m "info %a" Name.pp id) ;
+    let infos =
+      Vmm_trie.fold id t.resources.Vmm_resources.unikernels
+        (fun id vm vms ->
+           (id, Unikernel.info vm) :: vms)
+        []
+    in
+    Ok (t, `End (`Success (`Unikernel_info infos)))
   | `Unikernel_get ->
     Logs.debug (fun m -> m "get %a" Name.pp id) ;
     begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
       | None -> Error (`Msg "get: no unikernel found")
       | Some u ->
-        Ok (t, `End (`Success (`Unikernels [ (id, u.Unikernel.config) ])))
+        let cfg = u.Unikernel.config in
+        let r = `Unikernel_image (cfg.Unikernel.compressed, cfg.Unikernel.image) in
+        Ok (t, `End (`Success r))
     end
   | `Unikernel_create vm_config -> Ok (t, `Create (id, vm_config))
   | `Unikernel_force_create vm_config ->

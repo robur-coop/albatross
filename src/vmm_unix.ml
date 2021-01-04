@@ -243,17 +243,18 @@ let bridges_exist bridges =
     (fun acc b -> acc >>= fun () -> bridge_exists (bridge_name b))
     (Ok ()) bridges
 
-let prepare name vm =
+let prepare name (vm : Unikernel.config) =
   (match vm.Unikernel.typ with
    | `Solo5 ->
      if vm.Unikernel.compressed then
        match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
-       | Ok blob -> Ok (Cstruct.of_string blob)
+       | Ok blob -> Ok blob
        | Error () -> Error (`Msg "failed to uncompress")
      else
-       Ok vm.Unikernel.image) >>= fun image ->
+       Ok (Cstruct.to_string vm.Unikernel.image)) >>= fun image ->
   let filename = Name.image_file name in
-  Bos.OS.File.write filename (Cstruct.to_string image) >>= fun () ->
+  Bos.OS.File.write filename image >>= fun () ->
+  let digest = Mirage_crypto.Hash.SHA256.digest (Cstruct.of_string image) in
   solo5_image_target filename >>= fun target ->
   check_solo5_cmd (solo5_tender target) >>= fun _ ->
   manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename >>= fun () ->
@@ -280,7 +281,7 @@ let prepare name vm =
       create_tap bridge >>= fun tap ->
       Ok ((fst arg, tap) :: acc))
     (Ok []) vm.Unikernel.bridges >>= fun taps ->
-  Ok (List.rev taps)
+  Ok (List.rev taps, digest)
 
 let vm_device vm =
   match Lazy.force uname with
@@ -299,7 +300,7 @@ let cpuset cpu =
   | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
-let exec name config bridge_taps blocks =
+let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let net, macs =
     List.split
       (List.map (fun (bridge, tap) ->
@@ -335,7 +336,7 @@ let exec name config bridge_taps blocks =
        process and don't really need it here anymore... *)
     close_no_err stdout ;
     let taps = snd (List.split bridge_taps) in
-    Ok Unikernel.{ config ; cmd ; pid ; taps }
+    Ok Unikernel.{ config ; cmd ; pid ; taps ; digest }
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;

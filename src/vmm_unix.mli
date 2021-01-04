@@ -15,10 +15,10 @@ val set_dbdir : Fpath.t -> unit
 val check_commands : unit -> (unit, [> R.msg ]) result
 
 val prepare : Name.t -> Unikernel.config ->
-  ((string * string) list, [> R.msg ]) result
+  ((string * string) list * Cstruct.t, [> R.msg ]) result
 
 val exec : Name.t -> Unikernel.config -> (string * string) list ->
-  (string * Name.t) list -> (Unikernel.t, [> R.msg ]) result
+  (string * Name.t) list -> Cstruct.t -> (Unikernel.t, [> R.msg ]) result
 
 val free_system_resources : Name.t -> string list -> (unit, [> R.msg ]) result
 

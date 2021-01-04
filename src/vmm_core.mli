@@ -97,9 +97,26 @@ module Unikernel : sig
     cmd : Bos.Cmd.t;
     pid : int;
     taps : string list;
+    digest : Cstruct.t;
   }
 
   val pp : t Fmt.t
+
+  type info = {
+    typ : typ ;
+    fail_behaviour : fail_behaviour;
+    cpuid : int ;
+    memory : int ;
+    block_devices : string list ;
+    bridges : (string * string option) list ;
+    argv : string list option ;
+    digest : Cstruct.t ;
+  }
+
+  val info : t -> info
+
+  val pp_info : info Fmt.t
+
 end
 
 module Stats : sig

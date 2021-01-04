@@ -273,21 +273,23 @@ let stats_cmd =
            (my_explicit 1 ~label:"remove" null)
            (my_explicit 2 ~label:"subscribe" null))
 
-let of_name, to_name =
-  Name.to_list,
-  fun list -> match Name.of_list list with
+let name =
+  let f list =
+    match Name.of_list list with
     | Error (`Msg msg) -> Asn.S.error (`Parse msg)
     | Ok name -> name
+  and g = Name.to_list
+  in
+  Asn.S.(map f g (sequence_of utf8_string))
 
 let log_event =
   (* this is stored on disk persistently -- be aware when changing the grammar
      below to only ever extend it! *)
   let f = function
     | `C1 `C1 () -> `Startup
-    | `C1 `C2 (name, ip, port) -> `Login (to_name name, ip, port)
-    | `C1 `C3 (name, ip, port) -> `Logout (to_name name, ip, port)
+    | `C1 `C2 (name, ip, port) -> `Login (name, ip, port)
+    | `C1 `C3 (name, ip, port) -> `Logout (name, ip, port)
     | `C1 `C4 (name, pid, taps, block) ->
-      let name = to_name name in
       let blocks = match block with
         | None -> []
         | Some block -> [ block, Name.block_name name block ]
@@ -300,37 +302,37 @@ let log_event =
           | Error `Msg msg -> Asn.S.error (`Parse msg)
           | Ok id -> id) blocks
       in
-      `Unikernel_start (to_name name, pid, taps, blocks)
+      `Unikernel_start (name, pid, taps, blocks)
     | `C1 `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
         | `C2 n -> `Signal n
         | `C3 n -> `Stop n
       in
-      `Unikernel_stop (to_name name, pid, status')
+      `Unikernel_stop (name, pid, status')
     | `C1 `C6 () -> `Hup
     | `C2 `C2 () -> assert false (* placeholder *)
   and g = function
     | `Startup -> `C1 (`C1 ())
-    | `Login (name, ip, port) -> `C1 (`C2 (of_name name, ip, port))
-    | `Logout (name, ip, port) -> `C1 (`C3 (of_name name, ip, port))
+    | `Login (name, ip, port) -> `C1 (`C2 (name, ip, port))
+    | `Logout (name, ip, port) -> `C1 (`C3 (name, ip, port))
     | `Unikernel_start (name, pid, taps, blocks) ->
       let blocks =
         List.map (fun (name, dev) -> name, Name.to_string dev) blocks
       in
-      `C2 (`C1 (of_name name, pid, taps, blocks))
+      `C2 (`C1 (name, pid, taps, blocks))
     | `Unikernel_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
         | `Signal n -> `C2 n
         | `Stop n -> `C3 n
       in
-      `C1 (`C5 (of_name name, pid, status'))
+      `C1 (`C5 (name, pid, status'))
     | `Hup -> `C1 (`C6 ())
   in
   let endp =
     Asn.S.(sequence3
-            (required ~label:"name" (sequence_of utf8_string))
+            (required ~label:"name" name)
             (required ~label:"ip" ipv4)
             (required ~label:"port" int))
   in
@@ -343,13 +345,13 @@ let log_event =
               (* the old V3 unikernel start *)
               (my_explicit 3 ~label:"unikernel-start-OLD"
                  (sequence4
-                    (required ~label:"name" (sequence_of utf8_string))
+                    (required ~label:"name" name)
                     (required ~label:"pid" int)
                     (required ~label:"taps" (sequence_of utf8_string))
                     (optional ~label:"block" utf8_string)))
               (my_explicit 4 ~label:"unikernel-stop"
                  (sequence3
-                    (required ~label:"name" (sequence_of utf8_string))
+                    (required ~label:"name" name)
                     (required ~label:"pid" int)
                     (required ~label:"status"
                        (choice3
@@ -361,7 +363,7 @@ let log_event =
               (* the new V4 unikernel start*)
               (my_explicit 6 ~label:"unikernel-start"
                  (sequence4
-                    (required ~label:"name" (sequence_of utf8_string))
+                    (required ~label:"name" name)
                     (required ~label:"pid" int)
                     (required ~label:"taps"
                        (sequence_of
@@ -493,7 +495,7 @@ let unikernel_config =
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g vm =
+  and g (vm : config) =
     let bridges = match vm.bridges with [] -> None | xs -> Some xs
     and blocks = match vm.block_devices with [] -> None | xs -> Some xs
     in
@@ -516,33 +518,37 @@ let unikernel_config =
 
 let unikernel_cmd =
   let f = function
-    | `C1 `C1 () -> `Unikernel_info
+    | `C1 `C1 () -> `Old_unikernel_info
     | `C1 `C2 vm -> `Unikernel_create vm
     | `C1 `C3 vm -> `Unikernel_force_create vm
     | `C1 `C4 () -> `Unikernel_destroy
     | `C1 `C5 vm -> `Unikernel_create vm
     | `C1 `C6 vm -> `Unikernel_force_create vm
-    | `C2 `C1 () -> `Unikernel_get
-    | `C2 `C2 () -> assert false (* placeholder *)
+    | `C2 `C1 () -> `Old_unikernel_get
+    | `C2 `C2 () -> `Unikernel_info
+    | `C2 `C3 () -> `Unikernel_get
   and g = function
-    | `Unikernel_info -> `C1 (`C1 ())
+    | `Old_unikernel_info -> `C1 (`C1 ())
     | `Unikernel_create vm -> `C1 (`C5 vm)
     | `Unikernel_force_create vm -> `C1 (`C6 vm)
     | `Unikernel_destroy -> `C1 (`C4 ())
-    | `Unikernel_get -> `C2 (`C1 ())
+    | `Old_unikernel_get -> `C2 (`C1 ())
+    | `Unikernel_info -> `C2 (`C2 ())
+    | `Unikernel_get -> `C2 (`C3 ())
   in
   Asn.S.map f g @@
   Asn.S.(choice2
           (choice6
-             (my_explicit 0 ~label:"info" null)
+             (my_explicit 0 ~label:"info-OLD" null)
              (my_explicit 1 ~label:"create-OLD" v1_unikernel_config)
              (my_explicit 2 ~label:"force-create-OLD" v1_unikernel_config)
              (my_explicit 3 ~label:"destroy" null)
              (my_explicit 4 ~label:"create" unikernel_config)
              (my_explicit 5 ~label:"force-create" unikernel_config))
-          (choice2
-             (my_explicit 6 ~label:"get" null)
-             (my_explicit 7 ~label:"placeholder" null (* placeholder *) )))
+          (choice3
+             (my_explicit 6 ~label:"get-OLD" null)
+             (my_explicit 7 ~label:"info" null)
+             (my_explicit 8 ~label:"get" null)))
 
 let policy_cmd =
   let f = function
@@ -642,50 +648,94 @@ let data =
                  (required ~label:"timestamp" utc_time)
                  (required ~label:"event" log_event))))
 
+let unikernel_info =
+  let open Unikernel in
+  let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, argv))))))) =
+    let bridges = match bridges with None -> [] | Some xs -> xs
+    and block_devices = match blocks with None -> [] | Some xs -> xs
+    in
+    { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest }
+  and g (vm : info) =
+    let bridges = match vm.bridges with [] -> None | xs -> Some xs
+    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
+    in
+    (vm.typ, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (vm.digest, (blocks, (bridges, vm.argv)))))))
+  in
+  Asn.S.(map f g @@ sequence @@
+           (required ~label:"typ" typ)
+         @ (required ~label:"fail-behaviour" fail_behaviour)
+         @ (required ~label:"cpuid" int)
+         @ (required ~label:"memory" int)
+         @ (required ~label:"digest" octet_string)
+         @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
+         @ (optional ~label:"bridges"
+              (my_explicit 1 (sequence_of
+                             (sequence2
+                                (required ~label:"netif" utf8_string)
+                                (optional ~label:"bridge" utf8_string)))))
+        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+
 let header =
-  let f (version, sequence, name) = { version ; sequence ; name = to_name name }
-  and g h = h.version, h.sequence, of_name h.name
+  let f (version, sequence, name) = { version ; sequence ; name }
+  and g { version ; sequence ; name } = version, sequence, name
   in
   Asn.S.map f g @@
   Asn.S.(sequence3
            (required ~label:"version" version)
            (required ~label:"sequence" int64)
-           (required ~label:"name" (sequence_of utf8_string)))
+           (required ~label:"name" name))
 
 let success =
   let f = function
-    | `C1 () -> `Empty
-    | `C2 str -> `String str
-    | `C3 policies -> `Policies (List.map (fun (name, p) -> to_name name, p) policies)
-    | `C4 vms -> `Unikernels (List.map (fun (name, vm) -> to_name name, vm) vms)
-    | `C5 blocks -> `Block_devices (List.map (fun (name, s, a) -> to_name name, s, a) blocks)
+    | `C1 `C1 () -> `Empty
+    | `C1 `C2 str -> `String str
+    | `C1 `C3 policies -> `Policies policies
+    | `C1 `C4 vms -> `Old_unikernels vms
+    | `C1 `C5 blocks -> `Block_devices blocks
+    | `C1 `C6 vms -> `Unikernel_info vms
+    | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
+    | `C2 `C2 () -> assert false (* placeholder *)
   and g = function
-    | `Empty -> `C1 ()
-    | `String s -> `C2 s
-    | `Policies ps -> `C3 (List.map (fun (name, p) -> of_name name, p) ps)
-    | `Unikernels vms -> `C4 (List.map (fun (name, v) -> of_name name, v) vms)
-    | `Block_devices blocks -> `C5 (List.map (fun (name, s, a) -> of_name name, s, a) blocks)
+    | `Empty -> `C1 (`C1 ())
+    | `String s -> `C1 (`C2 s)
+    | `Policies ps -> `C1 (`C3 ps)
+    | `Old_unikernels vms -> `C1 (`C4 vms)
+    | `Block_devices blocks -> `C1 (`C5 blocks)
+    | `Unikernel_info vms -> `C1 (`C6 vms)
+    | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
-           (my_explicit 0 ~label:"empty" null)
-           (my_explicit 1 ~label:"string" utf8_string)
-           (my_explicit 2 ~label:"policies"
-              (sequence_of
-                 (sequence2
-                    (required ~label:"name" (sequence_of utf8_string))
-                    (required ~label:"policy" policy))))
-           (my_explicit 3 ~label:"unikernels"
-              (sequence_of
-                 (sequence2
-                    (required ~label:"name" (sequence_of utf8_string))
-                    (required ~label:"config" unikernel_config))))
-           (my_explicit 4 ~label:"block-devices"
-              (sequence_of
-                 (sequence3
-                    (required ~label:"name" (sequence_of utf8_string))
-                    (required ~label:"size" int)
-                    (required ~label:"active" bool)))))
+  Asn.S.(choice2
+          (choice6
+             (my_explicit 0 ~label:"empty" null)
+             (my_explicit 1 ~label:"string" utf8_string)
+             (my_explicit 2 ~label:"policies"
+                (sequence_of
+                   (sequence2
+                      (required ~label:"name" name)
+                      (required ~label:"policy" policy))))
+             (my_explicit 3 ~label:"unikernels-OLD"
+                (sequence_of
+                   (sequence2
+                      (required ~label:"name" name)
+                      (required ~label:"config" unikernel_config))))
+             (my_explicit 4 ~label:"block-devices"
+                (sequence_of
+                   (sequence3
+                      (required ~label:"name" name)
+                      (required ~label:"size" int)
+                      (required ~label:"active" bool))))
+             (my_explicit 5 ~label:"unikernel-info"
+                (sequence_of
+                   (sequence2
+                      (required ~label:"name" name)
+                      (required ~label:"info" unikernel_info)))))
+          (choice2
+             (my_explicit 6 ~label:"unikernel-image"
+                (sequence2
+                   (required ~label:"compressed" bool)
+                   (required ~label:"image" octet_string)))
+             (my_explicit 7 ~label:"placeholder" null)))
 
 let payload =
   let f = function
