@@ -21,6 +21,8 @@
 
 . /etc/rc.subr
 
+export PATH=$PATH:/usr/local/sbin:/usr/local/bin
+
 name=albatross_daemon
 rcvar=${name}_enable
 desc="Albatross service"
