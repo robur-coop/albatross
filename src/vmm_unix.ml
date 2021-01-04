@@ -224,7 +224,9 @@ let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
 
 let manifest_devices_match ~bridges ~block_devices image_file =
   solo5_image_devices image_file >>=
-  let bridges = List.map fst bridges in
+  let bridges = List.map fst bridges
+  and block_devices = List.map fst block_devices
+  in
   devices_match ~bridges ~block_devices
 
 let bridge_name (service, b) = match b with None -> service | Some b -> b

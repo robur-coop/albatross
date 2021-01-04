@@ -200,7 +200,8 @@ let handle_create t name vm_config =
            below needs to be called *)
     Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
     let block_devices =
-      List.map (fun d -> d, Name.block_name name d)
+      List.map (fun (n, device) ->
+          n, Name.block_name name (match device with None -> n | Some a -> a))
         vm_config.Unikernel.block_devices
     in
     Vmm_unix.exec name vm_config taps block_devices digest >>| fun vm ->

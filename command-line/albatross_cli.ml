@@ -261,21 +261,21 @@ let args =
   let doc = "Boot arguments" in
   Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
 
-let block =
-  let doc = "Block device name" in
-  Arg.(value & opt_all string [] & info [ "block" ] ~doc)
-
-let srv_bridge_c =
+let colon_separated_c =
   let parse s = match Astring.String.cut ~sep:":" s with
     | None -> `Ok (s, None)
-    | Some (srv, bri) -> `Ok (srv, Some bri)
+    | Some (a, b) -> `Ok (a, Some b)
   in
-  (parse, fun ppf (srv, bri) -> Fmt.pf ppf "%s:%s" srv
-       (match bri with None -> srv | Some bri -> bri))
+  (parse, fun ppf (a, b) -> Fmt.pf ppf "%s:%s" a
+       (match b with None -> a | Some b -> b))
+
+let block =
+  let doc = "Block device name (block or name:block-device-name)" in
+  Arg.(value & opt_all colon_separated_c [] & info [ "block" ] ~doc)
 
 let net =
   let doc = "Network device names (bridge or name:bridge)" in
-  Arg.(value & opt_all srv_bridge_c [] & info [ "net" ] ~doc)
+  Arg.(value & opt_all colon_separated_c [] & info [ "net" ] ~doc)
 
 let restart_on_fail =
   let doc = "Restart on fail" in

@@ -447,7 +447,7 @@ let v0_unikernel_config =
   let open Unikernel in
   let f (cpuid, memory, block_device, network_interfaces, image, argv) =
     let bridges = match network_interfaces with None -> [] | Some xs -> List.map (fun n -> n, None) xs
-    and block_devices = match block_device with None -> [] | Some b -> [ b ]
+    and block_devices = match block_device with None -> [] | Some b -> [ (b, None) ]
     in
     let typ = `Solo5
     and compressed = match fst image with `Hvt_amd64_compressed -> true | _ -> false
@@ -472,7 +472,7 @@ let v1_unikernel_config =
   let open Unikernel in
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
     let bridges = match bridges with None -> [] | Some xs -> List.map (fun b -> b, None) xs
-    and block_devices = match blocks with None -> [] | Some xs -> xs
+    and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None) xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g _vm = failwith "cannot encode v1 unikernel configs"
@@ -486,6 +486,36 @@ let v1_unikernel_config =
          @ (required ~label:"memory" int)
          @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
          @ (optional ~label:"bridges" (my_explicit 1 (set_of utf8_string)))
+        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+
+let v2_unikernel_config =
+  let open Unikernel in
+  let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
+    let bridges = match bridges with None -> [] | Some xs -> xs
+    and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None) xs
+    in
+    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+  and g (vm : config) =
+    let bridges = match vm.bridges with [] -> None | xs -> Some xs
+    and blocks = match vm.block_devices with
+      | [] -> None
+      | xs -> Some (List.map (fun (a, b) -> match b with None -> a | Some b -> b) xs)
+    in
+    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
+  in
+  Asn.S.(map f g @@ sequence @@
+           (required ~label:"typ" typ)
+         @ (required ~label:"compressed" bool)
+         @ (required ~label:"image" octet_string)
+         @ (required ~label:"fail-behaviour" fail_behaviour)
+         @ (required ~label:"cpuid" int)
+         @ (required ~label:"memory" int)
+         @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
+         @ (optional ~label:"bridges"
+              (my_explicit 1 (sequence_of
+                             (sequence2
+                                (required ~label:"netif" utf8_string)
+                                (optional ~label:"bridge" utf8_string)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
 let unikernel_config =
@@ -508,9 +538,13 @@ let unikernel_config =
          @ (required ~label:"fail-behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
-         @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
+         @ (optional ~label:"blocks"
+              (my_explicit 0 (set_of
+                                (sequence2
+                                   (required ~label:"block-name" utf8_string)
+                                   (optional ~label:"block-device-name" utf8_string)))))
          @ (optional ~label:"bridges"
-              (my_explicit 1 (sequence_of
+              (my_explicit 1 (set_of
                              (sequence2
                                 (required ~label:"netif" utf8_string)
                                 (optional ~label:"bridge" utf8_string)))))
@@ -527,10 +561,12 @@ let unikernel_cmd =
     | `C2 `C1 () -> `Old_unikernel_get
     | `C2 `C2 () -> `Unikernel_info
     | `C2 `C3 () -> `Unikernel_get
+    | `C2 `C4 vm -> `Unikernel_create vm
+    | `C2 `C5 vm -> `Unikernel_force_create vm
   and g = function
     | `Old_unikernel_info -> `C1 (`C1 ())
-    | `Unikernel_create vm -> `C1 (`C5 vm)
-    | `Unikernel_force_create vm -> `C1 (`C6 vm)
+    | `Unikernel_create vm -> `C2 (`C4 vm)
+    | `Unikernel_force_create vm -> `C2 (`C5 vm)
     | `Unikernel_destroy -> `C1 (`C4 ())
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Unikernel_info -> `C2 (`C2 ())
@@ -540,15 +576,17 @@ let unikernel_cmd =
   Asn.S.(choice2
           (choice6
              (my_explicit 0 ~label:"info-OLD" null)
-             (my_explicit 1 ~label:"create-OLD" v1_unikernel_config)
-             (my_explicit 2 ~label:"force-create-OLD" v1_unikernel_config)
+             (my_explicit 1 ~label:"create-OLD1" v1_unikernel_config)
+             (my_explicit 2 ~label:"force-create-OLD1" v1_unikernel_config)
              (my_explicit 3 ~label:"destroy" null)
-             (my_explicit 4 ~label:"create" unikernel_config)
-             (my_explicit 5 ~label:"force-create" unikernel_config))
-          (choice3
+             (my_explicit 4 ~label:"create-OLD2" v2_unikernel_config)
+             (my_explicit 5 ~label:"force-create-OLD2" v2_unikernel_config))
+          (choice5
              (my_explicit 6 ~label:"get-OLD" null)
              (my_explicit 7 ~label:"info" null)
-             (my_explicit 8 ~label:"get" null)))
+             (my_explicit 8 ~label:"get" null)
+             (my_explicit 9 ~label:"create" unikernel_config)
+             (my_explicit 10 ~label:"force-create" unikernel_config)))
 
 let policy_cmd =
   let f = function
@@ -667,12 +705,16 @@ let unikernel_info =
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
          @ (required ~label:"digest" octet_string)
-         @ (optional ~label:"blocks" (my_explicit 0 (set_of utf8_string)))
+         @ (optional ~label:"blocks"
+              (my_explicit 0 (set_of
+                                (sequence2
+                                   (required ~label:"block-name" utf8_string)
+                                   (optional ~label:"block-device-name" utf8_string)))))
          @ (optional ~label:"bridges"
-              (my_explicit 1 (sequence_of
-                             (sequence2
-                                (required ~label:"netif" utf8_string)
-                                (optional ~label:"bridge" utf8_string)))))
+              (my_explicit 1 (set_of
+                                (sequence2
+                                   (required ~label:"net-name" utf8_string)
+                                   (optional ~label:"bridge-name" utf8_string)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
 let header =
@@ -718,7 +760,7 @@ let success =
                 (sequence_of
                    (sequence2
                       (required ~label:"name" name)
-                      (required ~label:"config" unikernel_config))))
+                      (required ~label:"config" v2_unikernel_config))))
              (my_explicit 4 ~label:"block-devices"
                 (sequence_of
                    (sequence3
@@ -823,7 +865,9 @@ let version0_unikernels = trie v0_unikernel_config
 
 let version1_unikernels = trie v1_unikernel_config
 
-let version2_unikernels = trie unikernel_config
+let version2_unikernels = trie v2_unikernel_config
+
+let version3_unikernels = trie unikernel_config
 
 let unikernels =
   (* the choice is the implicit version + migration... be aware when
@@ -832,14 +876,16 @@ let unikernels =
     | `C1 data -> data
     | `C2 data -> data
     | `C3 data -> data
+    | `C4 data -> data
   and g data =
-    `C3 data
+    `C4 data
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice4
            (my_explicit 0 ~label:"unikernel-OLD1" version1_unikernels)
            (my_explicit 1 ~label:"unikernel-OLD0" version0_unikernels)
-           (my_explicit 2 ~label:"unikernel" version2_unikernels))
+           (my_explicit 2 ~label:"unikernel-OLD2" version2_unikernels)
+           (my_explicit 3 ~label:"unikernel-OLD2" version3_unikernels))
 
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
 

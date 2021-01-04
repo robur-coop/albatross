@@ -206,7 +206,7 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : string list ;
+    block_devices : (string * string option) list ;
     bridges : (string * string option) list ;
     argv : string list option ;
   }
@@ -216,6 +216,12 @@ module Unikernel = struct
       (fun (net, bri) -> match bri with None -> net | Some s -> s)
       vm.bridges
 
+  let pp_opt_list ppf xs =
+    Fmt.(list ~sep:(unit ", ")
+           (pair ~sep:(unit " -> ") string string))
+      ppf
+      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) xs)
+
   let pp_config ppf (vm : config) =
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a"
       pp_typ vm.typ
@@ -223,10 +229,8 @@ module Unikernel = struct
       (Cstruct.len vm.image)
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
-      Fmt.(list ~sep:(unit ", ") string) vm.block_devices
-      Fmt.(list ~sep:(unit ", ")
-             (pair ~sep:(unit " -> ") string string))
-      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) vm.bridges)
+      pp_opt_list vm.block_devices
+      pp_opt_list vm.bridges
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
   let restart_handler config =
@@ -245,7 +249,7 @@ module Unikernel = struct
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       vm.pid
       Fmt.(list ~sep:(unit ", ") string) vm.taps
-      Fmt.(list ~sep:(unit ", ") string) vm.config.block_devices
+      pp_opt_list vm.config.block_devices
       Bos.Cmd.pp vm.cmd
       hex_digest
 
@@ -254,7 +258,7 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : string list ;
+    block_devices : (string * string option) list ;
     bridges : (string * string option) list ;
     argv : string list option ;
     digest : Cstruct.t ;
@@ -272,10 +276,8 @@ module Unikernel = struct
       pp_typ info.typ
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
-      Fmt.(list ~sep:(unit ", ") string) info.block_devices
-      Fmt.(list ~sep:(unit ", ")
-             (pair ~sep:(unit " -> ") string string))
-      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) info.bridges)
+      pp_opt_list info.block_devices
+      pp_opt_list info.bridges
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) info.argv
       hex_digest
 end
