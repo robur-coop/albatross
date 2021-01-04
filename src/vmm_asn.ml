@@ -295,14 +295,14 @@ let log_event =
         | Some block -> [ block, Name.block_name name block ]
       and taps = List.map (fun tap -> tap, tap) taps
       in
-      `Unikernel_start (name, pid, taps, blocks)
+      `Unikernel_start (name, Cstruct.empty, pid, taps, blocks)
     | `C2 `C1 (name, pid, taps, blocks) ->
       let blocks = List.map (fun (name, dev) ->
           name, match Name.of_string dev with
           | Error `Msg msg -> Asn.S.error (`Parse msg)
           | Ok id -> id) blocks
       in
-      `Unikernel_start (name, pid, taps, blocks)
+      `Unikernel_start (name, Cstruct.empty, pid, taps, blocks)
     | `C1 `C5 (name, pid, status) ->
       let status' = match status with
         | `C1 n -> `Exit n
@@ -311,16 +311,14 @@ let log_event =
       in
       `Unikernel_stop (name, pid, status')
     | `C1 `C6 () -> `Hup
-    | `C2 `C2 () -> assert false (* placeholder *)
+    | `C2 `C2 (name, digest, pid, taps, blocks) ->
+      `Unikernel_start (name, digest, pid, taps, blocks)
   and g = function
     | `Startup -> `C1 (`C1 ())
     | `Login (name, ip, port) -> `C1 (`C2 (name, ip, port))
     | `Logout (name, ip, port) -> `C1 (`C3 (name, ip, port))
-    | `Unikernel_start (name, pid, taps, blocks) ->
-      let blocks =
-        List.map (fun (name, dev) -> name, Name.to_string dev) blocks
-      in
-      `C2 (`C1 (name, pid, taps, blocks))
+    | `Unikernel_start (name, digest, pid, taps, blocks) ->
+      `C2 (`C2 (name, digest, pid, taps, blocks))
     | `Unikernel_stop (name, pid, status) ->
       let status' = match status with
         | `Exit n -> `C1 n
@@ -342,8 +340,8 @@ let log_event =
               (my_explicit 0 ~label:"startup" null)
               (my_explicit 1 ~label:"login" endp)
               (my_explicit 2 ~label:"logout" endp)
-              (* the old V3 unikernel start *)
-              (my_explicit 3 ~label:"unikernel-start-OLD"
+              (* old unikernel start *)
+              (my_explicit 3 ~label:"unikernel-start-OLD0"
                  (sequence4
                     (required ~label:"name" name)
                     (required ~label:"pid" int)
@@ -360,8 +358,8 @@ let log_event =
                           (my_explicit 2 ~label:"stopped" int)))))
               (my_explicit 5 ~label:"hup" null))
            (choice2
-              (* the new V4 unikernel start*)
-              (my_explicit 6 ~label:"unikernel-start"
+              (* old unikernel start*)
+              (my_explicit 6 ~label:"unikernel-start-OLD1"
                  (sequence4
                     (required ~label:"name" name)
                     (required ~label:"pid" int)
@@ -375,7 +373,21 @@ let log_event =
                           (sequence2
                              (required ~label:"name" utf8_string)
                              (required ~label:"device" utf8_string))))))
-              (my_explicit 7 ~label:"placeholder" null (* placeholder *) )))
+              (my_explicit 7 ~label:"unikernel-start"
+                 (sequence5
+                    (required ~label:"name" name)
+                    (required ~label:"digest" octet_string)
+                    (required ~label:"pid" int)
+                    (required ~label:"taps"
+                       (sequence_of
+                          (sequence2
+                             (required ~label:"bridge" utf8_string)
+                             (required ~label:"tap" utf8_string))))
+                    (required ~label:"blocks"
+                       (sequence_of
+                          (sequence2
+                             (required ~label:"name" utf8_string)
+                             (required ~label:"device" name))))))))
 
 
 let log_cmd =

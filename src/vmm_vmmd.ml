@@ -211,7 +211,7 @@ let handle_create t name vm_config =
     dump_unikernels t ;
     let t, log_out =
       let start =
-        `Unikernel_start (name, vm.Unikernel.pid, taps, block_devices)
+        `Unikernel_start (name, vm.Unikernel.digest, vm.Unikernel.pid, taps, block_devices)
       in
       log t name start
     in

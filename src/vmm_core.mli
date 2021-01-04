@@ -195,7 +195,7 @@ module Log : sig
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Unikernel_start of Name.t * int * (string * string) list * (string * Name.t) list
+    | `Unikernel_start of Name.t * Cstruct.t * int * (string * string) list * (string * Name.t) list
     | `Unikernel_stop of Name.t * int * process_exit
     | `Hup
   ]

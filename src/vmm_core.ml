@@ -450,7 +450,7 @@ module Log = struct
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Unikernel_start of Name.t * int * (string * string) list * (string * Name.t) list
+    | `Unikernel_start of Name.t * Cstruct.t * int * (string * string) list * (string * Name.t) list
     | `Unikernel_stop of Name.t * int * process_exit
     | `Hup
   ]
@@ -459,7 +459,7 @@ module Log = struct
     | `Startup -> []
     | `Login (name, _, _) -> name
     | `Logout (name, _, _) -> name
-    | `Unikernel_start (name, _, _ ,_) -> name
+    | `Unikernel_start (name, _, _, _ ,_) -> name
     | `Unikernel_stop (name, _, _) -> name
     | `Hup -> []
 
@@ -467,9 +467,11 @@ module Log = struct
     | `Startup -> Fmt.string ppf "startup"
     | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp ip port
     | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp ip port
-    | `Unikernel_start (name, pid, taps, blocks) ->
-      Fmt.pf ppf "%a started %d (taps %a, block %a)"
-        Name.pp name pid Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string string)) taps
+    | `Unikernel_start (name, digest, pid, taps, blocks) ->
+      let `Hex hex_digest = Hex.of_cstruct digest in
+      Fmt.pf ppf "%a (digest: %s) started %d (taps %a, block %a)"
+        Name.pp name hex_digest
+        pid Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string string)) taps
         Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string Name.pp)) blocks
     | `Unikernel_stop (name, pid, code) ->
       Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code
