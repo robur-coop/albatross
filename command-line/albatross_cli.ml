@@ -346,7 +346,7 @@ let enable_stats =
 
 let retry_connections =
   let doc = "Number of retries when connecting to other daemons (log, console, stats etc). 0 aborts after one failure, -1 is unlimited retries." in
-  Arg.(value & opt int 0 & info [ "retry-connections" ] ~doc)
+  Arg.(value & opt int 2 & info [ "retry-connections" ] ~doc)
 
 let systemd_socket_activation =
   match Lazy.force Vmm_unix.uname with

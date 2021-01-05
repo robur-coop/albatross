@@ -152,9 +152,9 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
          Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX path) >>= function
          | Some x -> Lwt.return x
          | None when (retries <> 0) ->
-           Logs.err (fun m -> m "unable to connect to %a, retrying in 5 seconds"
+           Logs.err (fun m -> m "unable to connect to %a, retrying in 3 seconds"
                         pp_socket s);
-           Lwt_unix.sleep 5.0 >>= fun () ->
+           Lwt_unix.sleep 3.0 >>= fun () ->
            unix_connect ~retries:(retries - 1) s
          | None -> Lwt.fail_with (Fmt.strf "cannot connect to %a" pp_socket s)
        in
