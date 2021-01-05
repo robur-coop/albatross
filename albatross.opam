@@ -25,6 +25,7 @@ depends: [
   "jsonm"
   "x509" {>= "0.11.0"}
   "tls" {>= "0.12.2"}
+  "mirage-crypto"
   "mirage-crypto-pk"
   "mirage-crypto-rng" {>= "0.8.0"}
   "asn1-combinators" {>= "0.2.0"}
@@ -34,6 +35,7 @@ depends: [
   "metrics" {>= "0.2.0"}
   "metrics-lwt" {>= "0.2.0"}
   "metrics-influx" {>= "0.2.0"}
+  "hex"
 ]
 build: [
   ["dune" "subst"] {pinned}

@@ -58,6 +58,6 @@ let port =
 
 let cmd =
   Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir),
-  Term.info "albatross_tls_endpoint" ~version
+  Term.info "albatross-tls-endpoint" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

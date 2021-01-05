@@ -304,7 +304,7 @@ let cmd =
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
   Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir)),
-  Term.info "albatross_influx" ~version ~doc ~man
+  Term.info "albatross-influx" ~version ~doc ~man
 
 let () =
   match Term.eval cmd

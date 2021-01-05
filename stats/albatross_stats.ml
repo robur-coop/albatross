@@ -91,6 +91,6 @@ let interval =
 
 let cmd =
   Term.(term_result (const jump $ setup_log $ systemd_socket_activation $ interval $ influx $ tmpdir)),
-  Term.info "albatross_stats" ~version
+  Term.info "albatross-stats" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -311,7 +311,7 @@ let default_cmd =
     `P "$(tname) executes the provided subcommand on a remote albatross" ]
   in
   Term.(ret (const help $ setup_log $ destination $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_client_bistro" ~version ~doc ~man ~exits
+  Term.info "albatross-client-bistro" ~version ~doc ~man ~exits
 
 let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

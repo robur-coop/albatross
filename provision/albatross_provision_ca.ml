@@ -157,7 +157,7 @@ let default_cmd =
     `P "$(tname) does CA operations (creation, sign, etc.)" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_provision_ca" ~version ~doc ~man
+  Term.info "albatross-provision-ca" ~version ~doc ~man
 
 let cmds = [ help_cmd ; sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)]
 

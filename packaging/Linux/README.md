@@ -6,8 +6,7 @@ If you modify `Vmm_core.socket_path` you must modify the corresponding `.socket`
 
 1) You need to build the `albatross` tooling in this repository
 2) To run unikernels, you need to build and install solo5-elftool and at least one of the tenders: solo5-hvt and solo5-spt. They can be installed somewhere in PATH or in /var/lib/albatross/.
-2) You need to build a binary with one of the tenders (solo5-hvt, solo5-spt) to deploy.
 3) See [`install.sh`](./install.sh) for commands required to deploy it.
 4) `sudo journalctl -fu albatross'*'.service`
 5) ideally, once the services are up and running, you would be able to issue this command to deploy a unikernel:
-   `sudo albatross-client-local helloworld /path/to/hello_world.spt`
+   `sudo albatross-client-local create helloworld /path/to/hello_world.spt`

@@ -15,10 +15,10 @@ val set_dbdir : Fpath.t -> unit
 val check_commands : unit -> (unit, [> R.msg ]) result
 
 val prepare : Name.t -> Unikernel.config ->
-  ((string * string) list, [> R.msg ]) result
+  ((string * string) list * Cstruct.t, [> R.msg ]) result
 
 val exec : Name.t -> Unikernel.config -> (string * string) list ->
-  (string * Name.t) list -> (Unikernel.t, [> R.msg ]) result
+  (string * Name.t) list -> Cstruct.t -> (Unikernel.t, [> R.msg ]) result
 
 val free_system_resources : Name.t -> string list -> (unit, [> R.msg ]) result
 
@@ -39,4 +39,5 @@ val restore : ?name:string -> unit -> (Cstruct.t, [> R.msg | `NoFile ]) result
 val vm_device : Unikernel.t -> (string, [> R.msg ]) result
 
 val manifest_devices_match : bridges:(string * string option) list ->
-  block_devices:string list -> Fpath.t -> (unit, [> R.msg]) result
+  block_devices:(string * string option) list -> Fpath.t ->
+  (unit, [> R.msg]) result

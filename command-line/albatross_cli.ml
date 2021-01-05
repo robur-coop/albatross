@@ -58,29 +58,36 @@ type exit_status =
   | Cli_failed
   | Internal_error
 
-let output_result ((_, reply) as wire) =
+let output_result ((hdr, reply) as wire) =
   match reply with
   | `Success s ->
     Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    let write_to_file name compressed data =
+      let filename =
+        let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
+        Fpath.(v (Filename.get_temp_dir_name ()) / Name.to_string name + ts)
+      in
+      let write data =
+        match Bos.OS.File.write filename data with
+        | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
+        | Error (`Msg e) -> Logs.err (fun m -> m "failed to write image: %s" e)
+      in
+      if compressed then
+        match Vmm_compress.uncompress (Cstruct.to_string data) with
+        | Ok blob -> write blob
+        | Error () -> Logs.err (fun m -> m "failed to uncompress image")
+      else
+        write (Cstruct.to_string data)
+    in
     begin match s with
-      | `Unikernels vms ->
+      | `Unikernel_image (compressed, image) ->
+        let name = hdr.Vmm_commands.name in
+        write_to_file name compressed image
+      | `Old_unikernels vms ->
         List.iter (fun (name, cfg) ->
             if Cstruct.len cfg.Unikernel.image > 0 then
-              let filename =
-                let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
-                Fpath.(v (Filename.get_temp_dir_name ()) / Name.to_string name + ts)
-              in
-              let write data =
-                match Bos.OS.File.write filename data with
-                | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
-                | Error (`Msg msg) -> Logs.err (fun m -> m "failed to write image: %s" msg)
-              in
-              if cfg.Unikernel.compressed then
-                match Vmm_compress.uncompress (Cstruct.to_string cfg.Unikernel.image) with
-                | Ok blob -> write blob
-                | Error () -> Logs.err (fun m -> m "failed to uncompress unikernel image")
-              else
-                write (Cstruct.to_string cfg.Unikernel.image)) vms
+              write_to_file name cfg.Unikernel.compressed cfg.Unikernel.image)
+          vms
       | _ -> ()
     end;
     Ok ()
@@ -254,21 +261,21 @@ let args =
   let doc = "Boot arguments" in
   Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
 
-let block =
-  let doc = "Block device name" in
-  Arg.(value & opt_all string [] & info [ "block" ] ~doc)
-
-let srv_bridge_c =
+let colon_separated_c =
   let parse s = match Astring.String.cut ~sep:":" s with
     | None -> `Ok (s, None)
-    | Some (srv, bri) -> `Ok (srv, Some bri)
+    | Some (a, b) -> `Ok (a, Some b)
   in
-  (parse, fun ppf (srv, bri) -> Fmt.pf ppf "%s:%s" srv
-       (match bri with None -> srv | Some bri -> bri))
+  (parse, fun ppf (a, b) -> Fmt.pf ppf "%s:%s" a
+       (match b with None -> a | Some b -> b))
+
+let block =
+  let doc = "Block device name (block or name:block-device-name)" in
+  Arg.(value & opt_all colon_separated_c [] & info [ "block" ] ~doc)
 
 let net =
   let doc = "Network device names (bridge or name:bridge)" in
-  Arg.(value & opt_all srv_bridge_c [] & info [ "net" ] ~doc)
+  Arg.(value & opt_all colon_separated_c [] & info [ "net" ] ~doc)
 
 let restart_on_fail =
   let doc = "Restart on fail" in
@@ -339,7 +346,7 @@ let enable_stats =
 
 let retry_connections =
   let doc = "Number of retries when connecting to other daemons (log, console, stats etc). 0 aborts after one failure, -1 is unlimited retries." in
-  Arg.(value & opt int 0 & info [ "retry-connections" ] ~doc)
+  Arg.(value & opt int 2 & info [ "retry-connections" ] ~doc)
 
 let systemd_socket_activation =
   match Lazy.force Vmm_unix.uname with

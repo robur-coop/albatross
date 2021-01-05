@@ -31,7 +31,7 @@ start_precmd="albatross_influx_precmd"
 : ${albatross_influx_user:="albatross"}
 
 pidfile="/var/run/albatross_influx.pid"
-procname="/usr/local/libexec/albatross/albatross_influx"
+procname="/usr/local/libexec/albatross/albatross-influx"
 
 #
 # force_depend script [rcvar]

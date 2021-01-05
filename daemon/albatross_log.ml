@@ -193,6 +193,6 @@ let read_only =
 
 let cmd =
   Term.(const jump $ setup_log $ systemd_socket_activation $ file $ read_only $ influx $ tmpdir),
-  Term.info "albatross_log" ~version
+  Term.info "albatross-log" ~version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

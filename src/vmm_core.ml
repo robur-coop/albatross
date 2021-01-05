@@ -206,7 +206,7 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : string list ;
+    block_devices : (string * string option) list ;
     bridges : (string * string option) list ;
     argv : string list option ;
   }
@@ -216,6 +216,12 @@ module Unikernel = struct
       (fun (net, bri) -> match bri with None -> net | Some s -> s)
       vm.bridges
 
+  let pp_opt_list ppf xs =
+    Fmt.(list ~sep:(unit ", ")
+           (pair ~sep:(unit " -> ") string string))
+      ppf
+      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) xs)
+
   let pp_config ppf (vm : config) =
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a"
       pp_typ vm.typ
@@ -223,10 +229,8 @@ module Unikernel = struct
       (Cstruct.len vm.image)
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
-      Fmt.(list ~sep:(unit ", ") string) vm.block_devices
-      Fmt.(list ~sep:(unit ", ")
-             (pair ~sep:(unit " -> ") string string))
-      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) vm.bridges)
+      pp_opt_list vm.block_devices
+      pp_opt_list vm.bridges
       Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
 
   let restart_handler config =
@@ -237,14 +241,45 @@ module Unikernel = struct
     cmd : Bos.Cmd.t ;
     pid : int ;
     taps : string list ;
+    digest : Cstruct.t ;
   }
 
   let pp ppf vm =
-    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a"
+    let `Hex hex_digest = Hex.of_cstruct vm.digest in
+    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       vm.pid
       Fmt.(list ~sep:(unit ", ") string) vm.taps
-      Fmt.(list ~sep:(unit ", ") string) vm.config.block_devices
+      pp_opt_list vm.config.block_devices
       Bos.Cmd.pp vm.cmd
+      hex_digest
+
+  type info = {
+    typ : typ ;
+    fail_behaviour : fail_behaviour;
+    cpuid : int ;
+    memory : int ;
+    block_devices : (string * string option) list ;
+    bridges : (string * string option) list ;
+    argv : string list option ;
+    digest : Cstruct.t ;
+  }
+
+  let info t =
+    let cfg = t.config in
+    { typ = cfg.typ ; fail_behaviour = cfg.fail_behaviour ; cpuid = cfg.cpuid ;
+      memory = cfg.memory ; block_devices = cfg.block_devices ;
+      bridges = cfg.bridges ; argv = cfg.argv ; digest = t.digest }
+
+  let pp_info ppf (info : info) =
+    let `Hex hex_digest = Hex.of_cstruct info.digest in
+    Fmt.pf ppf "typ %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a@ digest %s"
+      pp_typ info.typ
+      pp_fail_behaviour info.fail_behaviour
+      info.cpuid info.memory
+      pp_opt_list info.block_devices
+      pp_opt_list info.bridges
+      Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) info.argv
+      hex_digest
 end
 
 module Stats = struct
@@ -337,7 +372,7 @@ let pp_process_exit ppf = function
   | `Signal n -> Fmt.pf ppf "signal %a (numeric %d)" Fmt.Dump.signal n n
   | `Stop n -> Fmt.pf ppf "stop %a (numeric %d)" Fmt.Dump.signal n n
 
-let should_restart config name = function
+let should_restart (config : Unikernel.config) name = function
   | (`Signal _ | `Stop _) as r ->
     (* signal 11 is if a kill -TERM was sent (i.e. our destroy) *)
     Logs.warn (fun m -> m "unikernel %a exited with signal %a"
@@ -415,7 +450,7 @@ module Log = struct
     | `Login of Name.t * Ipaddr.V4.t * int
     | `Logout of Name.t * Ipaddr.V4.t * int
     | `Startup
-    | `Unikernel_start of Name.t * int * (string * string) list * (string * Name.t) list
+    | `Unikernel_start of Name.t * Cstruct.t * int * (string * string) list * (string * Name.t) list
     | `Unikernel_stop of Name.t * int * process_exit
     | `Hup
   ]
@@ -424,7 +459,7 @@ module Log = struct
     | `Startup -> []
     | `Login (name, _, _) -> name
     | `Logout (name, _, _) -> name
-    | `Unikernel_start (name, _, _ ,_) -> name
+    | `Unikernel_start (name, _, _, _ ,_) -> name
     | `Unikernel_stop (name, _, _) -> name
     | `Hup -> []
 
@@ -432,9 +467,11 @@ module Log = struct
     | `Startup -> Fmt.string ppf "startup"
     | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp ip port
     | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp ip port
-    | `Unikernel_start (name, pid, taps, blocks) ->
-      Fmt.pf ppf "%a started %d (taps %a, block %a)"
-        Name.pp name pid Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string string)) taps
+    | `Unikernel_start (name, digest, pid, taps, blocks) ->
+      let `Hex hex_digest = Hex.of_cstruct digest in
+      Fmt.pf ppf "%a (digest: %s) started %d (taps %a, block %a)"
+        Name.pp name hex_digest
+        pid Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string string)) taps
         Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string Name.pp)) blocks
     | `Unikernel_stop (name, pid, code) ->
       Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code

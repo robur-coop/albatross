@@ -263,7 +263,7 @@ let default_cmd =
     `P "$(tname) connects to albatrossd via a local socket" ]
   in
   Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_client_local" ~version ~doc ~man ~exits
+  Term.info "albatross-client-local" ~version ~doc ~man ~exits
 
 let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
