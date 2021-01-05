@@ -26,6 +26,6 @@ open Cmdliner
 
 let cmd =
   Term.(const jump $ cacert $ cert $ key $ Albatross_cli.tmpdir),
-  Term.info "albatross_tls_inetd" ~version:Albatross_cli.version
+  Term.info "albatross-tls-inetd" ~version:Albatross_cli.version
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

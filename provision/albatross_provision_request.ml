@@ -208,7 +208,7 @@ let default_cmd =
     `P "$(tname) creates a certificate signing request for Albatross" ]
   in
   Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross_provision_request" ~version ~doc ~man
+  Term.info "albatross-provision-request" ~version ~doc ~man
 
 let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;

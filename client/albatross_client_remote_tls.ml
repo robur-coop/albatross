@@ -75,7 +75,7 @@ let cmd =
   in
   let exits = auth_exits @ exits in
   Term.(const run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "albatross_client_remote_tls" ~version ~doc ~man ~exits
+  Term.info "albatross-client-remote-tls" ~version ~doc ~man ~exits
 
 let () =
   match Term.eval cmd with

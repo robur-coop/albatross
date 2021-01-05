@@ -2,7 +2,7 @@
 
 basedir=$(realpath "$(dirname "$0")"/../..)
 pdir=$basedir/packaging/FreeBSD
-bdir=$basedir/_build/default
+bdir=$basedir/_build/install/default/bin
 #tmptmpl=$(basename "$0")
 #tmpd=$(mktemp -t "$tmptmpl")
 tmpd=$basedir/_build/stage
@@ -28,27 +28,23 @@ for f in albatross_log \
 do install -U $pdir/rc.d/$f $rcdir/$f; done
 
 # stage albatross app binaries
-for f in albatrossd albatross_log albatross_console albatross_influx; do
-    install -U $bdir/daemon/$f.exe $libexecdir/$f;
-done
+for f in albatrossd \
+             albatross-log \
+             albatross-console \
+             albatross-influx \
+             albatross-tls-endpoint \
+             albatross-tls-inetd \
+             albatross-stats
+do install -U $bdir/$f $libexecdir/$f; done
 
-for f in albatross_tls_endpoint albatross_tls_inetd; do
-    install -U $bdir/tls/$f.exe $libexecdir/$f;
-done
-
-install -U $bdir/stats/albatross_stats.exe $libexecdir/albatross_stats
-
-install -U $bdir/stats/albatross_stat_client.exe $sbindir/albatross_stat_client
-
-for f in albatross_client_local \
-             albatross_client_remote_tls \
-             albatross_client_bistro \
-             albatross_client_inspect_dump
-do install -U $bdir/client/$f.exe $sbindir/$f; done
-
-for f in albatross_provision_ca albatross_provision_request; do
-    install -U $bdir/provision/$f.exe $sbindir/$f;
-done
+for f in albatross-stat-client \
+             albatross-client-local \
+             albatross-client-remote-tls \
+             albatross-client-bistro \
+             albatross-client-inspect-dump \
+             albatross-provision-ca \
+             albatross-provision-request
+do install -U $bdir/$f $sbindir/$f; done
 
 # create +MANIFEST
 flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |

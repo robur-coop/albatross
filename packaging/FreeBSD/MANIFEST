@@ -6,13 +6,13 @@ www:	      https://github.com/roburio/albatross
 maintainer:   Hannes Mehnert <hannes@mehnert.org>
 prefix:	      /usr/local
 licenselogic: single
-licenses:     [NONE]
+licenses:     [ISCL]
 flatsize:     %%FLATSIZE%%
 categories:   [local]
 deps {
         gmp {
         origin = "math/gmp";
-        version = "6.1.2";
+        version = "6.2.1";
     }
 }
 scripts : {
@@ -76,12 +76,12 @@ messages [
      and server.key into /usr/local/etc/albatross, add this to /etc/inetd.conf:
 
         blackjack  stream  tcp     nowait  albatross \
-          /usr/local/libexec/albatross/alabtross_tls_inetd albatross_tls_inetd \
+          /usr/local/libexec/albatross/alabtross-tls-inetd albatross-tls-inetd \
           /usr/local/etc/albatross/cacert.pem \
           /usr/local/etc/albatross/server.pem \
           /usr/local/etc/albatross/server.key
 
-   * install solo5-hvt in /var/db/albatross
+   * install solo5-hvt and solo5-elftool in PATH or /var/db/albatross
 
 ===================================================================
 EOD;
