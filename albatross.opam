@@ -38,6 +38,7 @@ depends: [
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 depexts: [
   ["libnl-3-dev" "libnl-route-3-dev"] {os-family = "debian"}
