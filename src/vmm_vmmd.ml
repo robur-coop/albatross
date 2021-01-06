@@ -108,15 +108,16 @@ let killall t create =
   List.iter Vmm_unix.destroy (List.map snd vms) ;
   t, xs
 
-let init () =
-  let t = {
-    console_counter = 1L ;
-    stats_counter = 1L ;
-    log_counter = 1L ;
-    resources = Vmm_resources.empty ;
-    waiters = String.Map.empty ;
-    restarting = String.Set.empty ;
-  } in
+let empty = {
+  console_counter = 1L ;
+  stats_counter = 1L ;
+  log_counter = 1L ;
+  resources = Vmm_resources.empty ;
+  waiters = String.Map.empty ;
+  restarting = String.Set.empty ;
+}
+
+let init_block_devices t =
   match Vmm_unix.find_block_devices () with
   | Error (`Msg msg) ->
     Logs.warn (fun m -> m "couldn't find block devices %s" msg) ;
@@ -126,7 +127,7 @@ let init () =
       List.fold_left (fun r (id, size) ->
           match Vmm_resources.insert_block r id size with
           | Error (`Msg msg) ->
-            Logs.err (fun m -> m "couldn't insert block device %a (%dMB): %s" Name.pp id size msg) ;
+            Logs.err (fun m -> m "couldn't insert block device %s (%dMB): %s" (Name.to_string id) size msg) ;
             r
           | Ok r -> r)
         t.resources devs
@@ -351,7 +352,7 @@ let handle_block_cmd t id = function
         Vmm_resources.check_block t.resources id size >>= fun () ->
         Vmm_unix.create_block id size >>= fun () ->
         Vmm_resources.insert_block t.resources id size >>= fun resources ->
-        Ok ({ t with resources }, `Loop (`Success (`String "added block device")))
+        Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;

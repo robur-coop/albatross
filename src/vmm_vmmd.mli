@@ -4,7 +4,9 @@ open Vmm_core
 
 type 'a t
 
-val init : unit -> 'a t
+val empty : 'a t
+
+val init_block_devices : 'a t -> 'a t
 
 val waiter : 'a t -> Name.t -> 'a t * 'a option
 

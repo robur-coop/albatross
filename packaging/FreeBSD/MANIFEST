@@ -40,6 +40,7 @@ EOD;
     post-install = <<EOD
 mkdir -p /var/run/albatross/util /var/run/albatross/fifo
 chown albatross:albatross /var/run/albatross/util /var/run/albatross/fifo
+mkdir -p -m 700 /var/db/albatross/block
 
 EOD;
     post-deinstall = <<EOD
