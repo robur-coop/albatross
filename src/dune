@@ -3,5 +3,5 @@
   (public_name albatross)
   (wrapped false)
   (libraries rresult logs ipaddr bos ptime astring duration cstruct jsonm
-             decompress lwt lwt.unix ptime.clock.os asn1-combinators metrics
-             mirage-crypto hex))
+             bigstringaf decompress.de decompress.zl lwt lwt.unix
+             ptime.clock.os asn1-combinators metrics mirage-crypto hex))
