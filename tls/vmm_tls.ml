@@ -100,5 +100,6 @@ let handle chain =
     | `Stats_cmd `Stats_subscribe
     | `Log_cmd (`Log_subscribe _)
     | `Unikernel_cmd _
-    | `Policy_cmd `Policy_info -> Ok (name, policies, v, wire)
+    | `Policy_cmd `Policy_info
+    | `Block_cmd _ -> Ok (name, policies, v, wire)
     | _ -> Error (`Msg "unexpected command")

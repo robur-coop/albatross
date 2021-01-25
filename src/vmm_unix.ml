@@ -140,9 +140,12 @@ let dump, restore =
 
 let block_sub = "block"
 
+let block_dir () =
+  Fpath.(!dbdir / block_sub)
+
 let block_file name =
   let file = Name.to_string name in
-  Fpath.(!dbdir / block_sub / file)
+  Fpath.(block_dir () / file)
 
 let rec mkfifo name =
   try Unix.mkfifo (Fpath.to_string name) 0o640 with
@@ -310,7 +313,10 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
            "--net:" ^ bridge ^ "=" ^ tap,
            "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
           bridge_taps)
-  and blocks = List.map (fun (name, dev) -> "--disk:" ^ name ^ "=" ^ Fpath.to_string (block_file dev)) blocks
+  and blocks =
+    List.map (fun (name, dev) ->
+        "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev))
+      blocks
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
@@ -358,6 +364,10 @@ let create_block name size =
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
   | false ->
+    let dir = block_dir () in
+    (Bos.OS.Path.exists dir >>= function
+      | false -> Bos.OS.Dir.create ~mode:0o700 dir
+      | true -> Ok true) >>= fun _ ->
     let fd = Unix.(openfile (Fpath.to_string block_name) [O_CREAT] 0o600) in
     close_no_err fd ;
     bytes_of_mb size >>= fun size' ->
@@ -373,11 +383,11 @@ let mb_of_bytes size =
     Ok (size lsr 20)
 
 let find_block_devices () =
-  let blockdir = Fpath.(!dbdir / block_sub) in
-  Bos.OS.Dir.contents ~rel:true blockdir >>= fun files ->
+  let dir = block_dir () in
+  Bos.OS.Dir.contents ~rel:true dir >>= fun files ->
   List.fold_left (fun acc file ->
       acc >>= fun acc ->
-      let path = Fpath.append blockdir file in
+      let path = Fpath.append dir file in
       Bos.OS.File.exists path >>= function
       | false ->
         Logs.warn (fun m -> m "file %a doesn't exist, but was listed" Fpath.pp path) ;

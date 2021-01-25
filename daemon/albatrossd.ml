@@ -6,7 +6,7 @@ open Vmm_core
 
 open Lwt.Infix
 
-let state = ref (Vmm_vmmd.init ())
+let state = ref Vmm_vmmd.empty
 
 let stub_data_out _ = Lwt.return_unit
 
@@ -141,6 +141,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
+  state := Vmm_vmmd.init_block_devices !state;
   Rresult.R.error_msg_to_invalid_arg
     (Vmm_unix.check_commands ());
   match Vmm_vmmd.restore_unikernels () with

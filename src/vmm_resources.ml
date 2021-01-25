@@ -103,7 +103,12 @@ let use_blocks t name vm active =
   match vm.Unikernel.config.Unikernel.block_devices with
   | [] -> t
   | blocks ->
-    let block_names = List.map (fun (bd, _) -> Name.block_name name bd) blocks in
+    let block_names =
+      List.map (fun (bd, dev) ->
+          let bd = match dev with None -> bd | Some b -> b in
+          Name.block_name name bd)
+        blocks
+    in
     List.fold_left (fun t' n -> set_block_usage t' n active) t block_names
 
 let remove_vm t name = match find_vm t name with
@@ -122,11 +127,12 @@ let remove_policy t name = match find_policy t name with
     Metrics.add policy_metrics (fun x -> x (Name.to_string name)) (fun d -> d no_policy);
     Ok { t with policies }
 
-let remove_block t name = match find_block t name with
-  | None -> Error (`Msg "unknown block")
+let remove_block t name =
+  match find_block t name with
+  | None -> Rresult.R.error_msgf "unknown block device %s" (Name.to_string name)
   | Some (_, active) ->
     if active then
-      Error (`Msg "block device in use")
+      Rresult.R.error_msgf "block device %s in use" (Name.to_string name)
     else
       let block_devices = Vmm_trie.remove name t.block_devices in
       let t' = { t with block_devices } in
@@ -137,14 +143,18 @@ let bridge_allowed set s = String.Set.mem s set
 
 let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.config) =
   if succ running_vms > p.Policy.vms then
-    Error (`Msg "maximum amount of unikernels reached")
+    Rresult.R.error_msgf "maximum amount of unikernels (%d) reached" p.Policy.vms
   else if vm.Unikernel.memory > p.Policy.memory - used_memory then
-    Error (`Msg "maximum allowed memory reached")
+    Rresult.R.error_msgf "maximum allowed memory (%d, used %d) would be exceeded (requesting %d)"
+      p.Policy.memory used_memory vm.Unikernel.memory
   else if not (IS.mem vm.Unikernel.cpuid p.Policy.cpuids) then
     Error (`Msg "CPUid is not allowed by policy")
-  else if not (List.for_all (bridge_allowed p.Policy.bridges) (Unikernel.bridges vm)) then
-    Error (`Msg "network not allowed by policy")
-  else Ok ()
+  else
+    match List.partition (bridge_allowed p.Policy.bridges) (Unikernel.bridges vm) with
+    | _, [] -> Ok ()
+    | _, disallowed ->
+      Rresult.R.error_msgf "bridges %a not allowed by policy"
+        Fmt.(list ~sep:(unit ", ") string) disallowed
 
 let check_vm t name vm =
   let policy_ok =
@@ -155,14 +165,16 @@ let check_vm t name vm =
       let used = vm_usage t dom in
       check_policy p used vm
   and block_ok =
-    List.fold_left (fun r (block, _) ->
+    List.fold_left (fun r (block, dev) ->
         r >>= fun () ->
-        let block_name = Name.block_name name block in
+        let bl = match dev with Some b -> b | None -> block in
+        let block_name = Name.block_name name bl in
         match find_block t block_name with
-        | None -> Error (`Msg "block device not found")
+        | None ->
+          Rresult.R.error_msgf "block device %s not found" (Name.to_string block_name)
         | Some (_, active) ->
           if active then
-            Error (`Msg "block device already in use")
+            Rresult.R.error_msgf "block device %s already in use" (Name.to_string block_name)
           else
             Ok ())
       (Ok ()) vm.block_devices
