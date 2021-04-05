@@ -18,8 +18,8 @@ let csr priv name cmd =
 let jump id cmd =
   Mirage_crypto_rng_unix.initialize () ;
   let name = Vmm_core.Name.to_string id in
-  priv_key None name >>= fun priv ->
-  let csr = csr priv name cmd in
+  priv_key name >>= fun priv ->
+  csr priv name cmd >>= fun csr ->
   let enc = X509.Signing_request.encode_pem csr in
   Bos.OS.File.write Fpath.(v name + ".req") (Cstruct.to_string enc)
 

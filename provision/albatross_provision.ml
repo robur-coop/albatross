@@ -47,10 +47,8 @@ let sign ?dbname ?certname extensions issuer key csr delta =
     match dbname with
     | None -> extensions (* evil hack to avoid issuer + public key for CA cert *)
     | Some _ ->
-      match key with
-      | `RSA priv ->
-        let capub = `RSA (Mirage_crypto_pk.Rsa.pub_of_priv priv) in
-        key_ids extensions X509.Signing_request.((info csr).public_key) capub
+      let capub = X509.Private_key.public key in
+      key_ids extensions X509.Signing_request.((info csr).public_key) capub
   in
   Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
     (X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer) >>= fun cert ->
@@ -61,12 +59,9 @@ let sign ?dbname ?certname extensions issuer key csr delta =
   let enc = X509.Certificate.encode_pem cert in
   Bos.OS.File.write Fpath.(v certname + "pem") (Cstruct.to_string enc)
 
-let priv_key ?(bits = 2048) fn name =
+let priv_key ?(bits = 2048) name =
   let open Rresult.R.Infix in
-  let file = match fn with
-    | None -> Fpath.(v name + "key")
-    | Some f -> Fpath.v f
-  in
+  let file = Fpath.(v name + "key") in
   Bos.OS.File.exists file >>= function
   | false ->
     Logs.info (fun m -> m "creating new RSA key %a" Fpath.pp file) ;
