@@ -1,5 +1,5 @@
-let compress ?level:_ input =
-  let w = De.make_window ~bits:15 in
+let compress ?(level= 4) input =
+  let w = De.Lz77.make_window ~bits:15 in
   let q = De.Queue.create 0x1000 in
   let i = Bigstringaf.create De.io_buffer_size in
   let o = Bigstringaf.create De.io_buffer_size in
@@ -12,7 +12,7 @@ let compress ?level:_ input =
   let flush o len =
     let str = Bigstringaf.substring o ~off:0 ~len in
     Buffer.add_string b str in
-  Zl.Higher.compress ?level:None ~w ~q ~i ~o ~refill ~flush ;
+  Zl.Higher.compress ~level ~w ~q ~refill ~flush i o ;
   Buffer.contents b
 
 let uncompress input =
@@ -29,7 +29,7 @@ let uncompress input =
   let flush o len =
     let str = Bigstringaf.substring o ~off:0 ~len in
     Buffer.add_string b str in
-  match Zl.Higher.uncompress ~allocate ~i ~o ~refill ~flush with
+  match Zl.Higher.uncompress ~allocate ~refill ~flush i o with
   | Ok () -> Ok (Buffer.contents b)
   | Error (`Msg err) ->
     Logs.err (fun m -> m "error while uncompressing: %s" err) ;
