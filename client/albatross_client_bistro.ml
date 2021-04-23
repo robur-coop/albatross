@@ -49,7 +49,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
   | _, Error (`Msg e) ->
     Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
   | Ok cert, Ok key ->
-    let tmpkey = Mirage_crypto_pk.Rsa.generate ~bits:4096 () in
+    let tmpkey = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:4096 ()) in
     let name = Vmm_core.Name.to_string id in
     let extensions =
       let v = Vmm_asn.to_cert_extension cmd in
@@ -58,46 +58,48 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
                       (add Ext_key_usage (true, [ `Client_auth ])
                          (singleton (Unsupported Vmm_asn.oid) (false, v)))))
     in
-    let csr =
+    match
       let name =
         [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
       in
       let extensions = Signing_request.Ext.(singleton Extensions extensions) in
-      Signing_request.create name ~extensions (`RSA tmpkey)
-    in
-    let valid_from, valid_until = timestamps 300 in
-    let extensions =
-      let capub = match key with `RSA key -> Mirage_crypto_pk.Rsa.pub_of_priv key in
-      key_ids extensions Signing_request.((info csr).public_key) (`RSA capub)
-    in
-    let issuer = Certificate.subject cert in
-    match
-      Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
-        (Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
+      Signing_request.create name ~extensions tmpkey
     with
     | Error `Msg m -> Lwt.fail_with m
-    | Ok mycert ->
-      let certificates = `Single ([ mycert ; cert ], tmpkey) in
-      X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-      Lwt_unix.gethostbyname host >>= fun host_entry ->
-      let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-      let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
-      Vmm_lwt.connect host_entry.h_addrtype sockaddr >>= function
-      | None ->
-        Logs.err (fun m -> m "connection failed to %a"
-                     Vmm_lwt.pp_sockaddr sockaddr);
-        Lwt.return Albatross_cli.Connect_failed
-      | Some fd ->
-        Logs.debug (fun m -> m "connected to remote host") ;
-        (* reneg true to allow re-negotiation over the server-authenticated TLS
-           channel (to transport client certificate encrypted), once TLS 1.3 is in
-           (and required) be removed! *)
-        let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-        Lwt.catch (fun () ->
-            Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
-            Logs.debug (fun m -> m "finished tls handshake") ;
-            read t)
-          (fun exn -> Lwt.return (Albatross_tls_common.classify_tls_error exn))
+    | Ok csr ->
+      let valid_from, valid_until = timestamps 300 in
+      let extensions =
+        let capub = X509.Private_key.public key in
+        key_ids extensions Signing_request.((info csr).public_key) capub
+      in
+      let issuer = Certificate.subject cert in
+      match
+        Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
+          (Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
+      with
+      | Error `Msg m -> Lwt.fail_with m
+      | Ok mycert ->
+        let certificates = `Single ([ mycert ; cert ], tmpkey) in
+        X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
+        Lwt_unix.gethostbyname host >>= fun host_entry ->
+        let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
+        let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
+        Vmm_lwt.connect host_entry.h_addrtype sockaddr >>= function
+        | None ->
+          Logs.err (fun m -> m "connection failed to %a"
+                       Vmm_lwt.pp_sockaddr sockaddr);
+          Lwt.return Albatross_cli.Connect_failed
+        | Some fd ->
+          Logs.debug (fun m -> m "connected to remote host") ;
+          (* reneg true to allow re-negotiation over the server-authenticated TLS
+             channel (to transport client certificate encrypted), once TLS 1.3 is in
+             (and required) be removed! *)
+          let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+          Lwt.catch (fun () ->
+              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
+              Logs.debug (fun m -> m "finished tls handshake") ;
+              read t)
+            (fun exn -> Lwt.return (Albatross_tls_common.classify_tls_error exn))
 
 let jump endp cert key ca name cmd =
   Lwt_main.run (handle endp cert key ca name cmd)

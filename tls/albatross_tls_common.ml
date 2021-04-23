@@ -38,8 +38,8 @@ let process fd =
 
 let handle tls =
   match Tls_lwt.Unix.epoch tls with
-  | `Error -> Lwt.fail_with "error while getting epoch"
-  | `Ok epoch ->
+  | Error () -> Lwt.fail_with "error while getting epoch"
+  | Ok epoch ->
     match Vmm_tls.handle epoch.Tls.Core.peer_certificate_chain with
     | Error `Msg msg ->
       Logs.err (fun m -> m "failed to handle TLS connection %s" msg);
