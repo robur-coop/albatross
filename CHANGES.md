@@ -1,3 +1,8 @@
+# v1.1.1 (2021-04-23)
+
+- upgrade to decompress 1.3 (@dinosaure #71)
+- upgrade to x509 0.13.0 (@hannesm #72)
+
 # v1.1.0 (2021-01-25)
 
 - fix and improve block device handling (#67 @hannesm)
