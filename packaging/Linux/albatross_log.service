@@ -2,7 +2,7 @@
 # To configure this service, please use the following command
 # to create an override configuration:
 # systemctl edit albatross_log.service
-Description=Albatross log daemon (albatross_log)
+Description=Albatross log daemon (albatross-log)
 After=syslog.target albatross_console.service
 Requires=albatross_log.socket
 AssertPathExists=/var/lib/albatross/albatross.log

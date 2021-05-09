@@ -2,7 +2,7 @@
 # To configure this service, please use the following command
 # to create an override configuration:
 # systemctl edit albatross_stats.service
-Description=Albatross stats daemon (albatross_stats)
+Description=Albatross stats daemon (albatross-stats)
 Requires=albatross_stats.socket
 After=syslog.target
 
