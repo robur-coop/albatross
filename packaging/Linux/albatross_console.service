@@ -2,7 +2,7 @@
 # To configure this service, please use the following command
 # to create an override configuration:
 # systemctl edit albatross_console.service
-Description=Albatross console daemon (albatross_console)
+Description=Albatross console daemon (albatross-console)
 Requires=albatross_console.socket
 After=syslog.target
 

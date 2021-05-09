@@ -1,9 +1,9 @@
 [Unit]
 # To configure this service, please use the following command
 # to create an override configuration:
-# systemctl edit albatross_stat.service
-Description=Albatross stat daemon (albatross_stat)
-Requires=albatross_stat.socket
+# systemctl edit albatross_stats.service
+Description=Albatross stats daemon (albatross-stats)
+Requires=albatross_stats.socket
 After=syslog.target
 
 [Service]
@@ -16,5 +16,5 @@ PIDFile=%t/albatross/stat.pid
 RestrictAddressFamilies=AF_UNIX
 
 [Install]
-Also=albatross_stat.socket
+Also=albatross_stats.socket
 WantedBy=multi-user.target
