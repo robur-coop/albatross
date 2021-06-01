@@ -160,13 +160,17 @@ let linux_rusage pid =
     let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
     let ( * ) = Int64.mul and ( / ) = Int64.div in
     (t / clock_tick, Int64.to_int (((Int64.rem t clock_tick) * 1_000_000L) / clock_tick))
+  and us_of_int64 t =
+    let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
+    let ( * ) = Int64.mul and ( / ) = Int64.div in
+    t * 1_000_000L / clock_tick
   in
   if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
     i64 (List.nth stat_vals 9) >>= fun minflt ->
     i64 (List.nth stat_vals 11) >>= fun majflt ->
     i64 (List.nth stat_vals 13) >>= fun utime -> (* divide by sysconf(_SC_CLK_TCK) *)
     i64 (List.nth stat_vals 14) >>= fun stime -> (* divide by sysconf(_SC_CLK_TCK) *)
-    let runtime = fst (time_of_int64 Int64.(add utime stime)) in
+    let runtime = us_of_int64 Int64.(add utime stime) in
     let utime = time_of_int64 utime
     and stime = time_of_int64 stime in
     i64 (List.nth stat_vals 22) >>= fun vsize -> (* in bytes *)
