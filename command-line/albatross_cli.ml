@@ -15,6 +15,8 @@ let init_influx name data =
     Logs.info (fun m -> m "stats connecting to %a:%d" Ipaddr.V4.pp ip port);
     Metrics.enable_all ();
     Metrics_lwt.init_periodic (fun () -> Lwt_unix.sleep 10.);
+    Metrics_lwt.periodically (Metrics_rusage.rusage_src ~tags:[]);
+    Metrics_lwt.periodically (Metrics_rusage.kinfo_mem_src ~tags:[]);
     let get_cache, reporter = Metrics.cache_reporter () in
     Metrics.set_reporter reporter;
     let fd = ref None in

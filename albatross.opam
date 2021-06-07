@@ -36,6 +36,7 @@ depends: [
   "metrics" {>= "0.2.0"}
   "metrics-lwt" {>= "0.2.0"}
   "metrics-influx" {>= "0.2.0"}
+  "metrics-rusage"
   "hex"
 ]
 build: [
