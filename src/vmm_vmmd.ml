@@ -10,7 +10,6 @@ open R.Infix
 type 'a t = {
   console_counter : int64 ;
   stats_counter : int64 ;
-  log_counter : int64 ;
   resources : Vmm_resources.t ;
   waiters : 'a String.Map.t ;
   restarting : String.Set.t ;
@@ -111,7 +110,6 @@ let killall t create =
 let empty = {
   console_counter = 1L ;
   stats_counter = 1L ;
-  log_counter = 1L ;
   resources = Vmm_resources.empty ;
   waiters = String.Map.empty ;
   restarting = String.Set.empty ;
@@ -136,15 +134,8 @@ let init_block_devices t =
 
 type 'a create =
   Vmm_commands.wire *
-  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
+  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
   (unit -> Vmm_commands.res)
-
-let log t name event =
-  let data = (Ptime_clock.now (), event) in
-  let header = Vmm_commands.header ~sequence:t.log_counter name in
-  let log_counter = Int64.succ t.log_counter in
-  Logs.debug (fun m -> m "log %a" Log.pp data) ;
-  ({ t with log_counter }, (header, `Data (`Log_data data)))
 
 let restore_unikernels () =
   match Vmm_unix.restore () with
@@ -210,14 +201,9 @@ let handle_create t name vm_config =
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
     dump_unikernels t ;
-    let t, log_out =
-      let start =
-        `Unikernel_start (name, vm.Unikernel.digest, vm.Unikernel.pid, taps, block_devices)
-      in
-      log t name start
-    in
+    Logs.info (fun m -> m "created %a: %a" Name.pp name Unikernel.pp vm);
     let t, stat_out = setup_stats t name vm in
-    (t, stat_out, log_out, `Success (`String "created VM"), name, vm)
+    (t, stat_out, `Success (`String "created VM"), name, vm)
   and fail () =
     match Vmm_unix.free_system_resources name (List.map snd taps) with
     | Ok () -> `Failure "could not create VM: console failed"
@@ -233,9 +219,10 @@ let handle_shutdown t name vm r =
    | Ok () -> ()
    | Error (`Msg e) ->
      Logs.err (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm));
-  let t, log_out = log t name (`Unikernel_stop (name, vm.Unikernel.pid, r)) in
+  Logs.info (fun m -> m "unikernel %a (PID %d) stopped with %a"
+                Name.pp name vm.Unikernel.pid pp_process_exit r);
   let t, stat_out = remove_stats t name in
-  (t, stat_out, log_out)
+  (t, stat_out)
 
 let handle_policy_cmd t id = function
   | `Policy_remove ->

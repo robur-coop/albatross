@@ -98,7 +98,6 @@ let handle chain =
     match wire with
     | `Console_cmd (`Console_subscribe _)
     | `Stats_cmd `Stats_subscribe
-    | `Log_cmd (`Log_subscribe _)
     | `Unikernel_cmd _
     | `Policy_cmd `Policy_info
     | `Block_cmd _ -> Ok (name, policies, v, wire)

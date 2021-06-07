@@ -26,10 +26,6 @@ type stats_cmd = [
   | `Stats_subscribe
 ]
 
-type log_cmd = [
-  | `Log_subscribe of since_count
-]
-
 type unikernel_cmd = [
   | `Unikernel_info
   | `Unikernel_create of Unikernel.config
@@ -55,7 +51,6 @@ type block_cmd = [
 type t = [
   | `Console_cmd of console_cmd
   | `Stats_cmd of stats_cmd
-  | `Log_cmd of log_cmd
   | `Unikernel_cmd of unikernel_cmd
   | `Policy_cmd of policy_cmd
   | `Block_cmd of block_cmd
@@ -66,7 +61,6 @@ val pp : t Fmt.t
 type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
-  | `Log_data of Log.t
 ]
 
 val pp_data : data Fmt.t

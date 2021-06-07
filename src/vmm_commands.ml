@@ -49,13 +49,6 @@ let pp_stats_cmd ppf = function
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
 
-type log_cmd = [
-  | `Log_subscribe of since_count
-]
-
-let pp_log_cmd ppf = function
-  | `Log_subscribe x -> Fmt.pf ppf "log subscribe since %a" pp_since_count x
-
 type unikernel_cmd = [
   | `Unikernel_info
   | `Unikernel_create of Unikernel.config
@@ -100,7 +93,6 @@ let pp_block_cmd ppf = function
 type t = [
     | `Console_cmd of console_cmd
     | `Stats_cmd of stats_cmd
-    | `Log_cmd of log_cmd
     | `Unikernel_cmd of unikernel_cmd
     | `Policy_cmd of policy_cmd
     | `Block_cmd of block_cmd
@@ -109,7 +101,6 @@ type t = [
 let pp ppf = function
   | `Console_cmd c -> pp_console_cmd ppf c
   | `Stats_cmd s -> pp_stats_cmd ppf s
-  | `Log_cmd l -> pp_log_cmd ppf l
   | `Unikernel_cmd v -> pp_unikernel_cmd ppf v
   | `Policy_cmd p -> pp_policy_cmd ppf p
   | `Block_cmd b -> pp_block_cmd ppf b
@@ -117,14 +108,12 @@ let pp ppf = function
 type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
-  | `Log_data of Log.t
 ]
 
 let pp_data ppf = function
   | `Console_data (ts, line) -> Fmt.pf ppf "console data %a: %s"
                                   (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats data: %a" Stats.pp stats
-  | `Log_data log -> Fmt.pf ppf "log data: %a" Log.pp log
 
 type header = {
   version : version ;
@@ -185,5 +174,4 @@ let endpoint = function
   | `Stats_cmd `Stats_subscribe -> `Stats, `Read
   | `Stats_cmd _ -> `Stats, `End
   | `Console_cmd _ -> `Console, `Read
-  | `Log_cmd _ -> `Log, `Read
 

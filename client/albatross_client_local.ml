@@ -81,9 +81,6 @@ let stats_remove _ opt_socket name =
 let stats_subscribe _ opt_socket name =
   jump opt_socket name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ opt_socket name since count =
-  jump opt_socket name (`Log_cmd (`Log_subscribe (Albatross_cli.since_count since count)))
-
 let block_info _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_info)
 
@@ -207,15 +204,6 @@ let stats_add_cmd =
   Term.(term_result (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps $ tmpdir)),
   Term.info "stats_add" ~doc ~man ~exits
 
-let log_cmd =
-  let doc = "Event log" in
-  let man =
-    [`S "DESCRIPTION";
-     `P "Shows event log of VM."]
-  in
-  Term.(term_result (const event_log $ setup_log $ socket $ opt_vm_name $ since $ count $ tmpdir)),
-  Term.info "log" ~doc ~man ~exits
-
 let block_info_cmd =
   let doc = "Information about block devices" in
   let man =
@@ -270,7 +258,7 @@ let cmds = [ help_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              console_cmd ;
-             stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ; log_cmd ]
+             stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds with

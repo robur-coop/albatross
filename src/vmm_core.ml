@@ -23,14 +23,13 @@ let tmpdir = ref (Fpath.v "/nonexisting")
 
 let set_tmpdir path = tmpdir := path
 
-type service = [ `Console | `Log | `Stats | `Vmmd ]
+type service = [ `Console | `Stats | `Vmmd ]
 
 let socket_path t =
   let path = match t with
     | `Console -> "console"
     | `Vmmd -> "vmmd"
     | `Stats -> "stat"
-    | `Log -> "log"
   in
   Fpath.to_string Fpath.(!tmpdir / "util" / path + "sock")
 
@@ -444,42 +443,3 @@ opam exit codes:
       Logs.info (fun m -> m "unikernel %a exited %d, not restarting %a"
                     Name.pp name i Unikernel.pp_fail_behaviour config.fail_behaviour);
       false
-
-module Log = struct
-  type log_event = [
-    | `Login of Name.t * Ipaddr.V4.t * int
-    | `Logout of Name.t * Ipaddr.V4.t * int
-    | `Startup
-    | `Unikernel_start of Name.t * Cstruct.t * int * (string * string) list * (string * Name.t) list
-    | `Unikernel_stop of Name.t * int * process_exit
-    | `Hup
-  ]
-
-  let name = function
-    | `Startup -> []
-    | `Login (name, _, _) -> name
-    | `Logout (name, _, _) -> name
-    | `Unikernel_start (name, _, _, _ ,_) -> name
-    | `Unikernel_stop (name, _, _) -> name
-    | `Hup -> []
-
-  let pp_log_event ppf = function
-    | `Startup -> Fmt.string ppf "startup"
-    | `Login (name, ip, port) -> Fmt.pf ppf "%a login %a:%d" Name.pp name Ipaddr.V4.pp ip port
-    | `Logout (name, ip, port) -> Fmt.pf ppf "%a logout %a:%d" Name.pp name Ipaddr.V4.pp ip port
-    | `Unikernel_start (name, digest, pid, taps, blocks) ->
-      let `Hex hex_digest = Hex.of_cstruct digest in
-      Fmt.pf ppf "%a (digest: %s) started %d (taps %a, block %a)"
-        Name.pp name hex_digest
-        pid Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string string)) taps
-        Fmt.(list ~sep:(unit "; ") (pair ~sep:(unit "=") string Name.pp)) blocks
-    | `Unikernel_stop (name, pid, code) ->
-      Fmt.pf ppf "%a stopped %d with %a" Name.pp name pid pp_process_exit code
-    | `Hup -> Fmt.string ppf "hup"
-
-
-  type t = Ptime.t * log_event
-
-  let pp ppf (ts, ev) =
-    Fmt.pf ppf "%a: %a" (Ptime.pp_rfc3339 ()) ts pp_log_event ev
-end

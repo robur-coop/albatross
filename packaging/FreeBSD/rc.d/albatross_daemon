@@ -3,7 +3,7 @@
 # $FreeBSD$
 #
 # PROVIDE: albatross_daemon
-# REQUIRE: LOGIN albatross_console albatross_log albatross_stat
+# REQUIRE: LOGIN albatross_console albatross_stat
 # KEYWORD: shutdown
 #
 # Define these albatross_daemon_* variables in one of these files
@@ -64,7 +64,6 @@ my_force_depend()
 
 albatross_daemon_precmd() {
     my_force_depend albatross_console || err 1 "Cannot run albatross_console"
-    my_force_depend albatross_log || err 1 "Cannot run albatross_log"
     my_force_depend albatross_stat || err 1 "Cannot run albatross_stat"
 }
 

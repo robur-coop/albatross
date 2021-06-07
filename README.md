@@ -29,10 +29,9 @@ there is no dependency or order how to restart them.
 
 The scope of albatross is to provide a minimal orchestration system that avoids
 the need of shell access on the dom0. This leads to mostly immutable - or only
-mutable via albatross which writes a log for every administrative change -
-infrastructure. Further dissemination of albatross into virtual machines, and
-a communication interface for deploying and destroying unikernels, is being
-researched on.
+mutable via albatross - infrastructure. Further dissemination of albatross into
+virtual machines, and a communication interface for deploying and destroying
+unikernels, is being researched on.
 
 ## Components
 
@@ -40,7 +39,6 @@ Albatross consists of a set of binaries. Several daemons, which communicate in a
 request-response style over Unix domain sockets, are run in the host system:
 - `albatrossd`: privileged to create and destroy unikernels
 - `albatross-console`: reads the console output of unikernels
-- `albatross-log`: event log
 - `albatross-stats`: statistics gathering (rusage, ifstat, BHyve debug counters)
 - `albatross-tls-inetd`: remote deployment via TLS and inetd (an alternative is `albatross-tls-endpoint`)
 - `albatross-influx`: statistic reporting from `albatross-stats` to influx
@@ -59,8 +57,6 @@ client, to avoid amplification of traffic if lots of clients are connected.
 `Albatrossd` sends a message to `albatross-console` whenever a new unikernel is started,
 upon reception `albatross-console` opens and reads the fifo which the unikernel will
 write their standard output to.
-
-`Albatross-log` keeps a persistent event log for albatross, can be read by clients.
 
 `Albatross-stats` gathers periodically statistics (memory, CPU, network, hypervisor)
 from all running unikernels.

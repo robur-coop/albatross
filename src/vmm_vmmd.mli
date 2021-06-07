@@ -18,11 +18,11 @@ val may_restart : 'a t -> Name.t -> 'a t * bool
 
 type 'a create =
   Vmm_commands.wire *
-  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
+  ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
   (unit -> Vmm_commands.res)
 
 val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
-  [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * Vmm_commands.wire * Vmm_commands.wire
+  [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * Vmm_commands.wire
 
 val handle_create : 'a t -> Name.t -> Unikernel.config ->
   ('a t * 'a create, [> `Msg of string ]) result
