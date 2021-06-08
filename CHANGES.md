@@ -1,7 +1,15 @@
+# v1.2.0 (2021-06-08)
+
+- linux packaging albatross_stat -> albatross_stats (#73 @smorimoto)
+- albatross_stats: report runtime in microseconds on linux (#74 @hannesm)
+- use metrics-rusage for albatross processes (to report host system usage)
+  (#76 @hannesm)
+- remove albatross_log, instead log to stdandard output (#75 @hannesm)
+
 # v1.1.1 (2021-04-23)
 
-- upgrade to decompress 1.3 (@dinosaure #71)
-- upgrade to x509 0.13.0 (@hannesm #72)
+- upgrade to decompress 1.3 (#71 @dinosaure)
+- upgrade to x509 0.13.0 (#72 @hannesm)
 
 # v1.1.0 (2021-01-25)
 
