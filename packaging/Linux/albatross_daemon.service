@@ -1,7 +1,7 @@
 [Unit]
 Description=Albatross VMM daemon (albatrossd)
-Requires=albatross_console.socket albatross_log.socket albatross_daemon.socket
-After=syslog.target albatross_console.service albatross_log.service
+Requires=albatross_console.socket albatross_daemon.socket
+After=syslog.target albatross_console.service
 
 [Service]
 Type=simple

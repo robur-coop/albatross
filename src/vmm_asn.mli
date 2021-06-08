@@ -13,14 +13,6 @@ val wire_to_cstruct : Vmm_commands.wire -> Cstruct.t
 
 val wire_of_cstruct : Cstruct.t -> (Vmm_commands.wire, [> `Msg of string ]) result
 
-val log_entry_to_cstruct : Log.t -> Cstruct.t
-
-val log_entry_of_cstruct : Cstruct.t -> (Log.t, [> `Msg of string ]) result
-
-val log_to_disk : Log.t -> Cstruct.t
-
-val logs_of_disk : Cstruct.t -> Log.t list
-
 val of_cert_extension :
   Cstruct.t -> (Vmm_commands.version * Vmm_commands.t, [> `Msg of string ]) result
 val to_cert_extension : Vmm_commands.t -> Cstruct.t

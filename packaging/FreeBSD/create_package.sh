@@ -19,8 +19,7 @@ mkdir -p "$rootdir"/usr/local/sbin \
          "$rootdir"/usr/local/etc/rc.d
 
 # stage service scripts
-for f in albatross_log \
-	 albatross_stat \
+for f in albatross_stat \
 	 albatross_console \
 	 albatross_daemon \
 	 albatross_influx \
@@ -29,7 +28,6 @@ do install -U $pdir/rc.d/$f $rcdir/$f; done
 
 # stage albatross app binaries
 for f in albatrossd \
-             albatross-log \
              albatross-console \
              albatross-influx \
              albatross-tls-endpoint \

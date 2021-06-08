@@ -2,8 +2,8 @@
 
 (* please read this before changing this module:
 
-   Data encoded by this module is persisted in (a) log entry (b) dump file
-   (c) certificates (and subCA). It is important to be aware of backward and
+   Data encoded by this module is persisted in (a) dump file and
+   (b) certificates (and subCA). It is important to be aware of backward and
    forward compatibility when modifying this module. There are various version
    fields around which are mostly useless in retrospect. On a server deployment,
    upgrades are supported while downgrades are not (there could be a separate
@@ -14,13 +14,7 @@
    wire version should as well be notified (it may be suitable to have a
    --use-version command-line flag - so new clients can talk to old servers).
 
-   The log (a) is append-only, whenever a new log entry is added, the choice
-   log_entry should be extended. New entries just use the new choice. The dump
-   on disk (dumped via log_to_disk, restored logs_of_disk) prepends a (rather
-   useless) version field. Restoring a new log entry with an old albatross_log
-   will result in a warning (but restores the other log entries).
-
-   It should be ensured that old unikernels dumped to disk (b) can be read by
+   It should be ensured that old unikernels dumped to disk (a) can be read by
    new albatross daemons. The functions unikernels_to_cstruct and
    unikernels_of_cstruct are used for dump and restore, each an explicit choice.
    They use the trie of unikernel_config, dump always uses the latest version in
@@ -68,32 +62,6 @@ open Rresult.R.Infix
 
 let guard p err = if p then Ok () else Error err
 
-let decode_seq_len cs =
-  (* we assume a ASN.1 DER/BER encoded sequence starting in cs:
-     - 0x30
-     - length (definite length field - not 0x80)
-     - <data> (of length length)
-  *)
-  guard (Cstruct.len cs > 2) (`Msg "buffer too short") >>= fun () ->
-  guard (Cstruct.get_uint8 cs 0 = 0x30) (`Msg "not a sequence") >>= fun () ->
-  let l1 = Cstruct.get_uint8 cs 1 in
-  (if l1 < 0x80 then
-     Ok (2, l1)
-   else if l1 = 0x80 then
-     Error (`Msg "indefinite length")
-   else
-     let octets = l1 land 0x7F in
-     guard (Cstruct.len cs > octets + 2) (`Msg "data too short") >>= fun () ->
-     let rec go off acc =
-       if off = octets then
-         Ok (2 + octets, acc)
-       else
-         go (succ off) (Cstruct.get_uint8 cs (off + 2) + acc lsl 8)
-     in
-     go 0 0) >>= fun (off, l) ->
-  guard (Cstruct.len cs >= l + off) (`Msg "buffer too small") >>= fun () ->
-  Ok (l, off)
-
 let decode_strict codec cs =
   match Asn.decode codec cs with
   | Ok (a, cs) ->
@@ -104,12 +72,6 @@ let decode_strict codec cs =
 let projections_of asn =
   let c = Asn.codec Asn.der asn in
   (decode_strict c, Asn.encode c)
-
-let ipv4 =
-  let f cs = Ipaddr.V4.of_octets_exn (Cstruct.to_string cs)
-  and g ip = Cstruct.of_string (Ipaddr.V4.to_octets ip)
-  in
-  Asn.S.map f g Asn.S.octet_string
 
 let policy =
   let f (cpuids, vms, memory, block, bridges) =
@@ -281,127 +243,6 @@ let name =
   and g = Name.to_list
   in
   Asn.S.(map f g (sequence_of utf8_string))
-
-let log_event =
-  (* this is stored on disk persistently -- be aware when changing the grammar
-     below to only ever extend it! *)
-  let f = function
-    | `C1 `C1 () -> `Startup
-    | `C1 `C2 (name, ip, port) -> `Login (name, ip, port)
-    | `C1 `C3 (name, ip, port) -> `Logout (name, ip, port)
-    | `C1 `C4 (name, pid, taps, block) ->
-      let blocks = match block with
-        | None -> []
-        | Some block -> [ block, Name.block_name name block ]
-      and taps = List.map (fun tap -> tap, tap) taps
-      in
-      `Unikernel_start (name, Cstruct.empty, pid, taps, blocks)
-    | `C2 `C1 (name, pid, taps, blocks) ->
-      let blocks = List.map (fun (name, dev) ->
-          name, match Name.of_string dev with
-          | Error `Msg msg -> Asn.S.error (`Parse msg)
-          | Ok id -> id) blocks
-      in
-      `Unikernel_start (name, Cstruct.empty, pid, taps, blocks)
-    | `C1 `C5 (name, pid, status) ->
-      let status' = match status with
-        | `C1 n -> `Exit n
-        | `C2 n -> `Signal n
-        | `C3 n -> `Stop n
-      in
-      `Unikernel_stop (name, pid, status')
-    | `C1 `C6 () -> `Hup
-    | `C2 `C2 (name, digest, pid, taps, blocks) ->
-      `Unikernel_start (name, digest, pid, taps, blocks)
-  and g = function
-    | `Startup -> `C1 (`C1 ())
-    | `Login (name, ip, port) -> `C1 (`C2 (name, ip, port))
-    | `Logout (name, ip, port) -> `C1 (`C3 (name, ip, port))
-    | `Unikernel_start (name, digest, pid, taps, blocks) ->
-      `C2 (`C2 (name, digest, pid, taps, blocks))
-    | `Unikernel_stop (name, pid, status) ->
-      let status' = match status with
-        | `Exit n -> `C1 n
-        | `Signal n -> `C2 n
-        | `Stop n -> `C3 n
-      in
-      `C1 (`C5 (name, pid, status'))
-    | `Hup -> `C1 (`C6 ())
-  in
-  let endp =
-    Asn.S.(sequence3
-            (required ~label:"name" name)
-            (required ~label:"ip" ipv4)
-            (required ~label:"port" int))
-  in
-  Asn.S.map f g @@
-  Asn.S.(choice2
-           (choice6
-              (my_explicit 0 ~label:"startup" null)
-              (my_explicit 1 ~label:"login" endp)
-              (my_explicit 2 ~label:"logout" endp)
-              (* old unikernel start *)
-              (my_explicit 3 ~label:"unikernel-start-OLD0"
-                 (sequence4
-                    (required ~label:"name" name)
-                    (required ~label:"pid" int)
-                    (required ~label:"taps" (sequence_of utf8_string))
-                    (optional ~label:"block" utf8_string)))
-              (my_explicit 4 ~label:"unikernel-stop"
-                 (sequence3
-                    (required ~label:"name" name)
-                    (required ~label:"pid" int)
-                    (required ~label:"status"
-                       (choice3
-                          (my_explicit 0 ~label:"exit-code" int)
-                          (my_explicit 1 ~label:"signal" int)
-                          (my_explicit 2 ~label:"stopped" int)))))
-              (my_explicit 5 ~label:"hup" null))
-           (choice2
-              (* old unikernel start*)
-              (my_explicit 6 ~label:"unikernel-start-OLD1"
-                 (sequence4
-                    (required ~label:"name" name)
-                    (required ~label:"pid" int)
-                    (required ~label:"taps"
-                       (sequence_of
-                          (sequence2
-                             (required ~label:"bridge" utf8_string)
-                             (required ~label:"tap" utf8_string))))
-                    (required ~label:"blocks"
-                       (sequence_of
-                          (sequence2
-                             (required ~label:"name" utf8_string)
-                             (required ~label:"device" utf8_string))))))
-              (my_explicit 7 ~label:"unikernel-start"
-                 (sequence5
-                    (required ~label:"name" name)
-                    (required ~label:"digest" octet_string)
-                    (required ~label:"pid" int)
-                    (required ~label:"taps"
-                       (sequence_of
-                          (sequence2
-                             (required ~label:"bridge" utf8_string)
-                             (required ~label:"tap" utf8_string))))
-                    (required ~label:"blocks"
-                       (sequence_of
-                          (sequence2
-                             (required ~label:"name" utf8_string)
-                             (required ~label:"device" name))))))))
-
-
-let log_cmd =
-  let f = function
-    | `C1 since -> `Log_subscribe (`Since since)
-    | `C2 n -> `Log_subscribe (`Count n)
-  and g = function
-    | `Log_subscribe `Since since -> `C1 since
-    | `Log_subscribe `Count n -> `C2 n
-  in
-  Asn.S.map f g @@
-  Asn.S.(choice2
-           (my_explicit 0 ~label:"subscribe-since" utc_time)
-           (my_explicit 1 ~label:"subscribe-count" int))
 
 let typ =
   let f = function
@@ -636,7 +477,7 @@ let version =
   let f data = match data with
     | 4 -> `AV4
     | 3 -> `AV3
-    | x -> Asn.S.error (`Parse (Printf.sprintf "unknown version number 0x%X" x))
+    | x -> Asn.S.parse_error "unknown version number 0x%X" x
   and g = function
     | `AV4 -> 4
     | `AV3 -> 3
@@ -647,14 +488,13 @@ let wire_command =
   let f = function
     | `C1 console -> `Console_cmd console
     | `C2 stats -> `Stats_cmd stats
-    | `C3 log -> `Log_cmd log
+    | `C3 () -> Asn.S.parse_error "support for log dropped"
     | `C4 vm -> `Unikernel_cmd vm
     | `C5 policy -> `Policy_cmd policy
     | `C6 block -> `Block_cmd block
   and g = function
     | `Console_cmd c -> `C1 c
     | `Stats_cmd c -> `C2 c
-    | `Log_cmd c -> `C3 c
     | `Unikernel_cmd c -> `C4 c
     | `Policy_cmd c -> `C5 c
     | `Block_cmd c -> `C6 c
@@ -663,7 +503,7 @@ let wire_command =
   Asn.S.(choice6
            (my_explicit 0 ~label:"console" console_cmd)
            (my_explicit 1 ~label:"statistics" stats_cmd)
-           (my_explicit 2 ~label:"log" log_cmd)
+           (my_explicit 2 ~label:"log" null)
            (my_explicit 3 ~label:"unikernel" unikernel_cmd)
            (my_explicit 4 ~label:"policy" policy_cmd)
            (my_explicit 5 ~label:"block" block_cmd))
@@ -672,11 +512,10 @@ let data =
   let f = function
     | `C1 (timestamp, data) -> `Console_data (timestamp, data)
     | `C2 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
-    | `C3 (timestamp, event) -> `Log_data (timestamp, event)
+    | `C3 () -> Asn.S.parse_error "support for log was dropped"
   and g = function
     | `Console_data (timestamp, data) -> `C1 (timestamp, data)
     | `Stats_data (ru, mem, ifs, vmm) -> `C2 (ru, vmm, ifs, mem)
-    | `Log_data (timestamp, event) -> `C3 (timestamp, event)
   in
   Asn.S.map f g @@
   Asn.S.(choice3
@@ -693,10 +532,7 @@ let data =
                                     (required ~label:"key" utf8_string)
                                     (required ~label:"value" int64))))
                  (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
-           (my_explicit 2 ~label:"log"
-              (sequence2
-                 (required ~label:"timestamp" utc_time)
-                 (required ~label:"event" log_event))))
+           (my_explicit 2 ~label:"log" null))
 
 let unikernel_info =
   let open Unikernel in
@@ -816,44 +652,6 @@ let wire =
            (required ~label:"payload" payload))
 
 let wire_of_cstruct, wire_to_cstruct = projections_of wire
-
-let log_entry =
-  Asn.S.(sequence2
-           (required ~label:"timestamp" utc_time)
-           (required ~label:"event" log_event))
-
-let log_entry_of_cstruct, log_entry_to_cstruct = projections_of log_entry
-
-let log_disk =
-  (* data is persisted to disk, we need to ensure to be able to decode (and
-     encode) properly without conflicts! *)
-  Asn.S.(sequence2
-           (required ~label:"version" version)
-           (required ~label:"entry" log_entry))
-
-let log_disk_of_cstruct, log_disk_to_cstruct =
-  let c = Asn.codec Asn.der log_disk in
-  (Asn.decode c, Asn.encode c)
-
-let log_to_disk entry = log_disk_to_cstruct (current, entry)
-
-let skip_seq cs =
-  decode_seq_len cs >>= fun (l, off) ->
-  Ok (Cstruct.shift cs (l + off))
-
-let logs_of_disk buf =
-  let rec next acc buf =
-    match log_disk_of_cstruct buf with
-    | Ok ((version, entry), cs) ->
-      Logs.info (fun m -> m "read a log entry version %a" pp_version version) ;
-      next (entry :: acc) cs
-    | Error (`Parse msg) ->
-      Logs.warn (fun m -> m "parse error %s while parsing log" msg) ;
-      match skip_seq buf with
-      | Ok cs' -> next acc cs'
-      | Error _ -> acc (* ignore *)
-  in
-  next [] buf
 
 let trie e =
   let f elts =

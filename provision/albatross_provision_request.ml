@@ -51,9 +51,6 @@ let console _ name since count =
 let stats _ name =
   jump name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ name since count =
-  jump name (`Log_cmd (`Log_subscribe (Albatross_cli.since_count since count)))
-
 let block_info _ block_name =
   jump block_name (`Block_cmd `Block_info)
 
@@ -152,15 +149,6 @@ let stats_cmd =
   Term.(term_result (const stats $ setup_log $ opt_vm_name)),
   Term.info "stats" ~doc ~man
 
-let log_cmd =
-  let doc = "Event log" in
-  let man =
-    [`S "DESCRIPTION";
-     `P "Shows event log of VM."]
-  in
-  Term.(term_result (const event_log $ setup_log $ opt_vm_name $ since $ count)),
-  Term.info "log" ~doc ~man
-
 let block_info_cmd =
   let doc = "Information about block devices" in
   let man =
@@ -214,7 +202,7 @@ let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
-             console_cmd ; stats_cmd ; log_cmd ]
+             console_cmd ; stats_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds

@@ -135,9 +135,6 @@ let console _ endp cert key ca name since count =
 let stats _ endp cert key ca name =
   jump endp cert key ca name (`Stats_cmd `Stats_subscribe)
 
-let event_log _ endp cert key ca name since count =
-  jump endp cert key ca name (`Log_cmd (`Log_subscribe (Albatross_cli.since_count since count)))
-
 let block_info _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_info)
 
@@ -257,15 +254,6 @@ let stats_cmd =
   Term.(const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name),
   Term.info "stats" ~doc ~man ~exits
 
-let log_cmd =
-  let doc = "Event log" in
-  let man =
-    [`S "DESCRIPTION";
-     `P "Shows event log of VM."]
-  in
-  Term.(const event_log $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name $ since $ count),
-  Term.info "log" ~doc ~man ~exits
-
 let block_info_cmd =
   let doc = "Information about block devices" in
   let man =
@@ -319,7 +307,7 @@ let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
-             console_cmd ; stats_cmd ; log_cmd ]
+             console_cmd ; stats_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds with

@@ -15,7 +15,7 @@ let create_lock = Lwt_mutex.create ()
    Vmm_vmmd.handle is getting called, and while communicating via log /
    console / stat socket communication. *)
 
-let rec create stat_out log_out cons_out data_out name config =
+let rec create stat_out cons_out data_out name config =
   (match Vmm_vmmd.handle_create !state name config with
    | Error `Msg msg ->
      Logs.err (fun m -> m "failed to create %a: %s" Name.pp name msg) ;
@@ -28,7 +28,7 @@ let rec create stat_out log_out cons_out data_out name config =
        | Error (`Msg msg) ->
          Logs.err (fun m -> m "create (exec) failed %s" msg) ;
          Lwt.return (None, fail_cont ())
-       | Ok (state', stat, log, data, name, vm) ->
+       | Ok (state', stat, data, name, vm) ->
          state := state';
          (if Unikernel.restart_handler config then
             match Vmm_vmmd.register_restart !state name Lwt.task with
@@ -41,12 +41,11 @@ let rec create stat_out log_out cons_out data_out name config =
                       let state', may = Vmm_vmmd.may_restart !state name in
                       state := state';
                       if may && should_restart config name r then
-                        create stat_out log_out cons_out stub_data_out
+                        create stat_out cons_out stub_data_out
                           name vm.Unikernel.config
                       else
                         Lwt.return_unit)));
-         stat_out "setting up stat" stat >>= fun () ->
-         log_out "setting up log" log >|= fun () ->
+         stat_out "setting up stat" stat >|= fun () ->
          (Some vm, data)) >>= fun (started, data) ->
   (match started with
    | None -> ()
@@ -54,10 +53,9 @@ let rec create stat_out log_out cons_out data_out name config =
      Lwt.async (fun () ->
          Vmm_lwt.wait_and_clear vm.Unikernel.pid >>= fun r ->
          Lwt_mutex.with_lock create_lock (fun () ->
-             let state', stat', log' = Vmm_vmmd.handle_shutdown !state name vm r in
+             let state', stat' = Vmm_vmmd.handle_shutdown !state name vm r in
              state := state';
-             stat_out "handle shutdown stat" stat' >>= fun () ->
-             log_out "handle shutdown log" log' >|= fun () ->
+             stat_out "handle shutdown stat" stat' >|= fun () ->
              let state', waiter_opt = Vmm_vmmd.waiter !state name in
              state := state';
              waiter_opt) >|= function
@@ -65,7 +63,7 @@ let rec create stat_out log_out cons_out data_out name config =
          | Some wakeme -> Lwt.wakeup wakeme r));
   data_out data
 
-let handle log_out cons_out stat_out fd addr =
+let handle cons_out stat_out fd addr =
   Logs.debug (fun m -> m "connection from %a" Vmm_lwt.pp_sockaddr addr) ;
   let rec loop () =
     Logs.debug (fun m -> m "now reading") ;
@@ -88,7 +86,7 @@ let handle log_out cons_out stat_out fd addr =
         | `Loop wire -> Lwt_mutex.unlock create_lock; out wire >>= loop
         | `End wire -> Lwt_mutex.unlock create_lock; out wire
         | `Create (id, vm) ->
-          create stat_out log_out cons_out out id vm >|= fun () ->
+          create stat_out cons_out out id vm >|= fun () ->
           Lwt_mutex.unlock create_lock
         | `Wait (who, data) ->
           let state', task = Vmm_vmmd.register !state who Lwt.task in
@@ -103,7 +101,7 @@ let handle log_out cons_out stat_out fd addr =
           task >>= fun r ->
           Logs.info (fun m -> m "wait returned %a" pp_process_exit r);
           Lwt_mutex.with_lock create_lock (fun () ->
-              create stat_out log_out cons_out out id vm)
+              create stat_out cons_out out id vm)
   in
   loop () >>= fun () ->
   Vmm_lwt.safe_close fd
@@ -160,7 +158,6 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
          | None -> Lwt.fail_with (Fmt.strf "cannot connect to %a" pp_socket s)
        in
        init_influx "albatross" influx;
-       unix_connect ~retries `Log >>= fun l ->
        unix_connect ~retries `Console >>= fun c ->
        (if enable_stats then
           unix_connect ~retries `Stats >|= fun s ->
@@ -187,8 +184,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
        in
        Sys.(set_signal sigterm
               (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       let log_out txt wire = write_reply "log" l txt wire >|= fun _ -> ()
-       and cons_out = write_reply "cons" c
+       let cons_out = write_reply "cons" c
        and stat_out txt wire = match s with
          | None ->
            Logs.info (fun m -> m "ignoring stat %s %a" txt
@@ -198,7 +194,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
        in
        Lwt_list.iter_s (fun (name, config) ->
            Lwt_mutex.with_lock create_lock (fun () ->
-               create stat_out log_out cons_out stub_data_out name config))
+               create stat_out cons_out stub_data_out name config))
          (Vmm_trie.all old_unikernels) >>= fun () ->
        Lwt.catch (fun () ->
            let rec loop () =
@@ -206,7 +202,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
              Lwt_unix.set_close_on_exec fd ;
              m `Open;
              Lwt.async (fun () ->
-                 handle log_out cons_out stat_out fd addr >|= fun () ->
+                 handle cons_out stat_out fd addr >|= fun () ->
                  m `Close) ;
              loop ()
            in

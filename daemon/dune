@@ -18,10 +18,3 @@
   (package albatross)
   (modules albatross_influx)
   (libraries albatross.cli albatross))
-
-(executable
-  (name albatross_log)
-  (public_name albatross-log)
-  (package albatross)
-  (modules albatross_log)
-  (libraries albatross.cli albatross))

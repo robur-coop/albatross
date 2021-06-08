@@ -4,7 +4,7 @@ val conn_metrics : string -> [ `Close | `Open ] -> unit
 
 val set_tmpdir : Fpath.t -> unit
 
-type service = [ `Console | `Log | `Stats | `Vmmd ]
+type service = [ `Console | `Stats | `Vmmd ]
 
 val socket_path : service -> string
 val pp_socket : service Fmt.t
@@ -189,22 +189,3 @@ type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
 val pp_process_exit : process_exit Fmt.t
 
 val should_restart : Unikernel.config -> Name.t -> process_exit -> bool
-
-module Log : sig
-  type log_event = [
-    | `Login of Name.t * Ipaddr.V4.t * int
-    | `Logout of Name.t * Ipaddr.V4.t * int
-    | `Startup
-    | `Unikernel_start of Name.t * Cstruct.t * int * (string * string) list * (string * Name.t) list
-    | `Unikernel_stop of Name.t * int * process_exit
-    | `Hup
-  ]
-
-  val name : log_event -> Name.t
-
-  val pp_log_event : log_event Fmt.t
-
-  type t = Ptime.t * log_event
-
-  val pp : t Fmt.t
-end
