@@ -5,7 +5,7 @@ PartOf=albatross_stats.service
 [Socket]
 ListenStream=%t/albatross/util/stat.sock
 SocketUser=albatross
-SocketMode=0600
+SocketMode=0660
 Accept=no
 
 [Install]

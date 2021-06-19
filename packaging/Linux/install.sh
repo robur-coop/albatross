@@ -1,6 +1,8 @@
 #!/bin/sh
 ALBATROSS_USER=albatross
 
+groupadd -g 496 $ALBATROSS_USER
+useradd -g 496 -u 496 -d /nonexistent -s /usr/sbin/nologin $ALBATROSS_USER
 sudo mkdir -m 0700 -p /var/lib/albatross/block
 
 sudo cp ../../_build/install/default/bin/* /usr/local/sbin/
