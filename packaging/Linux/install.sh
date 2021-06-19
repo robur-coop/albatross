@@ -1,6 +1,7 @@
 #!/bin/sh
 ALBATROSS_USER=albatross
 
+useradd $ALBATROSS_USER
 sudo mkdir -m 0700 -p /var/lib/albatross/block
 
 sudo cp ../../_build/install/default/bin/* /usr/local/sbin/
