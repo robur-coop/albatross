@@ -1,10 +1,15 @@
 #!/bin/sh -e
 
+# only execute anything if either
+# - running under orb with package = albatross
+# - not running under opam at all
+if [ "$ORB_BUILDING_PACKAGE" != "albatross" -a "$OPAM_PACKAGE_NAME" != "" ]; then
+    exit 0;
+fi
+
 basedir=$(realpath "$(dirname "$0")"/../..)
 pdir=$basedir/packaging/FreeBSD
 bdir=$basedir/_build/install/default/bin
-#tmptmpl=$(basename "$0")
-#tmpd=$(mktemp -t "$tmptmpl")
 tmpd=$basedir/_build/stage
 manifest=$tmpd/+MANIFEST
 rootdir=$tmpd/rootdir
@@ -14,9 +19,7 @@ libexecdir=$rootdir/usr/local/libexec/albatross
 
 trap 'rm -rf $tmpd' 0 INT EXIT
 
-mkdir -p "$rootdir"/usr/local/sbin \
-         "$rootdir"/usr/local/libexec/albatross \
-         "$rootdir"/usr/local/etc/rc.d
+mkdir -p "$sbindir" "$libexecdir" "$rcdir"
 
 # stage service scripts
 for f in albatross_stat \
@@ -60,4 +63,6 @@ sed -e "s:%%FLATSIZE%%:${flatsize}:" "$pdir/MANIFEST" > "$manifest"
 } | sed -e "s:${rootdir}::" >> "$manifest"
 
 export SOURCE_DATE_EPOCH=$(git log -1 --pretty=format:%ct)
-pkg create -r "$rootdir" -M "$manifest" -o $basedir/_build/
+pkg create -r "$rootdir" -M "$manifest" -o $basedir/
+mv $basedir/albatross-*.txz $basedir/albatross.txz
+echo 'bin: [ "albatross.txz" ]' > $basedir/albatross.install
