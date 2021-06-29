@@ -1,0 +1,16 @@
+Package: albatross
+Version: %%VERSION_NUM%%
+Section: unknown
+Priority: optional
+Maintainer: Robur Team <team@robur.coop>
+Standards-Version: 4.4.1
+Homepage: https://github.com/roburio/albatross
+Vcs-Browser: https://github.com/roburio/albatross
+Vcs-Git: https://github.com/roburio/albatross.git
+Architecture: all
+Description: Albatross - orchestrate and manage MirageOS unikernels with Solo5
+  The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
+  unikernels using [Solo5](https://github.com/solo5/solo5). Resources managed
+  by albatross are network interfaces of kind `tap`, which are connected to
+  already existing bridges, block devices, memory, and CPU. Each unikernel is
+  pinned (`cpuset` / `taskset`) to a specific core.
