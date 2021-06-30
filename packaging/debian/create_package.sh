@@ -56,3 +56,4 @@ install $basedir/packaging/debian/postinst $debiandir/postinst
 
 dpkg-deb --build $rootdir $basedir/albatross.deb
 echo 'bin: [ "albatross.deb" ]' > $basedir/albatross.install
+echo 'doc: [ "README.md" ]' >> $basedir/albatross.install
