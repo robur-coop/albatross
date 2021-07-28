@@ -65,7 +65,7 @@ let guard p err = if p then Ok () else Error err
 let decode_strict codec cs =
   match Asn.decode codec cs with
   | Ok (a, cs) ->
-    guard (Cstruct.len cs = 0) (`Msg "trailing bytes") >>= fun () ->
+    guard (Cstruct.length cs = 0) (`Msg "trailing bytes") >>= fun () ->
     Ok a
   | Error (`Parse msg) -> Error (`Msg msg)
 

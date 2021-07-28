@@ -87,7 +87,7 @@ let output_result ((hdr, reply) as wire) =
         write_to_file name compressed image
       | `Old_unikernels vms ->
         List.iter (fun (name, cfg) ->
-            if Cstruct.len cfg.Unikernel.image > 0 then
+            if Cstruct.length cfg.Unikernel.image > 0 then
               write_to_file name cfg.Unikernel.compressed cfg.Unikernel.image)
           vms
       | _ -> ()

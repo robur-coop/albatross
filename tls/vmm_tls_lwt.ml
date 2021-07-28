@@ -47,7 +47,7 @@ let read_tls t =
 let write_tls s wire =
   let data = Vmm_asn.wire_to_cstruct wire in
   let dlen = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.len data)) ;
+  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.length data)) ;
   let buf = Cstruct.(append dlen data) in
   (*  Logs.debug (fun m -> m "TLS write %a" Cstruct.hexdump_pp (Cstruct.of_string buf)) ; *)
   Lwt.catch

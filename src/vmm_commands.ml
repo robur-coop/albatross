@@ -147,7 +147,7 @@ let pp_success ppf = function
   | `Policies ps -> my_fmt_list "no policies" Fmt.(pair ~sep:(unit ": ") Name.pp Policy.pp) ppf ps
   | `Old_unikernels vms -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_config) ppf vms
   | `Unikernel_info infos -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_info) ppf infos
-  | `Unikernel_image (compressed, image) -> Fmt.pf ppf "image (compression %B) %d bytes" compressed (Cstruct.len image)
+  | `Unikernel_image (compressed, image) -> Fmt.pf ppf "image (compression %B) %d bytes" compressed (Cstruct.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
 
 type res = [

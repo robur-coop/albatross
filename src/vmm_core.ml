@@ -225,7 +225,7 @@ module Unikernel = struct
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a"
       pp_typ vm.typ
       vm.compressed
-      (Cstruct.len vm.image)
+      (Cstruct.length vm.image)
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       pp_opt_list vm.block_devices
