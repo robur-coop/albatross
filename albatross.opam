@@ -44,8 +44,8 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
   ["dune" "runtest" "-p" name "-j" jobs] {with-test}
   ["dune" "runtest" "-p" name "-j" jobs] {with-test}
-  ["sh" "packaging/FreeBSD/create_package.sh"] {os = "freebsd"}
-  ["sh" "packaging/debian/create_package.sh"] {os-family = "debian"}
+  ["sh" "-ex" "packaging/FreeBSD/create_package.sh"] {os = "freebsd"}
+  ["sh" "-ex" "packaging/debian/create_package.sh"] {os-family = "debian"}
 ]
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"
 description: """

@@ -64,6 +64,6 @@ sed -e "s:%%FLATSIZE%%:${flatsize}:" "$pdir/MANIFEST" > "$manifest"
 
 export SOURCE_DATE_EPOCH=$(git log -1 --pretty=format:%ct)
 pkg create -r "$rootdir" -M "$manifest" -o $basedir/
-mv $basedir/albatross-*.txz $basedir/albatross.txz
-echo 'bin: [ "albatross.txz" ]' > $basedir/albatross.install
+mv $basedir/albatross-*.pkg $basedir/albatross.pkg
+echo 'bin: [ "albatross.pkg" ]' > $basedir/albatross.install
 echo 'doc: [ "README.md" ]' >> $basedir/albatross.install
