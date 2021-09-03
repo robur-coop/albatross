@@ -4,6 +4,7 @@ PartOf=albatross_daemon.service
 
 [Socket]
 ListenStream=%t/albatross/util/vmmd.sock
+SocketGroup=albatross
 SocketMode=0660
 Accept=no
 
