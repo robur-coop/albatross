@@ -55,6 +55,11 @@ let block_info _ block_name =
   jump block_name (`Block_cmd `Block_info)
 
 let block_create _ block_name block_src block_size =
+  let block_src = match block_src with
+    | Some fpath ->
+      let cs = Rresult.(R.get_ok (Bos.OS.File.read fpath >>| Cstruct.of_string)) in
+      Some cs
+    | None -> None in
   jump block_name (`Block_cmd (`Block_add (block_src, block_size)))
 
 let block_destroy _ block_name =

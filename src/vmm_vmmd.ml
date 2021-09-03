@@ -330,14 +330,14 @@ let handle_block_cmd t id = function
         Vmm_resources.remove_block t.resources id >>= fun resources ->
         Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
-  | `Block_add (src, size) ->
+  | `Block_add (cs, size) ->
     begin
       Logs.debug (fun m -> m "insert block %a: %dMB" Name.pp id size) ;
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         Vmm_resources.check_block t.resources id size >>= fun () ->
-        Vmm_unix.create_block id src size >>= fun () ->
+        Vmm_unix.create_block id cs size >>= fun () ->
         Vmm_resources.insert_block t.resources id size >>= fun resources ->
         Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end

@@ -232,10 +232,12 @@ let block_name =
   Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK")
 
 let block_source =
-  let parser str = match Fpath.of_string str with
-    | Ok _ -> Ok str | Error _ as err -> err in
   let doc = "Source of the block device." in
-  Arg.(value & opt (some (conv (parser, Fmt.string))) None & info [ "src" ] ~doc ~docv:"<filename>")
+  let parser str = match Fpath.of_string str with
+    | Ok _ as v when Sys.file_exists str -> v
+    | Ok v -> Rresult.R.error_msgf "%a does not exist." Fpath.pp v
+    | Error _ as err -> err in
+  Arg.(value & opt (some (conv (parser, Fpath.pp))) None & info [ "src" ] ~doc ~docv:"<filename>")
 
 let block_size =
   let doc = "Block size in MB." in

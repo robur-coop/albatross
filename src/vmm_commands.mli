@@ -44,7 +44,7 @@ type policy_cmd = [
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of string option * int
+  | `Block_add of Cstruct.t option * int
   | `Block_remove
 ]
 

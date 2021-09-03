@@ -81,14 +81,14 @@ let pp_policy_cmd ppf = function
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of string option * int
+  | `Block_add of Cstruct.t option * int
   | `Block_remove
 ]
 
 let pp_block_cmd ppf = function
   | `Block_info -> Fmt.string ppf "block info"
   | `Block_add (None, size) -> Fmt.pf ppf "block add %d" size
-  | `Block_add (Some src, size) -> Fmt.pf ppf "block add --src %s %d" src size
+  | `Block_add (Some _, size) -> Fmt.pf ppf "block add --src <filename> %d" size
   | `Block_remove -> Fmt.string ppf "block remove"
 
 type t = [

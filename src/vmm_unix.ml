@@ -359,20 +359,19 @@ let bytes_of_mb size =
   else
     Error (`Msg "overflow while computing bytes")
 
-(* XXX(dinosaure): [src] and [dst] must exist. *)
-let rec copy src dst =
-  let ic = open_in (Fpath.to_string src)
-  and oc = open_out (Fpath.to_string dst) in
+let rec copy cs dst =
+  let oc = open_out (Fpath.to_string dst) in
   let tmp = Bytes.create 1_000_000 (* 1M *) in
-  transmit tmp ic oc ;
-  close_in ic ;
+  transmit tmp cs oc ;
   close_out oc ; R.ok ()
-and transmit tmp ic oc = match input ic tmp 0 (Bytes.length tmp) with
-  | 0 -> ()
-  | len -> output oc tmp 0 len ; transmit tmp ic oc
-  | exception End_of_file -> ()
+and transmit tmp ({ Cstruct.len; _ } as cs) oc =
+  if len > 0
+  then ( let len' = min (Bytes.length tmp) len in
+         Cstruct.blit_to_bytes cs 0 tmp 0 len' ;
+         output oc tmp 0 len' ;
+         transmit tmp (Cstruct.shift cs len') oc )
 
-let create_block name src size =
+let create_block name cs size =
   let block_name = block_file name in
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
@@ -385,15 +384,11 @@ let create_block name src size =
     close_no_err fd ;
     bytes_of_mb size >>= fun size' ->
     Bos.OS.File.truncate block_name size' >>= fun () ->
-    match src with
+    match cs with
     | None -> R.ok ()
-    | Some src ->
-      Fpath.of_string src |> R.open_error_msg >>= fun src ->
-      Bos.OS.File.must_exist src >>= fun src ->
-      let size'' = (Unix.stat (Fpath.to_string src)).Unix.st_size in
-      if size'' > size'
-      then R.error_msgf "%a is too big to be save as a block device." Fpath.pp src
-      else copy src block_name
+    | Some cs when Cstruct.length cs <= size' ->
+      copy cs block_name
+    | Some _ -> R.error_msgf "The source is too big for the block device."
 
 let destroy_block name =
   Bos.OS.File.delete (block_file name)

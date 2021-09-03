@@ -26,7 +26,7 @@ val destroy : Unikernel.t -> unit
 
 val close_no_err : Unix.file_descr -> unit
 
-val create_block : Name.t -> string option -> int -> (unit, [> R.msg ]) result
+val create_block : Name.t -> Cstruct.t option -> int -> (unit, [> R.msg ]) result
 
 val destroy_block : Name.t -> (unit, [> R.msg ]) result
 
