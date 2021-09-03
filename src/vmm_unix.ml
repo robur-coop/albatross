@@ -389,7 +389,7 @@ let create_block name src size =
     | None -> R.ok ()
     | Some src ->
       Fpath.of_string src |> R.open_error_msg >>= fun src ->
-      Bos.OS.Path.must_exist src >>= fun src ->
+      Bos.OS.File.must_exist src >>= fun src ->
       let size'' = (Unix.stat (Fpath.to_string src)).Unix.st_size in
       if size'' > size'
       then R.error_msgf "%a is too big to be save as a block device." Fpath.pp src
