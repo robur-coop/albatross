@@ -231,6 +231,12 @@ let block_name =
   let doc = "Name of block device." in
   Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK")
 
+let block_source =
+  let parser str = match Fpath.of_string str with
+    | Ok _ -> Ok str | Error _ as err -> err in
+  let doc = "Source of the block device." in
+  Arg.(value & opt (some (conv (parser, Fmt.string))) None & info [ "src" ] ~doc ~docv:"<filename>")
+
 let block_size =
   let doc = "Block size in MB." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"SIZE")

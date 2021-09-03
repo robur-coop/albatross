@@ -54,8 +54,8 @@ let stats _ name =
 let block_info _ block_name =
   jump block_name (`Block_cmd `Block_info)
 
-let block_create _ block_name block_size =
-  jump block_name (`Block_cmd (`Block_add block_size))
+let block_create _ block_name block_src block_size =
+  jump block_name (`Block_cmd (`Block_add (block_src, block_size)))
 
 let block_destroy _ block_name =
   jump block_name (`Block_cmd `Block_remove)
@@ -164,7 +164,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ block_name $ block_size)),
+  Term.(term_result (const block_create $ setup_log $ block_name $ block_source $ block_size)),
   Term.info "create_block" ~doc ~man
 
 let block_destroy_cmd =

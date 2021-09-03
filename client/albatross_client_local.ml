@@ -84,8 +84,8 @@ let stats_subscribe _ opt_socket name =
 let block_info _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_info)
 
-let block_create _ opt_socket block_name block_size =
-  jump opt_socket block_name (`Block_cmd (`Block_add block_size))
+let block_create _ opt_socket block_name block_src block_size =
+  jump opt_socket block_name (`Block_cmd (`Block_add (block_src, block_size)))
 
 let block_destroy _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_remove)
@@ -219,7 +219,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ tmpdir)),
+  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_source $ block_size $ tmpdir)),
   Term.info "create_block" ~doc ~man ~exits
 
 let block_destroy_cmd =

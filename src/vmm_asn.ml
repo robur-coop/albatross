@@ -460,17 +460,17 @@ let policy_cmd =
 let block_cmd =
   let f = function
     | `C1 () -> `Block_info
-    | `C2 size -> `Block_add size
+    | `C2 (src, size) -> `Block_add (src, size)
     | `C3 () -> `Block_remove
   and g = function
     | `Block_info -> `C1 ()
-    | `Block_add size -> `C2 size
+    | `Block_add (src, size) -> `C2 (src, size)
     | `Block_remove -> `C3 ()
   in
   Asn.S.map f g @@
   Asn.S.(choice3
            (my_explicit 0 ~label:"info" null)
-           (my_explicit 1 ~label:"add" int)
+           (my_explicit 1 ~label:"add" (sequence2 (optional utf8_string) (required int)))
            (my_explicit 2 ~label:"remove" null))
 
 let version =

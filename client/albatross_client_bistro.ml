@@ -138,8 +138,8 @@ let stats _ endp cert key ca name =
 let block_info _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_info)
 
-let block_create _ endp cert key ca block_name block_size =
-  jump endp cert key ca block_name (`Block_cmd (`Block_add block_size))
+let block_create _ endp cert key ca block_name block_src block_size =
+  jump endp cert key ca block_name (`Block_cmd (`Block_add (block_src, block_size)))
 
 let block_destroy _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_remove)
@@ -269,7 +269,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size),
+  Term.(const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_source $ block_size),
   Term.info "create_block" ~doc ~man ~exits
 
 let block_destroy_cmd =
