@@ -3,7 +3,7 @@
 open Lwt.Infix
 open X509
 
-let read fd =
+let read_loop fd =
   (* now we busy read and process output *)
   Logs.debug (fun m -> m "reading tls stream") ;
   let rec loop () =
@@ -36,7 +36,7 @@ let timestamps validity =
   | None, _ | _, None -> invalid_arg "span too big - reached end of ptime"
   | Some now, Some exp -> (now, exp)
 
-let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
+let connect (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
@@ -88,7 +88,7 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
         | None ->
           Logs.err (fun m -> m "connection failed to %a"
                        Vmm_lwt.pp_sockaddr sockaddr);
-          Lwt.return Albatross_cli.Connect_failed
+          Lwt.return (Error Albatross_cli.Connect_failed)
         | Some fd ->
           Logs.debug (fun m -> m "connected to remote host") ;
           (* reneg true to allow re-negotiation over the server-authenticated TLS
@@ -96,13 +96,16 @@ let handle (host, port) cert key ca id (cmd : Vmm_commands.t) =
              (and required) be removed! *)
           let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
           Lwt.catch (fun () ->
-              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >>= fun t ->
+              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
               Logs.debug (fun m -> m "finished tls handshake") ;
-              read t)
-            (fun exn -> Lwt.return (Albatross_tls_common.classify_tls_error exn))
+              Ok fd)
+            (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
 
 let jump endp cert key ca name cmd =
-  Lwt_main.run (handle endp cert key ca name cmd)
+  Lwt_main.run (
+    connect endp cert key ca name cmd >>= function
+    | Ok fd -> read_loop fd
+    | Error e -> Lwt.return e)
 
 let info_policy _ endp cert key ca name =
   jump endp cert key ca name (`Policy_cmd `Policy_info)
@@ -143,6 +146,30 @@ let block_create _ endp cert key ca block_name block_size =
 
 let block_destroy _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_remove)
+
+let update _ endp cert key ca host dryrun level name =
+  Lwt_main.run (
+    connect endp cert key ca name (`Unikernel_cmd `Unikernel_info) >>= function
+    | Error e -> Lwt.return e
+    | Ok fd ->
+      Vmm_tls_lwt.read_tls fd >>= fun r ->
+      Vmm_tls_lwt.close fd >>= fun () ->
+      Albatross_client_update.prepare_update level host dryrun r >>= function
+      | Error e -> Lwt.return e
+      | Ok cmd ->
+        connect endp cert key ca name (`Unikernel_cmd cmd) >>= function
+        | Error e -> Lwt.return e
+        | Ok fd ->
+          Vmm_tls_lwt.read_tls fd >>= fun r ->
+          Vmm_tls_lwt.close fd >|= fun () ->
+          match r with
+          | Ok w ->
+            Albatross_cli.output_result w
+            |> Result.fold ~ok:(fun () -> Albatross_cli.Success)
+               ~error:(fun e -> e)
+          | Error _ ->
+            Logs.err (fun m -> m "received error from albatross");
+            Albatross_cli.Remote_command_failed)
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
@@ -281,6 +308,15 @@ let block_destroy_cmd =
   Term.(const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name),
   Term.info "destroy_block" ~doc ~man ~exits
 
+let update_cmd =
+  let doc = "Update a unikernel from the binary repository" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Check and update a unikernel from the binary repository"]
+  in
+  Term.(const update $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ http_host $ dryrun $ compress_level 9 $ vm_name),
+  Term.info "update" ~doc ~man ~exits
+
 let help_cmd =
   let topic =
     let doc = "The topic to get help on. `topics' lists the topics." in
@@ -307,7 +343,8 @@ let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
-             console_cmd ; stats_cmd ]
+             console_cmd ; stats_cmd ;
+             update_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds with

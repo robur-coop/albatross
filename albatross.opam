@@ -7,7 +7,7 @@ bug-reports: "https://github.com/roburio/albatross/issues"
 license: "ISC"
 
 depends: [
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.10.0"}
   "dune"
   "dune-configurator"
   "conf-pkg-config" {build}
@@ -38,6 +38,7 @@ depends: [
   "metrics-influx" {>= "0.2.0"}
   "metrics-rusage"
   "hex"
+  "http-lwt-client" {>= "0.0.3"}
 ]
 build: [
   ["dune" "subst"] {dev}

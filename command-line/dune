@@ -4,3 +4,9 @@
   (wrapped false)
   (modules albatross_cli)
   (libraries checkseum.c albatross lwt.unix cmdliner logs.fmt logs.cli fmt fmt.cli fmt.tty ipaddr.unix metrics metrics-lwt metrics-influx metrics-rusage))
+
+(library
+  (name albatross_client_update)
+  (wrapped false)
+  (modules albatross_client_update)
+  (libraries albatross albatross.cli http-lwt-client lwt))

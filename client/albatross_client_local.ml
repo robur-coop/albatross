@@ -11,38 +11,43 @@ let process fd =
   | Error _ -> Error Albatross_cli.Communication_failed
   | Ok wire -> Albatross_cli.output_result wire
 
-let read fd =
+let read_loop (fd, next) =
   (* now we busy read and process output *)
   let rec loop () =
     process fd >>= function
     | Error _ as e -> Lwt.return e
     | Ok () -> loop ()
   in
-  loop ()
+  match next with
+  | `Read -> loop ()
+  | `End -> process fd
 
-let handle opt_socket name (cmd : Vmm_commands.t) =
+let connect opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
   let sockaddr = Lwt_unix.ADDR_UNIX (socket sock opt_socket) in
   Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
   | None ->
     Logs.err (fun m -> m "couldn't connect to %a"
                  Vmm_lwt.pp_sockaddr sockaddr);
-    Lwt.return (Ok Albatross_cli.Connect_failed)
+    Lwt.return (Error Albatross_cli.Connect_failed)
   | Some fd ->
     let header = Vmm_commands.header name in
     Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
     | Error `Exception ->
-      Lwt.return (Ok Albatross_cli.Communication_failed)
+      Lwt.return (Error Albatross_cli.Communication_failed)
     | Ok () ->
-      (match next with
-       | `Read -> read fd
-       | `End -> process fd) >>= fun r ->
-      Vmm_lwt.safe_close fd >|= fun () ->
-      Albatross_cli.exit_status r
+      Lwt.return (Ok (fd, next))
 
 let jump opt_socket name cmd tmpdir =
   Albatross_cli.set_tmpdir tmpdir;
-  Lwt_main.run (handle opt_socket name cmd)
+  Lwt_main.run (
+    connect opt_socket name cmd >>= function
+    | Error e -> Lwt.return (Ok e)
+    | Ok (fd, next) ->
+      read_loop (fd, next) >>= fun r ->
+      Vmm_lwt.safe_close fd >|= fun () ->
+      Albatross_cli.exit_status r
+  )
 
 let info_policy _ opt_socket name =
   jump opt_socket name (`Policy_cmd `Policy_info)
@@ -89,6 +94,31 @@ let block_create _ opt_socket block_name block_size =
 
 let block_destroy _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_remove)
+
+let update _ opt_socket host dryrun level name tmpdir =
+  Albatross_cli.set_tmpdir tmpdir;
+  Lwt_main.run (
+    connect opt_socket name (`Unikernel_cmd `Unikernel_info) >>= function
+    | Error e -> Lwt.return e
+    | Ok (fd, _next) ->
+      Vmm_lwt.read_wire fd >>= fun r ->
+      Vmm_lwt.safe_close fd >>= fun () ->
+      Albatross_client_update.prepare_update level host dryrun r >>= function
+      | Error e -> Lwt.return e
+      | Ok cmd ->
+        connect opt_socket name (`Unikernel_cmd cmd) >>= function
+        | Error e -> Lwt.return e
+        | Ok (fd, _next) ->
+          Vmm_lwt.read_wire fd >>= fun r ->
+          Vmm_lwt.safe_close fd >|= fun () ->
+          match r with
+          | Ok w ->
+            Albatross_cli.output_result w
+            |> Result.fold ~ok:(Fun.const Albatross_cli.Success) ~error:Fun.id
+          | Error _ ->
+            Logs.err (fun m -> m "received error from albatross");
+            Albatross_cli.Remote_command_failed
+  )
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
@@ -231,6 +261,15 @@ let block_destroy_cmd =
   Term.(term_result (const block_destroy $ setup_log $ socket $ block_name $ tmpdir)),
   Term.info "destroy_block" ~doc ~man ~exits
 
+let update_cmd =
+  let doc = " Update a unikernel from the binary repository" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Check and update a unikernel from the binary repository"]
+  in
+  Term.(const update $ setup_log $ socket $ http_host $ dryrun $ compress_level 0 $ vm_name $ tmpdir),
+  Term.info "update" ~doc ~man ~exits
+
 let help_cmd =
   let topic =
     let doc = "The topic to get help on. `topics' lists the topics." in
@@ -258,7 +297,8 @@ let cmds = [ help_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              console_cmd ;
-             stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ]
+             stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ;
+             update_cmd ]
 
 let () =
   match Term.eval_choice default_cmd cmds with

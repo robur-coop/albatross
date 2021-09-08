@@ -59,6 +59,7 @@ type exit_status =
   | Remote_command_failed
   | Cli_failed
   | Internal_error
+  | Http_error
 
 let output_result ((hdr, reply) as wire) =
   match reply with
@@ -203,6 +204,20 @@ let opt_vm_name =
   let doc = "name of virtual machine." in
   Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
 
+let uri_c =
+  let parse s =
+    match String.cuts ~sep:"/" s with
+    | ("http:" | "https:") :: "" :: _host :: [] -> `Ok s
+    | ("http:" | "https:") :: "" :: _host :: "" :: [] -> `Ok (String.drop ~rev:true ~min:1 ~max:1 s)
+    | _ -> `Error ("expected http[s]://hostname")
+  in
+  (parse, Fmt.string)
+
+(* https://builds.robur.coop/ or https://builds.robur.coop *)
+let http_host =
+  let doc = "Base-URL of binary unikernel repository." in
+  Arg.(value & opt uri_c "https://builds.robur.coop" & info [ "http-host" ] ~doc)
+
 let compress_level default =
   let doc = "Compression level (0 - 9), a higher value results in smaller data, but uses more CPU " in
   Arg.(value & opt int default & info [ "compression-level" ] ~doc)
@@ -210,6 +225,10 @@ let compress_level default =
 let force =
   let doc = "force VM creation." in
   Arg.(value & flag & info [ "f" ; "force" ] ~doc)
+
+let dryrun =
+  let doc = "dry run - do not make any changes." in
+  Arg.(value & flag & info [ "dryrun" ] ~doc)
 
 let cpus =
   let doc = "CPUids to allow" in
@@ -370,6 +389,7 @@ let exit_status = function
    - 127 (bash) command not found
    - 255 OCaml abort
 *)
+let http_failed = 118
 let local_authentication_failed = 119
 let remote_authentication_failed = 120
 let communication_failed = 121
@@ -385,6 +405,7 @@ let exit_status_to_int = function
   | Remote_command_failed -> remote_command_failed
   | Cli_failed -> Term.exit_status_cli_error
   | Internal_error -> Term.exit_status_internal_error
+  | Http_error -> http_failed
 
 let exits =
   Term.exit_info ~doc:"on communication (read or write) failure"
@@ -392,6 +413,7 @@ let exits =
   Term.exit_info ~doc:"on connection failure" connect_failed ::
   Term.exit_info ~doc:"on remote command execution failure"
     remote_command_failed ::
+  Term.exit_info ~doc:"on HTTP interaction failure" http_failed ::
   Term.default_exits
 
 let auth_exits =
