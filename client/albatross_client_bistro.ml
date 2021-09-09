@@ -3,22 +3,20 @@
 open Lwt.Infix
 open X509
 
-let read_loop fd =
-  (* now we busy read and process output *)
-  Logs.debug (fun m -> m "reading tls stream") ;
+let process fd =
+  Vmm_tls_lwt.read_tls fd >|= function
+  | Error `Eof -> Error Albatross_cli.Success
+  | Error _ -> Error Albatross_cli.Communication_failed
+  | Ok wire -> Albatross_cli.output_result wire
+
+let read (fd, next) =
+  let open Lwt_result.Infix in
   let rec loop () =
-    Vmm_tls_lwt.read_tls fd >>= function
-    | Error `Eof ->
-      Logs.debug (fun m -> m "eof from server");
-      Lwt.return Albatross_cli.Success
-    | Error _ ->
-      Lwt.return Albatross_cli.Communication_failed
-    | Ok wire ->
-      match Albatross_cli.output_result wire with
-      | Ok () -> loop ()
-      | Error e -> Lwt.return e
+    process fd >>= loop
   in
-  loop ()
+  match next with
+  | `Read -> loop ()
+  | `End -> process fd
 
 let key_ids exts pub issuer =
   let auth = (Some (Public_key.id issuer), General_name.empty, None) in
@@ -103,9 +101,14 @@ let connect (host, port) cert key ca id (cmd : Vmm_commands.t) =
 
 let jump endp cert key ca name cmd =
   Lwt_main.run (
+    let _, next = Vmm_commands.endpoint cmd in
     connect endp cert key ca name cmd >>= function
-    | Ok fd -> read_loop fd
-    | Error e -> Lwt.return e)
+    | Error e -> Lwt.return (Ok e)
+    | Ok fd ->
+      read (fd, next) >>= fun r ->
+      Vmm_tls_lwt.close fd >|= fun () ->
+      Albatross_cli.exit_status r
+  )
 
 let info_policy _ endp cert key ca name =
   jump endp cert key ca name (`Policy_cmd `Policy_info)
@@ -148,28 +151,22 @@ let block_destroy _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_remove)
 
 let update _ endp cert key ca host dryrun level name =
+  let open Lwt_result.Infix in
   Lwt_main.run (
-    connect endp cert key ca name (`Unikernel_cmd `Unikernel_info) >>= function
-    | Error e -> Lwt.return e
-    | Ok fd ->
-      Vmm_tls_lwt.read_tls fd >>= fun r ->
-      Vmm_tls_lwt.close fd >>= fun () ->
-      Albatross_client_update.prepare_update level host dryrun r >>= function
-      | Error e -> Lwt.return e
-      | Ok cmd ->
-        connect endp cert key ca name (`Unikernel_cmd cmd) >>= function
-        | Error e -> Lwt.return e
-        | Ok fd ->
-          Vmm_tls_lwt.read_tls fd >>= fun r ->
-          Vmm_tls_lwt.close fd >|= fun () ->
-          match r with
-          | Ok w ->
-            Albatross_cli.output_result w
-            |> Result.fold ~ok:(fun () -> Albatross_cli.Success)
-               ~error:(fun e -> e)
-          | Error _ ->
-            Logs.err (fun m -> m "received error from albatross");
-            Albatross_cli.Remote_command_failed)
+    connect endp cert key ca name (`Unikernel_cmd `Unikernel_info) >>= fun fd ->
+    Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
+    Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
+    Albatross_client_update.prepare_update level host dryrun r >>= fun cmd ->
+    connect endp cert key ca name (`Unikernel_cmd cmd) >>= fun fd ->
+    Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
+    Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
+    match r with
+    | Ok w ->
+      Lwt.return Albatross_cli.(exit_status (output_result w))
+    | Error _ ->
+      Logs.err (fun m -> m "received error from albatross");
+      Lwt.return (Error Albatross_cli.Remote_command_failed)
+  ) |> function Ok a -> a | Error e -> e
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
@@ -206,7 +203,7 @@ let destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroy a virtual machine."]
   in
-  Term.(const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name),
+  Term.(term_result (const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name)),
   Term.info "destroy" ~doc ~man ~exits
 
 let remove_policy_cmd =
@@ -215,7 +212,7 @@ let remove_policy_cmd =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
-  Term.(const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name),
+  Term.(term_result (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "remove_policy" ~doc ~man ~exits
 
 let info_cmd =
@@ -224,7 +221,7 @@ let info_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name),
+  Term.(term_result (const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "info" ~doc ~man ~exits
 
 let get_cmd =
@@ -233,7 +230,7 @@ let get_cmd =
     [`S "DESCRIPTION";
      `P "Downloads a VM."]
   in
-  Term.(const get $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name),
+  Term.(term_result (const get $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name)),
   Term.info "get" ~doc ~man ~exits
 
 let policy_cmd =
@@ -242,7 +239,7 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name),
+  Term.(term_result (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "policy" ~doc ~man ~exits
 
 let add_policy_cmd =
@@ -251,7 +248,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge),
+  Term.(term_result (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
   Term.info "add_policy" ~doc ~man ~exits
 
 let create_cmd =
@@ -260,7 +257,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9 $ restart_on_fail $ exit_code),
+  Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9 $ restart_on_fail $ exit_code)),
   Term.info "create" ~doc ~man ~exits
 
 let console_cmd =
@@ -269,7 +266,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since $ count),
+  Term.(term_result (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since $ count)),
   Term.info "console" ~doc ~man ~exits
 
 let stats_cmd =
@@ -278,7 +275,7 @@ let stats_cmd =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name),
+  Term.(term_result (const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
   Term.info "stats" ~doc ~man ~exits
 
 let block_info_cmd =
@@ -287,7 +284,7 @@ let block_info_cmd =
     [`S "DESCRIPTION";
      `P "Block device information."]
   in
-  Term.(const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_block_name),
+  Term.(term_result (const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_block_name)),
   Term.info "block" ~doc ~man ~exits
 
 let block_create_cmd =
@@ -296,7 +293,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size),
+  Term.(term_result (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size)),
   Term.info "create_block" ~doc ~man ~exits
 
 let block_destroy_cmd =
@@ -305,7 +302,7 @@ let block_destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroys a block device."]
   in
-  Term.(const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name),
+  Term.(term_result (const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name)),
   Term.info "destroy_block" ~doc ~man ~exits
 
 let update_cmd =

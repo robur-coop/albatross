@@ -8,15 +8,16 @@ let socket t = function
 
 let process fd =
   Vmm_lwt.read_wire fd >|= function
+  | Error `Eof -> Error Albatross_cli.Success
   | Error _ -> Error Albatross_cli.Communication_failed
   | Ok wire -> Albatross_cli.output_result wire
 
-let read_loop (fd, next) =
+let read (fd, next) =
+  let open Lwt_result.Infix in
   (* now we busy read and process output *)
   let rec loop () =
-    process fd >>= function
-    | Error _ as e -> Lwt.return e
-    | Ok () -> loop ()
+    process fd >>= fun () ->
+    loop ()
   in
   match next with
   | `Read -> loop ()
@@ -44,7 +45,7 @@ let jump opt_socket name cmd tmpdir =
     connect opt_socket name cmd >>= function
     | Error e -> Lwt.return (Ok e)
     | Ok (fd, next) ->
-      read_loop (fd, next) >>= fun r ->
+      read (fd, next) >>= fun r ->
       Vmm_lwt.safe_close fd >|= fun () ->
       Albatross_cli.exit_status r
   )
@@ -96,29 +97,23 @@ let block_destroy _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_remove)
 
 let update _ opt_socket host dryrun level name tmpdir =
+  let open Lwt_result.Infix in
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run (
-    connect opt_socket name (`Unikernel_cmd `Unikernel_info) >>= function
-    | Error e -> Lwt.return e
-    | Ok (fd, _next) ->
-      Vmm_lwt.read_wire fd >>= fun r ->
-      Vmm_lwt.safe_close fd >>= fun () ->
-      Albatross_client_update.prepare_update level host dryrun r >>= function
-      | Error e -> Lwt.return e
-      | Ok cmd ->
-        connect opt_socket name (`Unikernel_cmd cmd) >>= function
-        | Error e -> Lwt.return e
-        | Ok (fd, _next) ->
-          Vmm_lwt.read_wire fd >>= fun r ->
-          Vmm_lwt.safe_close fd >|= fun () ->
-          match r with
-          | Ok w ->
-            Albatross_cli.output_result w
-            |> Result.fold ~ok:(Fun.const Albatross_cli.Success) ~error:Fun.id
-          | Error _ ->
-            Logs.err (fun m -> m "received error from albatross");
-            Albatross_cli.Remote_command_failed
-  )
+    connect opt_socket name (`Unikernel_cmd `Unikernel_info) >>= fun (fd, _next) ->
+    Lwt_result.ok (Vmm_lwt.read_wire fd) >>= fun r ->
+    Lwt_result.ok (Vmm_lwt.safe_close fd) >>= fun () ->
+    Albatross_client_update.prepare_update level host dryrun r >>= fun cmd ->
+    connect opt_socket name (`Unikernel_cmd cmd) >>= fun (fd, _next) ->
+    Lwt_result.ok (Vmm_lwt.read_wire fd) >>= fun r ->
+    Lwt_result.ok (Vmm_lwt.safe_close fd) >>= fun () ->
+    match r with
+    | Ok w ->
+      Lwt.return Albatross_cli.(exit_status (Albatross_cli.output_result w))
+    | Error _ ->
+      Logs.err (fun m -> m "received error from albatross");
+      Lwt.return (Error Albatross_cli.Remote_command_failed)
+  ) |> function Ok a -> a | Error e -> e
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
