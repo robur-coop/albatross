@@ -36,4 +36,7 @@ let () =
       match C.ocaml_config_var_exn c "system" with
       | "freebsd" -> freebsd c
       | "linux" -> linux c
+      | "linux_elf" -> linux c (* x86_32 *)
+      | "linux_eabihf" -> linux c (* arm32 *)
+      | "elf" -> linux c (* ppc64 & s390x *)
       | os -> failwith ("Unsupported platform: "^os))
