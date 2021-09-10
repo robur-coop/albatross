@@ -81,14 +81,21 @@ let pp_policy_cmd ppf = function
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int
+  | `Block_add of int * Cstruct.t option
   | `Block_remove
+  | `Block_set of Cstruct.t
+  | `Block_dump
 ]
 
 let pp_block_cmd ppf = function
   | `Block_info -> Fmt.string ppf "block info"
-  | `Block_add size -> Fmt.pf ppf "block add %d" size
   | `Block_remove -> Fmt.string ppf "block remove"
+  | `Block_add (size, data) -> Fmt.pf ppf "block add %d (data %a)"
+                                 size
+                                 Fmt.(option ~none:(unit "no data") int)
+                                 (Option.map Cstruct.length data)
+  | `Block_set data -> Fmt.pf ppf "block set %d" (Cstruct.length data)
+  | `Block_dump -> Fmt.pf ppf "block dump"
 
 type t = [
     | `Console_cmd of console_cmd
@@ -131,6 +138,7 @@ type success = [
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * Cstruct.t
   | `Block_devices of (Name.t * int * bool) list
+  | `Block_device_image of Cstruct.t
 ]
 
 let pp_block ppf (id, size, active) =
@@ -149,6 +157,7 @@ let pp_success ppf = function
   | `Unikernel_info infos -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_info) ppf infos
   | `Unikernel_image (compressed, image) -> Fmt.pf ppf "image (compression %B) %d bytes" compressed (Cstruct.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
+  | `Block_device_image data -> Fmt.pf ppf "block device %d bytes" (Cstruct.length data)
 
 type res = [
   | `Command of t

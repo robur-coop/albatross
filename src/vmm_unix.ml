@@ -359,7 +359,7 @@ let bytes_of_mb size =
   else
     Error (`Msg "overflow while computing bytes")
 
-let create_block name size =
+let create_block ?data name size =
   let block_name = block_file name in
   Bos.OS.File.exists block_name >>= function
   | true -> Error (`Msg "file already exists")
@@ -368,13 +368,21 @@ let create_block name size =
     (Bos.OS.Path.exists dir >>= function
       | false -> Bos.OS.Dir.create ~mode:0o700 dir
       | true -> Ok true) >>= fun _ ->
-    let fd = Unix.(openfile (Fpath.to_string block_name) [O_CREAT] 0o600) in
-    close_no_err fd ;
+    let data = Option.value ~default:Cstruct.empty data in
+    Bos.OS.File.write ~mode:0o600 block_name (Cstruct.to_string data) >>= fun () ->
     bytes_of_mb size >>= fun size' ->
     Bos.OS.File.truncate block_name size'
 
 let destroy_block name =
   Bos.OS.File.delete (block_file name)
+
+let dump_block name =
+  let block_name = block_file name in
+  Bos.OS.File.exists block_name >>= function
+  | false -> Error (`Msg "file does not exist")
+  | true ->
+    Bos.OS.File.read block_name >>| fun data ->
+    Cstruct.of_string data
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then

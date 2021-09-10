@@ -91,6 +91,9 @@ let output_result ((hdr, reply) as wire) =
             if Cstruct.length cfg.Unikernel.image > 0 then
               write_to_file name cfg.Unikernel.compressed cfg.Unikernel.image)
           vms
+      | `Block_device_image image ->
+        let name = hdr.Vmm_commands.name in
+        write_to_file name false image
       | _ -> ()
     end;
     Ok ()
@@ -127,6 +130,17 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
   in
   let config = { Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then `Unikernel_force_create config else `Unikernel_create config
+
+let create_block size data =
+  let open Rresult.R.Infix in
+  match data with
+  | None -> Ok (`Block_add (size, None))
+  | Some image ->
+    Vmm_unix.bytes_of_mb size >>= fun size_in_mb ->
+    if size_in_mb >= Cstruct.length image then
+      Ok (`Block_add (size, Some image))
+    else
+      Error (`Msg "data exceeds size")
 
 let policy vms memory cpus block bridges =
   let bridges = String.Set.of_list bridges
@@ -253,6 +267,24 @@ let block_name =
 let block_size =
   let doc = "Block size in MB." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"SIZE")
+
+let data_c =
+  let parse s =
+    let f = Fpath.v s in
+    match Bos.OS.File.read f with
+    | Ok data -> `Ok (Cstruct.of_string data)
+    | Error (`Msg m) -> `Error m
+  in
+  parse,
+  fun ppf data -> Format.fprintf ppf "file with %d bytes" (Cstruct.length data)
+
+let block_data =
+  let doc = "Block device content." in
+  Arg.(required & pos 1 (some data_c) None & info [] ~doc ~docv:"FILE")
+
+let opt_block_data =
+  let doc = "Block device content." in
+  Arg.(value & opt (some data_c) None & info [ "data" ] ~doc ~docv:"FILE")
 
 let opt_block_name =
   let doc = "Name of block device." in

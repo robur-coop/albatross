@@ -24,11 +24,15 @@ val free_system_resources : Name.t -> string list -> (unit, [> R.msg ]) result
 
 val destroy : Unikernel.t -> unit
 
+val bytes_of_mb : int -> (int, [> R.msg ]) result
+
 val close_no_err : Unix.file_descr -> unit
 
-val create_block : Name.t -> int -> (unit, [> R.msg ]) result
+val create_block : ?data:Cstruct.t -> Name.t -> int -> (unit, [> R.msg ]) result
 
 val destroy_block : Name.t -> (unit, [> R.msg ]) result
+
+val dump_block : Name.t -> (Cstruct.t, [> R.msg ]) result
 
 val find_block_devices : unit -> ((Name.t * int) list, [> R.msg ]) result
 

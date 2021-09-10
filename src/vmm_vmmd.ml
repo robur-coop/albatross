@@ -330,16 +330,48 @@ let handle_block_cmd t id = function
         Vmm_resources.remove_block t.resources id >>= fun resources ->
         Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
-  | `Block_add size ->
+  | `Block_add (size, data) ->
     begin
-      Logs.debug (fun m -> m "insert block %a: %dMB" Name.pp id size) ;
+      Logs.debug (fun m -> m "insert block %a: %dMB (data: %a)"
+                     Name.pp id size
+                     Fmt.(option ~none:(unit "none provided") int)
+                     (Option.map Cstruct.length data));
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         Vmm_resources.check_block t.resources id size >>= fun () ->
-        Vmm_unix.create_block id size >>= fun () ->
+        (match data with
+         | None -> Ok None
+         | Some img ->
+           Vmm_unix.bytes_of_mb size >>= fun size_in_bytes ->
+           if size_in_bytes >= Cstruct.length img then
+             Ok (Some img)
+           else
+             Error (`Msg "data exceeds block size")) >>= fun data ->
+        Vmm_unix.create_block ?data id size >>= fun () ->
         Vmm_resources.insert_block t.resources id size >>= fun resources ->
         Ok ({ t with resources }, `End (`Success (`String "added block device")))
+    end
+  | `Block_set data ->
+    begin match Vmm_resources.find_block t.resources id with
+      | None -> Error (`Msg "set block: not found")
+      | Some (_, true) -> Error (`Msg "set block: is in use")
+      | Some (size, false) ->
+        Vmm_unix.bytes_of_mb size >>= fun size_in_bytes ->
+        (if size_in_bytes >= Cstruct.length data then
+           Ok ()
+         else
+           Error (`Msg "data exceeds block size")) >>= fun () ->
+        Vmm_unix.destroy_block id >>= fun () ->
+        Vmm_unix.create_block ~data id size >>= fun () ->
+        Ok (t, `End (`Success (`String "set block device")))
+    end
+  | `Block_dump ->
+    begin match Vmm_resources.find_block t.resources id with
+      | None -> Error (`Msg "dump block: not found")
+      | Some _ ->
+        Vmm_unix.dump_block id >>= fun data ->
+        Ok (t, `End (`Success (`Block_device_image data)))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;

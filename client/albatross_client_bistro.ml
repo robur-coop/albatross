@@ -144,8 +144,16 @@ let stats _ endp cert key ca name =
 let block_info _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_info)
 
-let block_create _ endp cert key ca block_name block_size =
-  jump endp cert key ca block_name (`Block_cmd (`Block_add block_size))
+let block_dump _ endp cert key ca block_name =
+  jump endp cert key ca block_name (`Block_cmd `Block_dump)
+
+let block_create _ endp cert key ca block_name block_size block_data =
+  match Albatross_cli.create_block block_size block_data with
+  | Error (`Msg msg) -> failwith msg
+  | Ok cmd -> jump endp cert key ca block_name (`Block_cmd cmd)
+
+let block_set _ endp cert key ca block_name block_data =
+  jump endp cert key ca block_name (`Block_cmd (`Block_set block_data))
 
 let block_destroy _ endp cert key ca block_name =
   jump endp cert key ca block_name (`Block_cmd `Block_remove)
@@ -293,8 +301,26 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size)),
+  Term.(term_result (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size $ opt_block_data)),
   Term.info "create_block" ~doc ~man ~exits
+
+let block_set_cmd =
+  let doc = "Set data to a block device" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Set data to a block device."]
+  in
+  Term.(term_result (const block_set $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_data)),
+  Term.info "set_block" ~doc ~man ~exits
+
+let block_dump_cmd =
+  let doc = "Dump data of a block device" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Dump data of a block device."]
+  in
+  Term.(term_result (const block_dump $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name)),
+  Term.info "dump_block" ~doc ~man ~exits
 
 let block_destroy_cmd =
   let doc = "Destroys a block device" in
@@ -340,6 +366,7 @@ let cmds = [ help_cmd ;
              policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
+             block_set_cmd ; block_dump_cmd ;
              console_cmd ; stats_cmd ;
              update_cmd ]
 

@@ -460,18 +460,29 @@ let policy_cmd =
 let block_cmd =
   let f = function
     | `C1 () -> `Block_info
-    | `C2 size -> `Block_add size
+    | `C2 size -> `Block_add (size, None)
     | `C3 () -> `Block_remove
+    | `C4 (size, data) -> `Block_add (size, data)
+    | `C5 data -> `Block_set data
+    | `C6 () -> `Block_dump
   and g = function
     | `Block_info -> `C1 ()
-    | `Block_add size -> `C2 size
+    | `Block_add (size, data) -> `C4 (size, data)
     | `Block_remove -> `C3 ()
+    | `Block_set data -> `C5 data
+    | `Block_dump -> `C6 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice6
            (my_explicit 0 ~label:"info" null)
-           (my_explicit 1 ~label:"add" int)
-           (my_explicit 2 ~label:"remove" null))
+           (my_explicit 1 ~label:"add-OLD" int)
+           (my_explicit 2 ~label:"remove" null)
+           (my_explicit 3 ~label:"add"
+              (sequence2
+                 (required ~label:"size" int)
+                 (optional ~label:"data" octet_string)))
+           (my_explicit 4 ~label:"set" octet_string)
+           (my_explicit 5 ~label:"dump" null))
 
 let version =
   let f data = match data with
@@ -584,7 +595,7 @@ let success =
     | `C1 `C5 blocks -> `Block_devices blocks
     | `C1 `C6 vms -> `Unikernel_info vms
     | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
-    | `C2 `C2 () -> assert false (* placeholder *)
+    | `C2 `C2 data -> `Block_device_image data
   and g = function
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
@@ -593,6 +604,7 @@ let success =
     | `Block_devices blocks -> `C1 (`C5 blocks)
     | `Unikernel_info vms -> `C1 (`C6 vms)
     | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
+    | `Block_device_image data -> `C2 (`C2 data)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
@@ -625,7 +637,7 @@ let success =
                 (sequence2
                    (required ~label:"compressed" bool)
                    (required ~label:"image" octet_string)))
-             (my_explicit 7 ~label:"placeholder" null)))
+             (my_explicit 7 ~label:"block-device-image" octet_string)))
 
 let payload =
   let f = function
