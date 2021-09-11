@@ -2,17 +2,20 @@
 
 open Lwt.Infix
 
-let rec read_tls_write_cons t =
-  Vmm_tls_lwt.read_tls t >>= function
-  | Error `Eof ->
-    Logs.warn (fun m -> m "eof from server");
-    Lwt.return Albatross_cli.Success
-  | Error _ ->
-    Lwt.return Albatross_cli.Communication_failed
-  | Ok wire ->
-    match Albatross_cli.output_result wire with
-    | Ok () -> read_tls_write_cons t
-    | Error e -> Lwt.return e
+let process fd =
+  Vmm_tls_lwt.read_tls fd >|= function
+  | Error `Eof -> Error Albatross_cli.Success
+  | Error _ -> Error Albatross_cli.Communication_failed
+  | Ok wire -> Albatross_cli.output_result wire
+
+let read (fd, next) =
+  let open Lwt_result.Infix in
+  let rec loop () =
+    process fd >>= loop
+  in
+  match next with
+  | `Read -> loop ()
+  | `End -> process fd
 
 let client cas host port cert priv_key =
   let auth = if Sys.is_directory cas then `Ca_dir cas else `Ca_file cas in
@@ -37,7 +40,13 @@ let client cas host port cert priv_key =
       let certificates = `Single cert in
       let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
       Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
-      read_tls_write_cons t)
+      let next = match Vmm_tls.wire_command_of_cert (List.hd (fst cert)) with
+        | Ok (_, cmd) -> snd (Vmm_commands.endpoint cmd)
+        | _ -> `Read
+      in
+      read (t, next) >>= fun r ->
+      Vmm_tls_lwt.close t >|= fun () ->
+      Albatross_cli.exit_status r |> function Ok a -> a | Error a -> a)
     (fun exn -> Lwt.return (Albatross_tls_common.classify_tls_error exn))
 
 let run_client _ cas cert key (host, port) =
