@@ -73,13 +73,13 @@ let help _ man_format cmds = function
   | Some t when List.mem t cmds -> `Help (man_format, Some t)
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
-let generate _ name db days sname sdays =
+let generate _ name db days sname sdays key_type bits =
   Mirage_crypto_rng_unix.initialize () ;
-  priv_key ~bits:4096 name >>= fun key ->
+  priv_key key_type bits name >>= fun key ->
   let name = [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
   Signing_request.create name key >>= fun csr ->
   sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
-  priv_key sname >>= fun skey ->
+  priv_key key_type bits sname >>= fun skey ->
   let sname = [ Distinguished_name.(Relative_distinguished_name.singleton (CN sname)) ] in
   Signing_request.create sname skey >>= fun csr ->
   sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
@@ -117,7 +117,7 @@ let generate_cmd =
     [`S "DESCRIPTION";
      `P "Generates a certificate authority."]
   in
-  Term.(term_result (const generate $ setup_log $ nam $ db $ days $ sname $ sday)),
+  Term.(term_result (const generate $ setup_log $ nam $ db $ days $ sname $ sday $ pub_key_type $ key_bits)),
   Term.info "generate" ~doc ~man
 
 let days =
