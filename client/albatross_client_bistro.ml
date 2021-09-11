@@ -34,7 +34,7 @@ let timestamps validity =
   | None, _ | _, None -> invalid_arg "span too big - reached end of ptime"
   | Some now, Some exp -> (now, exp)
 
-let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca id (cmd : Vmm_commands.t) =
+let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca key_type bits id (cmd : Vmm_commands.t) =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
@@ -47,7 +47,7 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
   | _, Error (`Msg e) ->
     Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
   | Ok cert, Ok key ->
-    let tmpkey = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:4096 ()) in
+    let tmpkey = X509.Private_key.generate ~bits key_type in
     let name = Vmm_core.Name.to_string id in
     let extensions =
       let v = Vmm_asn.to_cert_extension cmd in
@@ -92,10 +92,10 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
               Ok fd)
             (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
 
-let jump endp cert key ca name cmd =
+let jump endp cert key ca key_type bits name cmd =
   Lwt_main.run (
     let _, next = Vmm_commands.endpoint cmd in
-    connect endp cert key ca name cmd >>= function
+    connect endp cert key ca key_type bits name cmd >>= function
     | Error e -> Lwt.return (Ok e)
     | Ok fd ->
       read (fd, next) >>= fun r ->
@@ -103,69 +103,69 @@ let jump endp cert key ca name cmd =
       Albatross_cli.exit_status r
   )
 
-let info_policy _ endp cert key ca name =
-  jump endp cert key ca name (`Policy_cmd `Policy_info)
+let info_policy _ endp cert key ca key_type bits name =
+  jump endp cert key ca key_type bits name (`Policy_cmd `Policy_info)
 
-let remove_policy _ endp cert key ca name =
-  jump endp cert key ca name (`Policy_cmd `Policy_remove)
+let remove_policy _ endp cert key ca key_type bits name =
+  jump endp cert key ca key_type bits name (`Policy_cmd `Policy_remove)
 
-let add_policy _ endp cert key ca name vms memory cpus block bridges =
+let add_policy _ endp cert key ca key_type bits name vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump endp cert key ca name (`Policy_cmd (`Policy_add p))
+  jump endp cert key ca key_type bits name (`Policy_cmd (`Policy_add p))
 
-let info_ _ endp cert key ca name =
-  jump endp cert key ca name (`Unikernel_cmd `Unikernel_info)
+let info_ _ endp cert key ca key_type bits name =
+  jump endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_info)
 
-let get _ endp cert key ca name compression =
-  jump endp cert key ca name (`Unikernel_cmd (`Unikernel_get compression))
+let get _ endp cert key ca key_type bits name compression =
+  jump endp cert key ca key_type bits name (`Unikernel_cmd (`Unikernel_get compression))
 
-let destroy _ endp cert key ca name =
-  jump endp cert key ca name (`Unikernel_cmd `Unikernel_destroy)
+let destroy _ endp cert key ca key_type bits name =
+  jump endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_destroy)
 
-let create _ endp cert key ca dbdir force name image cpuid memory argv block network compression restart_on_fail exit_code =
+let create _ endp cert key ca key_type bits name dbdir force image cpuid memory argv block network compression restart_on_fail exit_code =
   Albatross_cli.set_dbdir dbdir;
   match Albatross_cli.create_vm force image cpuid memory argv block network compression restart_on_fail exit_code with
-  | Ok cmd -> jump endp cert key ca name (`Unikernel_cmd cmd)
+  | Ok cmd -> jump endp cert key ca key_type bits name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> failwith msg
 
-let console _ endp cert key ca name since count =
-  jump endp cert key ca name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
+let console _ endp cert key ca key_type bits name since count =
+  jump endp cert key ca key_type bits name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
-let stats _ endp cert key ca name =
-  jump endp cert key ca name (`Stats_cmd `Stats_subscribe)
+let stats _ endp cert key ca key_type bits name =
+  jump endp cert key ca key_type bits name (`Stats_cmd `Stats_subscribe)
 
-let block_info _ endp cert key ca block_name =
-  jump endp cert key ca block_name (`Block_cmd `Block_info)
+let block_info _ endp cert key ca key_type bits block_name =
+  jump endp cert key ca key_type bits block_name (`Block_cmd `Block_info)
 
-let block_dump _ endp cert key ca block_name compression =
-  jump endp cert key ca block_name (`Block_cmd (`Block_dump compression))
+let block_dump _ endp cert key ca key_type bits block_name compression =
+  jump endp cert key ca key_type bits block_name (`Block_cmd (`Block_dump compression))
 
-let block_create _ endp cert key ca block_name block_size compression block_data =
+let block_create _ endp cert key ca key_type bits block_name block_size compression block_data =
   match Albatross_cli.create_block block_size compression block_data with
   | Error (`Msg msg) -> failwith msg
-  | Ok cmd -> jump endp cert key ca block_name (`Block_cmd cmd)
+  | Ok cmd -> jump endp cert key ca key_type bits block_name (`Block_cmd cmd)
 
-let block_set _ endp cert key ca block_name compression block_data =
+let block_set _ endp cert key ca key_type bits block_name compression block_data =
   let compressed, data =
     if compression > 0 then
       true, Vmm_compress.compress_cs compression block_data
     else
       false, block_data
   in
-  jump endp cert key ca block_name (`Block_cmd (`Block_set (compressed, data)))
+  jump endp cert key ca key_type bits block_name (`Block_cmd (`Block_set (compressed, data)))
 
-let block_destroy _ endp cert key ca block_name =
-  jump endp cert key ca block_name (`Block_cmd `Block_remove)
+let block_destroy _ endp cert key ca key_type bits block_name =
+  jump endp cert key ca key_type bits block_name (`Block_cmd `Block_remove)
 
-let update _ endp cert key ca host dryrun level name =
+let update _ endp cert key ca key_type bits host dryrun level name =
   let open Lwt_result.Infix in
   Lwt_main.run (
     let happy_eyeballs = Happy_eyeballs_lwt.create () in
-    connect ~happy_eyeballs endp cert key ca name (`Unikernel_cmd `Unikernel_info) >>= fun fd ->
+    connect ~happy_eyeballs endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_info) >>= fun fd ->
     Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
     Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
     Albatross_client_update.prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
-    connect ~happy_eyeballs endp cert key ca name (`Unikernel_cmd cmd) >>= fun fd ->
+    connect ~happy_eyeballs endp cert key ca key_type bits name (`Unikernel_cmd cmd) >>= fun fd ->
     Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
     Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
     match r with
@@ -211,7 +211,7 @@ let destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroy a virtual machine."]
   in
-  Term.(term_result (const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name)),
+  Term.(term_result (const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name)),
   Term.info "destroy" ~doc ~man ~exits
 
 let remove_policy_cmd =
@@ -220,7 +220,7 @@ let remove_policy_cmd =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
-  Term.(term_result (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name)),
   Term.info "remove_policy" ~doc ~man ~exits
 
 let info_cmd =
@@ -229,7 +229,7 @@ let info_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(term_result (const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const info_ $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name)),
   Term.info "info" ~doc ~man ~exits
 
 let get_cmd =
@@ -238,7 +238,7 @@ let get_cmd =
     [`S "DESCRIPTION";
      `P "Downloads a VM."]
   in
-  Term.(term_result (const get $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ compress_level 9)),
+  Term.(term_result (const get $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name $ compress_level 9)),
   Term.info "get" ~doc ~man ~exits
 
 let policy_cmd =
@@ -247,7 +247,7 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(term_result (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name)),
   Term.info "policy" ~doc ~man ~exits
 
 let add_policy_cmd =
@@ -256,7 +256,7 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(term_result (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
+  Term.(term_result (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge)),
   Term.info "add_policy" ~doc ~man ~exits
 
 let create_cmd =
@@ -265,7 +265,7 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9 $ restart_on_fail $ exit_code)),
+  Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name $ dbdir $ force $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9 $ restart_on_fail $ exit_code)),
   Term.info "create" ~doc ~man ~exits
 
 let console_cmd =
@@ -274,7 +274,7 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(term_result (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ vm_name $ since $ count)),
+  Term.(term_result (const console $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name $ since $ count)),
   Term.info "console" ~doc ~man ~exits
 
 let stats_cmd =
@@ -283,7 +283,7 @@ let stats_cmd =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(term_result (const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_vm_name)),
+  Term.(term_result (const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name)),
   Term.info "stats" ~doc ~man ~exits
 
 let block_info_cmd =
@@ -292,7 +292,7 @@ let block_info_cmd =
     [`S "DESCRIPTION";
      `P "Block device information."]
   in
-  Term.(term_result (const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ opt_block_name)),
+  Term.(term_result (const block_info $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_block_name)),
   Term.info "block" ~doc ~man ~exits
 
 let block_create_cmd =
@@ -301,7 +301,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ block_size $ compress_level 9 $ opt_block_data)),
+  Term.(term_result (const block_create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ block_name $ block_size $ compress_level 9 $ opt_block_data)),
   Term.info "create_block" ~doc ~man ~exits
 
 let block_set_cmd =
@@ -310,7 +310,7 @@ let block_set_cmd =
     [`S "DESCRIPTION";
      `P "Set data to a block device."]
   in
-  Term.(term_result (const block_set $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ compress_level 9 $ block_data)),
+  Term.(term_result (const block_set $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ block_name $ compress_level 9 $ block_data)),
   Term.info "set_block" ~doc ~man ~exits
 
 let block_dump_cmd =
@@ -319,7 +319,7 @@ let block_dump_cmd =
     [`S "DESCRIPTION";
      `P "Dump data of a block device."]
   in
-  Term.(term_result (const block_dump $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name $ compress_level 9)),
+  Term.(term_result (const block_dump $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ block_name $ compress_level 9)),
   Term.info "dump_block" ~doc ~man ~exits
 
 let block_destroy_cmd =
@@ -328,7 +328,7 @@ let block_destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroys a block device."]
   in
-  Term.(term_result (const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ block_name)),
+  Term.(term_result (const block_destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ block_name)),
   Term.info "destroy_block" ~doc ~man ~exits
 
 let update_cmd =
@@ -337,7 +337,7 @@ let update_cmd =
     [`S "DESCRIPTION";
      `P "Check and update a unikernel from the binary repository"]
   in
-  Term.(const update $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ http_host $ dryrun $ compress_level 9 $ vm_name),
+  Term.(const update $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ http_host $ dryrun $ compress_level 9 $ vm_name),
   Term.info "update" ~doc ~man ~exits
 
 let help_cmd =

@@ -59,14 +59,16 @@ let sign ?dbname ?certname extensions issuer key csr delta =
   let enc = X509.Certificate.encode_pem cert in
   Bos.OS.File.write Fpath.(v certname + "pem") (Cstruct.to_string enc)
 
-let priv_key ?(bits = 2048) name =
+let priv_key typ bits name =
   let open Rresult.R.Infix in
   let file = Fpath.(v name + "key") in
   Bos.OS.File.exists file >>= function
   | false ->
-    Logs.info (fun m -> m "creating new RSA key %a" Fpath.pp file) ;
-    let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits ()) in
-    Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string (X509.Private_key.encode_pem priv)) >>= fun () ->
+    Logs.info (fun m -> m "creating new %a key %a"
+                  X509.Key_type.pp typ Fpath.pp file);
+    let priv = X509.Private_key.generate ~bits typ in
+    let pem = X509.Private_key.encode_pem priv in
+    Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string pem) >>= fun () ->
     Ok priv
   | true ->
     Bos.OS.File.read file >>= fun s ->

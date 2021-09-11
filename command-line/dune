@@ -3,7 +3,7 @@
   (public_name albatross.cli)
   (wrapped false)
   (modules albatross_cli)
-  (libraries checkseum.c albatross lwt.unix cmdliner logs.fmt logs.cli fmt fmt.cli fmt.tty ipaddr.unix metrics metrics-lwt metrics-influx metrics-rusage))
+  (libraries checkseum.c albatross lwt.unix cmdliner logs.fmt logs.cli fmt fmt.cli fmt.tty ipaddr.unix metrics metrics-lwt metrics-influx metrics-rusage x509))
 
 (library
   (name albatross_client_update)
