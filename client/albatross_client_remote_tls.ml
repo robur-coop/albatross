@@ -30,7 +30,7 @@ let client cas host port cert priv_key =
       | Ok (_, fd) ->
         X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
         let certificates = `Single cert in
-        let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+        let client = Tls.Config.client ~certificates ~authenticator () in
         Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
         let next = match Vmm_tls.wire_command_of_cert (List.hd (fst cert)) with
           | Ok (_, cmd) -> snd (Vmm_commands.endpoint cmd)

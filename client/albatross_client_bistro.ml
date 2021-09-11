@@ -85,10 +85,7 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
           Lwt.return (Error Albatross_cli.Connect_failed)
         | Ok ((ip, port), fd) ->
           Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
-          (* reneg true to allow re-negotiation over the server-authenticated TLS
-             channel (to transport client certificate encrypted), once TLS 1.3 is in
-             (and required) be removed! *)
-          let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+          let client = Tls.Config.client ~certificates ~authenticator () in
           Lwt.catch (fun () ->
               Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
               Logs.debug (fun m -> m "finished tls handshake") ;
