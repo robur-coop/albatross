@@ -34,7 +34,7 @@ let timestamps validity =
   | None, _ | _, None -> invalid_arg "span too big - reached end of ptime"
   | Some now, Some exp -> (now, exp)
 
-let connect (host, port) cert key ca id (cmd : Vmm_commands.t) =
+let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca id (cmd : Vmm_commands.t) =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
@@ -79,16 +79,12 @@ let connect (host, port) cert key ca id (cmd : Vmm_commands.t) =
       | Ok mycert ->
         let certificates = `Single ([ mycert ; cert ], tmpkey) in
         X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-        Lwt_unix.gethostbyname host >>= fun host_entry ->
-        let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-        let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
-        Vmm_lwt.connect host_entry.h_addrtype sockaddr >>= function
-        | None ->
-          Logs.err (fun m -> m "connection failed to %a"
-                       Vmm_lwt.pp_sockaddr sockaddr);
+        Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
+        | Error `Msg msg ->
+          Logs.err (fun m -> m "connect failed with %s" msg);
           Lwt.return (Error Albatross_cli.Connect_failed)
-        | Some fd ->
-          Logs.debug (fun m -> m "connected to remote host") ;
+        | Ok ((ip, port), fd) ->
+          Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
           (* reneg true to allow re-negotiation over the server-authenticated TLS
              channel (to transport client certificate encrypted), once TLS 1.3 is in
              (and required) be removed! *)
@@ -167,11 +163,12 @@ let block_destroy _ endp cert key ca block_name =
 let update _ endp cert key ca host dryrun level name =
   let open Lwt_result.Infix in
   Lwt_main.run (
-    connect endp cert key ca name (`Unikernel_cmd `Unikernel_info) >>= fun fd ->
+    let happy_eyeballs = Happy_eyeballs_lwt.create () in
+    connect ~happy_eyeballs endp cert key ca name (`Unikernel_cmd `Unikernel_info) >>= fun fd ->
     Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
     Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
-    Albatross_client_update.prepare_update level host dryrun r >>= fun cmd ->
-    connect endp cert key ca name (`Unikernel_cmd cmd) >>= fun fd ->
+    Albatross_client_update.prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
+    connect ~happy_eyeballs endp cert key ca name (`Unikernel_cmd cmd) >>= fun fd ->
     Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
     Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
     match r with

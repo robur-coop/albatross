@@ -21,32 +21,24 @@ let client cas host port cert priv_key =
   let auth = if Sys.is_directory cas then `Ca_dir cas else `Ca_file cas in
   X509_lwt.authenticator auth >>= fun authenticator ->
   Lwt.catch (fun () ->
-    (* TODO TLS certificate verification and gethostbyname:
-       - allow IP address and hostname
-       - if IP is specified, use it (and no TLS name verification - or SubjAltName with IP?)
-       - if hostname is specified
-         - no ip: gethostbyname
-         - ip: connecto to ip and verify hostname *)
-    Lwt_unix.gethostbyname host >>= fun host_entry ->
-    let host_inet_addr = Array.get host_entry.Lwt_unix.h_addr_list 0 in
-    let sockaddr = Lwt_unix.ADDR_INET (host_inet_addr, port) in
-    Vmm_lwt.connect host_entry.Lwt_unix.h_addrtype sockaddr >>= function
-    | None ->
-      Logs.err (fun m -> m "couldn't connect to %a"
-                   Vmm_lwt.pp_sockaddr sockaddr);
-      Lwt.return Albatross_cli.Connect_failed
-    | Some fd ->
-      X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
-      let certificates = `Single cert in
-      let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
-      Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
-      let next = match Vmm_tls.wire_command_of_cert (List.hd (fst cert)) with
-        | Ok (_, cmd) -> snd (Vmm_commands.endpoint cmd)
-        | _ -> `Read
-      in
-      read (t, next) >>= fun r ->
-      Vmm_tls_lwt.close t >|= fun () ->
-      Albatross_cli.exit_status r |> function Ok a -> a | Error a -> a)
+      (* TODO TLS certificate verification (hostname) *)
+      let happy_eyeballs = Happy_eyeballs_lwt.create () in
+      Happy_eyeballs_lwt.connect happy_eyeballs host [ port ] >>= function
+      | Error `Msg msg ->
+        Logs.err (fun m -> m "couldn't connect to %s:%d: %s" host port msg);
+        Lwt.return Albatross_cli.Connect_failed
+      | Ok (_, fd) ->
+        X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
+        let certificates = `Single cert in
+        let client = Tls.Config.client ~reneg:true ~certificates ~authenticator () in
+        Tls_lwt.Unix.client_of_fd client (* ~host *) fd >>= fun t ->
+        let next = match Vmm_tls.wire_command_of_cert (List.hd (fst cert)) with
+          | Ok (_, cmd) -> snd (Vmm_commands.endpoint cmd)
+          | _ -> `Read
+        in
+        read (t, next) >>= fun r ->
+        Vmm_tls_lwt.close t >|= fun () ->
+        Albatross_cli.exit_status r |> function Ok a -> a | Error a -> a)
     (fun exn -> Lwt.return (Albatross_tls_common.classify_tls_error exn))
 
 let run_client _ cas cert key (host, port) =

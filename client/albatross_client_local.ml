@@ -114,10 +114,11 @@ let update _ opt_socket host dryrun level name tmpdir =
   let open Lwt_result.Infix in
   Albatross_cli.set_tmpdir tmpdir;
   Lwt_main.run (
+    let happy_eyeballs = Happy_eyeballs_lwt.create () in
     connect opt_socket name (`Unikernel_cmd `Unikernel_info) >>= fun (fd, _next) ->
     Lwt_result.ok (Vmm_lwt.read_wire fd) >>= fun r ->
     Lwt_result.ok (Vmm_lwt.safe_close fd) >>= fun () ->
-    Albatross_client_update.prepare_update level host dryrun r >>= fun cmd ->
+    Albatross_client_update.prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
     connect opt_socket name (`Unikernel_cmd cmd) >>= fun (fd, _next) ->
     Lwt_result.ok (Vmm_lwt.read_wire fd) >>= fun r ->
     Lwt_result.ok (Vmm_lwt.safe_close fd) >>= fun () ->
