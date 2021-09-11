@@ -1,3 +1,21 @@
+# v1.3.0 (2021-09-??)
+
+- provide arguments for public-key-type and bits, the default is now
+  Ed25519 (used to be RSA) (@hannesm)
+- use happy-eyeballs for name resolution and connection setup (@hannesm)
+- converge albatross-client-* semantics (@hannesm)
+- Implement block_set and block_dump subcommands, also block_add is extended
+  to include the block device data (@hannesm, inspired by @dinosaure)
+- Implement update subcommand for albatross-client-{local,bistro}, which
+  (a) retrieves the digest of a running unikernel (b) looks up that hash
+  on http://builds.robur.coop (a repository of reproducible built unikernels)
+  (c) does a unikernel update (with same arguments and configuration)
+  (@reynir @hannesm)
+- Debian and FreeBSD packaging via orb, available on https://builds.robur.coop
+  (#80 @hannesm @reynir)
+- Linux: add albatross user and group, as done on FreeBSD (#79 #81 @dinosaure)
+- Fixes to README (#78 @yomimono)
+
 # v1.2.0 (2021-06-08)
 
 - linux packaging albatross_stat -> albatross_stats (#73 @smorimoto)
