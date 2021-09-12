@@ -63,8 +63,8 @@ let add_policy _ opt_socket name vms memory cpus block bridges =
 let info_ _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_info)
 
-let get _ opt_socket name =
-  jump opt_socket name (`Unikernel_cmd `Unikernel_get)
+let get _ opt_socket name compression =
+  jump opt_socket name (`Unikernel_cmd (`Unikernel_get compression))
 
 let destroy _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_destroy)
@@ -90,16 +90,22 @@ let stats_subscribe _ opt_socket name =
 let block_info _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_info)
 
-let block_dump _ opt_socket block_name =
-  jump opt_socket block_name (`Block_cmd `Block_dump)
+let block_dump _ opt_socket block_name compression =
+  jump opt_socket block_name (`Block_cmd (`Block_dump compression))
 
-let block_create _ opt_socket block_name block_size block_data =
-  match Albatross_cli.create_block block_size block_data with
+let block_create _ opt_socket block_name block_size compression block_data =
+  match Albatross_cli.create_block block_size compression block_data with
   | Error (`Msg msg) -> failwith msg
   | Ok cmd -> jump opt_socket block_name (`Block_cmd cmd)
 
-let block_set _ opt_socket block_name block_data =
-  jump opt_socket block_name (`Block_cmd (`Block_set block_data))
+let block_set _ opt_socket block_name compression block_data =
+  let compressed, data =
+    if compression > 0 then
+      true, Vmm_compress.compress_cs compression block_data
+    else
+      false, block_data
+  in
+  jump opt_socket block_name (`Block_cmd (`Block_set (compressed, data)))
 
 let block_destroy _ opt_socket block_name =
   jump opt_socket block_name (`Block_cmd `Block_remove)
@@ -171,7 +177,7 @@ let get_cmd =
     [`S "DESCRIPTION";
      `P "Downloads a VM."]
   in
-  Term.(term_result (const get $ setup_log $ socket $ vm_name $ tmpdir)),
+  Term.(term_result (const get $ setup_log $ socket $ vm_name $ compress_level 0 $ tmpdir)),
   Term.info "get" ~doc ~man ~exits
 
 let policy_cmd =
@@ -252,7 +258,7 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ opt_block_data $ tmpdir)),
+  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ compress_level 0 $ opt_block_data $ tmpdir)),
   Term.info "create_block" ~doc ~man ~exits
 
 let block_set_cmd =
@@ -261,7 +267,7 @@ let block_set_cmd =
     [`S "DESCRIPTION";
      `P "Set data to a block device."]
   in
-  Term.(term_result (const block_set $ setup_log $ socket $ block_name $ block_data $ tmpdir)),
+  Term.(term_result (const block_set $ setup_log $ socket $ block_name $ compress_level 0 $ block_data $ tmpdir)),
   Term.info "set_block" ~doc ~man ~exits
 
 let block_dump_cmd =
@@ -270,7 +276,7 @@ let block_dump_cmd =
     [`S "DESCRIPTION";
      `P "Dump data of a block device."]
   in
-  Term.(term_result (const block_dump $ setup_log $ socket $ block_name $ tmpdir)),
+  Term.(term_result (const block_dump $ setup_log $ socket $ block_name $ compress_level 0 $ tmpdir)),
   Term.info "dump_block" ~doc ~man ~exits
 
 let block_destroy_cmd =

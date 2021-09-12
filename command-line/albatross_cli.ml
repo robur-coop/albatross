@@ -78,7 +78,8 @@ let output_result ((hdr, reply) as wire) =
       if compressed then
         match Vmm_compress.uncompress (Cstruct.to_string data) with
         | Ok blob -> write blob
-        | Error () -> Logs.err (fun m -> m "failed to uncompress image")
+        | Error `Msg msg ->
+          Logs.err (fun m -> m "failed to uncompress image: %s" msg)
       else
         write (Cstruct.to_string data)
     in
@@ -91,9 +92,9 @@ let output_result ((hdr, reply) as wire) =
             if Cstruct.length cfg.Unikernel.image > 0 then
               write_to_file name cfg.Unikernel.compressed cfg.Unikernel.image)
           vms
-      | `Block_device_image image ->
+      | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
-        write_to_file name false image
+        write_to_file name compressed image
       | _ -> ()
     end;
     Ok ()
@@ -131,14 +132,20 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
   let config = { Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then `Unikernel_force_create config else `Unikernel_create config
 
-let create_block size data =
+let create_block size compression data =
   let open Rresult.R.Infix in
   match data with
-  | None -> Ok (`Block_add (size, None))
+  | None -> Ok (`Block_add (size, false, None))
   | Some image ->
     Vmm_unix.bytes_of_mb size >>= fun size_in_mb ->
     if size_in_mb >= Cstruct.length image then
-      Ok (`Block_add (size, Some image))
+      let compressed, img =
+        if compression > 0 then
+          true, Vmm_compress.compress_cs compression image
+        else
+          false, image
+      in
+      Ok (`Block_add (size, compressed, Some img))
     else
       Error (`Msg "data exceeds size")
 

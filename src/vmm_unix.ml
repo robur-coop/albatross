@@ -254,7 +254,7 @@ let prepare name (vm : Unikernel.config) =
      if vm.Unikernel.compressed then
        match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
        | Ok blob -> Ok blob
-       | Error () -> Error (`Msg "failed to uncompress")
+       | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
      else
        Ok (Cstruct.to_string vm.Unikernel.image)) >>= fun image ->
   let filename = Name.image_file name in

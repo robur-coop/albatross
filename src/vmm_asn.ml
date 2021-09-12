@@ -413,9 +413,10 @@ let unikernel_cmd =
     | `C1 `C6 vm -> `Unikernel_force_create vm
     | `C2 `C1 () -> `Old_unikernel_get
     | `C2 `C2 () -> `Unikernel_info
-    | `C2 `C3 () -> `Unikernel_get
+    | `C2 `C3 () -> `Unikernel_get 0
     | `C2 `C4 vm -> `Unikernel_create vm
     | `C2 `C5 vm -> `Unikernel_force_create vm
+    | `C2 `C6 level -> `Unikernel_get level
   and g = function
     | `Old_unikernel_info -> `C1 (`C1 ())
     | `Unikernel_create vm -> `C2 (`C4 vm)
@@ -423,7 +424,7 @@ let unikernel_cmd =
     | `Unikernel_destroy -> `C1 (`C4 ())
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Unikernel_info -> `C2 (`C2 ())
-    | `Unikernel_get -> `C2 (`C3 ())
+    | `Unikernel_get level -> `C2 (`C6 level)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
@@ -434,12 +435,13 @@ let unikernel_cmd =
              (my_explicit 3 ~label:"destroy" null)
              (my_explicit 4 ~label:"create-OLD2" v2_unikernel_config)
              (my_explicit 5 ~label:"force-create-OLD2" v2_unikernel_config))
-          (choice5
+          (choice6
              (my_explicit 6 ~label:"get-OLD" null)
              (my_explicit 7 ~label:"info" null)
-             (my_explicit 8 ~label:"get" null)
+             (my_explicit 8 ~label:"get-OLD2" null)
              (my_explicit 9 ~label:"create" unikernel_config)
-             (my_explicit 10 ~label:"force-create" unikernel_config)))
+             (my_explicit 10 ~label:"force-create" unikernel_config)
+             (my_explicit 11 ~label:"get" int)))
 
 let policy_cmd =
   let f = function
@@ -460,17 +462,17 @@ let policy_cmd =
 let block_cmd =
   let f = function
     | `C1 () -> `Block_info
-    | `C2 size -> `Block_add (size, None)
+    | `C2 size -> `Block_add (size, false, None)
     | `C3 () -> `Block_remove
-    | `C4 (size, data) -> `Block_add (size, data)
-    | `C5 data -> `Block_set data
-    | `C6 () -> `Block_dump
+    | `C4 (size, compress, data) -> `Block_add (size, compress, data)
+    | `C5 (compress, data) -> `Block_set (compress, data)
+    | `C6 level -> `Block_dump level
   and g = function
     | `Block_info -> `C1 ()
-    | `Block_add (size, data) -> `C4 (size, data)
+    | `Block_add (size, compress, data) -> `C4 (size, compress, data)
     | `Block_remove -> `C3 ()
-    | `Block_set data -> `C5 data
-    | `Block_dump -> `C6 ()
+    | `Block_set (compress, data) -> `C5 (compress, data)
+    | `Block_dump level -> `C6 level
   in
   Asn.S.map f g @@
   Asn.S.(choice6
@@ -478,11 +480,15 @@ let block_cmd =
            (my_explicit 1 ~label:"add-OLD" int)
            (my_explicit 2 ~label:"remove" null)
            (my_explicit 3 ~label:"add"
-              (sequence2
+              (sequence3
                  (required ~label:"size" int)
+                 (required ~label:"compress" bool)
                  (optional ~label:"data" octet_string)))
-           (my_explicit 4 ~label:"set" octet_string)
-           (my_explicit 5 ~label:"dump" null))
+           (my_explicit 4 ~label:"set"
+              (sequence2
+                 (required ~label:"compress" bool)
+                 (required ~label:"data" octet_string)))
+           (my_explicit 5 ~label:"dump" int))
 
 let version =
   let f data = match data with
@@ -595,7 +601,7 @@ let success =
     | `C1 `C5 blocks -> `Block_devices blocks
     | `C1 `C6 vms -> `Unikernel_info vms
     | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
-    | `C2 `C2 data -> `Block_device_image data
+    | `C2 `C2 (compress, data) -> `Block_device_image (compress, data)
   and g = function
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
@@ -604,7 +610,7 @@ let success =
     | `Block_devices blocks -> `C1 (`C5 blocks)
     | `Unikernel_info vms -> `C1 (`C6 vms)
     | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
-    | `Block_device_image data -> `C2 (`C2 data)
+    | `Block_device_image (compress, data) -> `C2 (`C2 (compress, data))
   in
   Asn.S.map f g @@
   Asn.S.(choice2
@@ -637,7 +643,10 @@ let success =
                 (sequence2
                    (required ~label:"compressed" bool)
                    (required ~label:"image" octet_string)))
-             (my_explicit 7 ~label:"block-device-image" octet_string)))
+             (my_explicit 7 ~label:"block-device-image"
+                (sequence2
+                   (required ~label:"compressed" bool)
+                   (required ~label:"image" octet_string)))))
 
 let payload =
   let f = function

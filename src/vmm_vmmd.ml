@@ -276,13 +276,25 @@ let handle_unikernel_cmd t id = function
         []
     in
     Ok (t, `End (`Success (`Unikernel_info infos)))
-  | `Unikernel_get ->
+  | `Unikernel_get compress_level ->
     Logs.debug (fun m -> m "get %a" Name.pp id) ;
     begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
       | None -> Error (`Msg "get: no unikernel found")
       | Some u ->
         let cfg = u.Unikernel.config in
-        let r = `Unikernel_image (cfg.Unikernel.compressed, cfg.Unikernel.image) in
+        let img = cfg.Unikernel.image in
+        (if cfg.Unikernel.compressed then
+           if compress_level > 0 then
+             Ok (true, img)
+           else
+             Vmm_compress.uncompress_cs img >>| fun blob ->
+             (false, blob)
+         else
+         if compress_level = 0 then
+           Ok (false, img)
+         else
+           Ok (true, Vmm_compress.compress_cs compress_level img)) >>= fun (compress, img) ->
+        let r = `Unikernel_image (compress, img) in
         Ok (t, `End (`Success r))
     end
   | `Unikernel_create vm_config -> Ok (t, `Create (id, vm_config))
@@ -330,7 +342,7 @@ let handle_block_cmd t id = function
         Vmm_resources.remove_block t.resources id >>= fun resources ->
         Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
-  | `Block_add (size, data) ->
+  | `Block_add (size, compressed, data) ->
     begin
       Logs.debug (fun m -> m "insert block %a: %dMB (data: %a)"
                      Name.pp id size
@@ -343,6 +355,10 @@ let handle_block_cmd t id = function
         (match data with
          | None -> Ok None
          | Some img ->
+           (if compressed then
+              Vmm_compress.uncompress_cs img
+            else
+              Ok img) >>= fun img ->
            Vmm_unix.bytes_of_mb size >>= fun size_in_bytes ->
            if size_in_bytes >= Cstruct.length img then
              Ok (Some img)
@@ -352,11 +368,15 @@ let handle_block_cmd t id = function
         Vmm_resources.insert_block t.resources id size >>= fun resources ->
         Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
-  | `Block_set data ->
+  | `Block_set (compressed, data) ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "set block: not found")
       | Some (_, true) -> Error (`Msg "set block: is in use")
       | Some (size, false) ->
+        (if compressed then
+           Vmm_compress.uncompress_cs data
+         else
+           Ok data) >>= fun data ->
         Vmm_unix.bytes_of_mb size >>= fun size_in_bytes ->
         (if size_in_bytes >= Cstruct.length data then
            Ok ()
@@ -366,12 +386,18 @@ let handle_block_cmd t id = function
         Vmm_unix.create_block ~data id size >>= fun () ->
         Ok (t, `End (`Success (`String "set block device")))
     end
-  | `Block_dump ->
+  | `Block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "dump block: not found")
       | Some _ ->
         Vmm_unix.dump_block id >>= fun data ->
-        Ok (t, `End (`Success (`Block_device_image data)))
+        let compress, data =
+          if level = 0 then
+            false, data
+          else
+            true, Vmm_compress.compress_cs level data
+        in
+        Ok (t, `End (`Success (`Block_device_image (compress, data))))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;

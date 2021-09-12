@@ -54,7 +54,7 @@ type unikernel_cmd = [
   | `Unikernel_create of Unikernel.config
   | `Unikernel_force_create of Unikernel.config
   | `Unikernel_destroy
-  | `Unikernel_get
+  | `Unikernel_get of int
   | `Old_unikernel_info
   | `Old_unikernel_get
 ]
@@ -64,7 +64,7 @@ let pp_unikernel_cmd ppf = function
   | `Unikernel_create config -> Fmt.pf ppf "unikernel create %a" Unikernel.pp_config config
   | `Unikernel_force_create config -> Fmt.pf ppf "vm force create %a" Unikernel.pp_config config
   | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
-  | `Unikernel_get -> Fmt.string ppf "unikernel get"
+  | `Unikernel_get level -> Fmt.pf ppf "unikernel get compress level %d" level
   | `Old_unikernel_info -> Fmt.string ppf "old unikernel info"
   | `Old_unikernel_get -> Fmt.string ppf "old unikernel get"
 
@@ -81,21 +81,22 @@ let pp_policy_cmd ppf = function
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * Cstruct.t option
+  | `Block_add of int * bool * Cstruct.t option
   | `Block_remove
-  | `Block_set of Cstruct.t
-  | `Block_dump
+  | `Block_set of bool * Cstruct.t
+  | `Block_dump of int
 ]
 
 let pp_block_cmd ppf = function
   | `Block_info -> Fmt.string ppf "block info"
   | `Block_remove -> Fmt.string ppf "block remove"
-  | `Block_add (size, data) -> Fmt.pf ppf "block add %d (data %a)"
-                                 size
-                                 Fmt.(option ~none:(unit "no data") int)
-                                 (Option.map Cstruct.length data)
-  | `Block_set data -> Fmt.pf ppf "block set %d" (Cstruct.length data)
-  | `Block_dump -> Fmt.pf ppf "block dump"
+  | `Block_add (size, compressed, data) ->
+    Fmt.pf ppf "block add %d (compressed %B data %a)"
+      size compressed
+      Fmt.(option ~none:(unit "no data") int) (Option.map Cstruct.length data)
+  | `Block_set (compressed, data) ->
+    Fmt.pf ppf "block set compressed %B %d bytes" compressed (Cstruct.length data)
+  | `Block_dump level -> Fmt.pf ppf "block dump, compress level %d" level
 
 type t = [
     | `Console_cmd of console_cmd
@@ -138,7 +139,7 @@ type success = [
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * Cstruct.t
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of Cstruct.t
+  | `Block_device_image of bool * Cstruct.t
 ]
 
 let pp_block ppf (id, size, active) =
@@ -157,7 +158,7 @@ let pp_success ppf = function
   | `Unikernel_info infos -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_info) ppf infos
   | `Unikernel_image (compressed, image) -> Fmt.pf ppf "image (compression %B) %d bytes" compressed (Cstruct.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
-  | `Block_device_image data -> Fmt.pf ppf "block device %d bytes" (Cstruct.length data)
+  | `Block_device_image (compressed, data) -> Fmt.pf ppf "block device compressed %B, %d bytes" compressed (Cstruct.length data)
 
 type res = [
   | `Command of t
@@ -183,4 +184,3 @@ let endpoint = function
   | `Stats_cmd `Stats_subscribe -> `Stats, `Read
   | `Stats_cmd _ -> `Stats, `End
   | `Console_cmd _ -> `Console, `Read
-

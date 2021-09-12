@@ -31,7 +31,7 @@ type unikernel_cmd = [
   | `Unikernel_create of Unikernel.config
   | `Unikernel_force_create of Unikernel.config
   | `Unikernel_destroy
-  | `Unikernel_get
+  | `Unikernel_get of int
   | `Old_unikernel_info
   | `Old_unikernel_get
 ]
@@ -44,10 +44,10 @@ type policy_cmd = [
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * Cstruct.t option
+  | `Block_add of int * bool * Cstruct.t option
   | `Block_remove
-  | `Block_set of Cstruct.t
-  | `Block_dump
+  | `Block_set of bool * Cstruct.t
+  | `Block_dump of int
 ]
 
 type t = [
@@ -83,7 +83,7 @@ type success = [
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * Cstruct.t
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of Cstruct.t
+  | `Block_device_image of bool * Cstruct.t
 ]
 
 type res = [
