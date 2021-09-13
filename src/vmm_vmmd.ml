@@ -389,7 +389,8 @@ let handle_block_cmd t id = function
   | `Block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "dump block: not found")
-      | Some _ ->
+      | Some (_, true) -> Error (`Msg "dump block: is in use")
+      | Some (_, false) ->
         Vmm_unix.dump_block id >>= fun data ->
         let compress, data =
           if level = 0 then
