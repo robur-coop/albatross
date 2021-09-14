@@ -1,4 +1,4 @@
-# v1.3.0 (2021-09-??)
+# v1.3.0 (2021-09-14)
 
 - provide arguments for public-key-type and bits, the default is now
   Ed25519 (used to be RSA) (@hannesm)
