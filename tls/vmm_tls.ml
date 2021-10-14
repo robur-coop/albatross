@@ -88,7 +88,7 @@ let handle chain =
       Vmm_core.Name.concat name' post) >>= fun name ->
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
                  Vmm_core.Name.pp name Certificate.pp leaf
-                 Fmt.(list ~sep:(unit " -> ") Certificate.pp) rest);
+                 Fmt.(list ~sep:(any " -> ") Certificate.pp) rest);
   extract_policies rest >>= fun (_, policies) ->
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   match wire_command_of_cert leaf with

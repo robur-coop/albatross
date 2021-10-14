@@ -155,7 +155,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
                         pp_socket s);
            Lwt_unix.sleep 3.0 >>= fun () ->
            unix_connect ~retries:(retries - 1) s
-         | None -> Lwt.fail_with (Fmt.strf "cannot connect to %a" pp_socket s)
+         | None -> Lwt.fail_with (Fmt.str "cannot connect to %a" pp_socket s)
        in
        init_influx "albatross" influx;
        unix_connect ~retries `Console >>= fun c ->
@@ -168,7 +168,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
          (fun () -> Vmm_lwt.server_socket ~systemd `Vmmd)
          (fun e ->
             let str =
-              Fmt.strf "unable to create server socket %a: %s"
+              Fmt.str "unable to create server socket %a: %s"
                 pp_socket `Vmmd (Printexc.to_string e)
             in
             invalid_arg str) >>= fun ss ->

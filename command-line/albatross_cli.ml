@@ -369,7 +369,7 @@ let since_count since count = match since with
   | Some since -> `Since since
 
 let version =
-  Fmt.strf "version %%VERSION%% protocol version %a"
+  Fmt.str "version %%VERSION%% protocol version %a"
     Vmm_commands.pp_version Vmm_commands.current
 
 let default_tmpdir =
