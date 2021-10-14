@@ -27,10 +27,10 @@ type 'a t = {
   name_sockets : 'a Vmm_trie.t ;
 }
 
-let pp_strings pp strs = Fmt.(list ~sep:(unit ",@ ") string) pp strs
+let pp_strings pp strs = Fmt.(list ~sep:(any ",@ ") string) pp strs
 
 let pp_nics pp nets =
-  Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit ": ") string string)) pp nets
+  Fmt.(list ~sep:(any ",@ ") (pair ~sep:(any ": ") string string)) pp nets
 
 let empty () =
   { pid_nic = IM.empty ; vmid_pid = Vmm_trie.empty ; name_sockets = Vmm_trie.empty }

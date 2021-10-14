@@ -177,7 +177,7 @@ let handle_create t name vm_config =
   (* prepare VM: save VM image to disk, create fifo, ... *)
   Vmm_unix.prepare name vm_config >>= fun (taps, digest) ->
   Logs.debug (fun m -> m "prepared vm with taps %a"
-                 Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit " -> ") string string))
+                 Fmt.(list ~sep:(any ",@ ") (pair ~sep:(any " -> ") string string))
                  taps) ;
   let cons_out =
     let header = Vmm_commands.header ~sequence:t.console_counter name in
@@ -326,7 +326,7 @@ let handle_unikernel_cmd t id = function
           Unix.Unix_error _ -> "kill failed"
       in
       let s ex =
-        let data = Fmt.strf "%a %s %a" Name.pp id answer pp_process_exit ex in
+        let data = Fmt.str "%a %s %a" Name.pp id answer pp_process_exit ex in
         `Success (`String data)
       in
       Ok (t, `Wait (id, s))
@@ -346,7 +346,7 @@ let handle_block_cmd t id = function
     begin
       Logs.debug (fun m -> m "insert block %a: %dMB (data: %a)"
                      Name.pp id size
-                     Fmt.(option ~none:(unit "none provided") int)
+                     Fmt.(option ~none:(any "none provided") int)
                      (Option.map Cstruct.length data));
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")

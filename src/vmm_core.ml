@@ -140,7 +140,7 @@ module Name = struct
     match drop_super ~super ~sub with None -> false | Some _ -> true
 
   let pp ppf ids =
-    Fmt.(pf ppf "[vm: %a]" (list ~sep:(unit ".") string) ids)
+    Fmt.(pf ppf "[vm: %a]" (list ~sep:(any ".") string) ids)
 
   let mac name bridge =
     (* deterministic mac address computation: VEB Kombinat Robotron prefix
@@ -152,7 +152,7 @@ module Name = struct
 end
 
 module Policy = struct
-  let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ",") int) (IS.elements is)
+  let pp_is ppf is = Fmt.pf ppf "%a" Fmt.(list ~sep:(any ",") int) (IS.elements is)
 
   let eq_int (a : int) (b : int) = a = b
 
@@ -179,8 +179,8 @@ module Policy = struct
   let pp ppf res =
     Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
       res.vms pp_is res.cpuids res.memory
-      Fmt.(option ~none:(unit "no") int) res.block
-      (String.Set.pp ~sep:Fmt.(unit ", ") Fmt.string) res.bridges
+      Fmt.(option ~none:(any "no") int) res.block
+      (String.Set.pp ~sep:Fmt.(any ", ") Fmt.string) res.bridges
 end
 
 module Unikernel = struct
@@ -195,7 +195,7 @@ module Unikernel = struct
     | `Quit -> Fmt.string ppf "quit"
     | `Restart codes  ->
       Fmt.pf ppf "restart %a"
-        Fmt.(option ~none:(unit "all except 1") (list ~sep:(unit ", ") int))
+        Fmt.(option ~none:(any "all except 1") (list ~sep:(any ", ") int))
         (match codes with None -> None | Some x -> Some (IS.elements x))
 
   type config = {
@@ -216,8 +216,8 @@ module Unikernel = struct
       vm.bridges
 
   let pp_opt_list ppf xs =
-    Fmt.(list ~sep:(unit ", ")
-           (pair ~sep:(unit " -> ") string string))
+    Fmt.(list ~sep:(any ", ")
+           (pair ~sep:(any " -> ") string string))
       ppf
       (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) xs)
 
@@ -230,7 +230,7 @@ module Unikernel = struct
       vm.cpuid vm.memory
       pp_opt_list vm.block_devices
       pp_opt_list vm.bridges
-      Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) vm.argv
+      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) vm.argv
 
   let restart_handler config =
     match config.fail_behaviour with `Quit -> false | `Restart _ -> true
@@ -247,7 +247,7 @@ module Unikernel = struct
     let `Hex hex_digest = Hex.of_cstruct vm.digest in
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       vm.pid
-      Fmt.(list ~sep:(unit ", ") string) vm.taps
+      Fmt.(list ~sep:(any ", ") string) vm.taps
       pp_opt_list vm.config.block_devices
       Bos.Cmd.pp vm.cmd
       hex_digest
@@ -277,7 +277,7 @@ module Unikernel = struct
       info.cpuid info.memory
       pp_opt_list info.block_devices
       pp_opt_list info.bridges
-      Fmt.(option ~none:(unit "no") (list ~sep:(unit " ") string)) info.argv
+      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) info.argv
       hex_digest
 end
 
@@ -325,9 +325,9 @@ module Stats = struct
 
   type vmm = (string * int64) list
   let pp_vmm ppf vmm =
-    Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) ppf vmm
+    Fmt.(list ~sep:(any "@.") (pair ~sep:(any ": ") string int64)) ppf vmm
   let pp_vmm_mem ppf vmm =
-    Fmt.(list ~sep:(unit "@.") (pair ~sep:(unit ": ") string int64)) ppf
+    Fmt.(list ~sep:(any "@.") (pair ~sep:(any ": ") string int64)) ppf
       (List.filter (fun (k, _) -> k = "Resident memory" || k = "Wired memory") vmm)
 
   type ifdata = {
@@ -359,9 +359,9 @@ module Stats = struct
   let pp ppf (ru, mem, vmm, ifs) =
     Fmt.pf ppf "%a@.%a@.%a@.%a"
       pp_rusage ru
-      Fmt.(option ~none:(unit "no kinfo_mem stats") pp_kinfo_mem) mem
-      Fmt.(option ~none:(unit "no vmm stats") pp_vmm) vmm
-      Fmt.(list ~sep:(unit "@.@.") pp_ifdata) ifs
+      Fmt.(option ~none:(any "no kinfo_mem stats") pp_kinfo_mem) mem
+      Fmt.(option ~none:(any "no vmm stats") pp_vmm) vmm
+      Fmt.(list ~sep:(any "@.@.") pp_ifdata) ifs
 end
 
 type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]

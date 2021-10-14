@@ -45,7 +45,7 @@ type stats_cmd = [
 let pp_stats_cmd ppf = function
   | `Stats_add (vmmdev, pid, taps) ->
     Fmt.pf ppf "stats add: vmm device %s pid %d taps %a" vmmdev pid
-      Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ": ") string string)) taps
+      Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string string)) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
 
@@ -93,7 +93,7 @@ let pp_block_cmd ppf = function
   | `Block_add (size, compressed, data) ->
     Fmt.pf ppf "block add %d (compressed %B data %a)"
       size compressed
-      Fmt.(option ~none:(unit "no data") int) (Option.map Cstruct.length data)
+      Fmt.(option ~none:(any "no data") int) (Option.map Cstruct.length data)
   | `Block_set (compressed, data) ->
     Fmt.pf ppf "block set compressed %B %d bytes" compressed (Cstruct.length data)
   | `Block_dump level -> Fmt.pf ppf "block dump, compress level %d" level
@@ -148,14 +148,14 @@ let pp_block ppf (id, size, active) =
 let my_fmt_list empty pp_elt ppf xs =
   match xs with
   | [] -> Fmt.string ppf empty
-  | _ -> Fmt.(list ~sep:(unit "@.") pp_elt ppf xs)
+  | _ -> Fmt.(list ~sep:(any "@.") pp_elt ppf xs)
 
 let pp_success ppf = function
   | `Empty -> Fmt.string ppf "success"
   | `String data -> Fmt.pf ppf "success: %s" data
-  | `Policies ps -> my_fmt_list "no policies" Fmt.(pair ~sep:(unit ": ") Name.pp Policy.pp) ppf ps
-  | `Old_unikernels vms -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_config) ppf vms
-  | `Unikernel_info infos -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(unit ": ") Name.pp Unikernel.pp_info) ppf infos
+  | `Policies ps -> my_fmt_list "no policies" Fmt.(pair ~sep:(any ": ") Name.pp Policy.pp) ppf ps
+  | `Old_unikernels vms -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(any ": ") Name.pp Unikernel.pp_config) ppf vms
+  | `Unikernel_info infos -> my_fmt_list "no unikernels" Fmt.(pair ~sep:(any ": ") Name.pp Unikernel.pp_info) ppf infos
   | `Unikernel_image (compressed, image) -> Fmt.pf ppf "image (compression %B) %d bytes" compressed (Cstruct.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
   | `Block_device_image (compressed, data) -> Fmt.pf ppf "block device compressed %B, %d bytes" compressed (Cstruct.length data)
