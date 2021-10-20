@@ -16,7 +16,6 @@ depends: [
   "ipaddr" {>= "4.0.0"}
   "cstruct" {>= "6.0.0"}
   "logs"
-  "rresult"
   "bos"
   "ptime"
   "cmdliner" {>= "1.0.0"}

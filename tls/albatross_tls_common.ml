@@ -69,9 +69,8 @@ let handle tls =
                      | Error _ -> Error (`Msg "read error after writing policy")
                      | Ok (_, `Success _) -> Ok ()
                      | Ok wire ->
-                       Rresult.R.error_msgf
-                         "expected success when adding policy, got: %a"
-                         Vmm_commands.pp_wire wire)
+                       Error (`Msg (Fmt.str "expected success when adding policy, got: %a"
+                                      Vmm_commands.pp_wire wire)))
                (Ok ()) policies
            | _ -> Lwt.return (Ok ())) >>= function
           | Error (`Msg msg) ->

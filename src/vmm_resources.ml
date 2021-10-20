@@ -2,9 +2,9 @@
 
 open Astring
 
-open Rresult.R.Infix
-
 open Vmm_core
+
+let (let*) = Result.bind
 
 type t = {
   policies : Policy.t Vmm_trie.t ;
@@ -129,10 +129,10 @@ let remove_policy t name = match find_policy t name with
 
 let remove_block t name =
   match find_block t name with
-  | None -> Rresult.R.error_msgf "unknown block device %s" (Name.to_string name)
+  | None -> Error (`Msg (Fmt.str "unknown block device %s" (Name.to_string name)))
   | Some (_, active) ->
     if active then
-      Rresult.R.error_msgf "block device %s in use" (Name.to_string name)
+      Error (`Msg (Fmt.str "block device %s in use" (Name.to_string name)))
     else
       let block_devices = Vmm_trie.remove name t.block_devices in
       let t' = { t with block_devices } in
@@ -143,18 +143,19 @@ let bridge_allowed set s = String.Set.mem s set
 
 let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.config) =
   if succ running_vms > p.Policy.vms then
-    Rresult.R.error_msgf "maximum amount of unikernels (%d) reached" p.Policy.vms
+    Error (`Msg (Fmt.str "maximum amount of unikernels (%d) reached" p.Policy.vms))
   else if vm.Unikernel.memory > p.Policy.memory - used_memory then
-    Rresult.R.error_msgf "maximum allowed memory (%d, used %d) would be exceeded (requesting %d)"
-      p.Policy.memory used_memory vm.Unikernel.memory
+    Error (`Msg (Fmt.str
+                   "maximum allowed memory (%d, used %d) would be exceeded (requesting %d)"
+                   p.Policy.memory used_memory vm.Unikernel.memory))
   else if not (IS.mem vm.Unikernel.cpuid p.Policy.cpuids) then
     Error (`Msg "CPUid is not allowed by policy")
   else
     match List.partition (bridge_allowed p.Policy.bridges) (Unikernel.bridges vm) with
     | _, [] -> Ok ()
     | _, disallowed ->
-      Rresult.R.error_msgf "bridges %a not allowed by policy"
-        Fmt.(list ~sep:(any ", ") string) disallowed
+      Error (`Msg (Fmt.str "bridges %a not allowed by policy"
+                     Fmt.(list ~sep:(any ", ") string) disallowed))
 
 let check_vm t name vm =
   let policy_ok =
@@ -166,15 +167,15 @@ let check_vm t name vm =
       check_policy p used vm
   and block_ok =
     List.fold_left (fun r (block, dev) ->
-        r >>= fun () ->
+        let* () = r in
         let bl = match dev with Some b -> b | None -> block in
         let block_name = Name.block_name name bl in
         match find_block t block_name with
         | None ->
-          Rresult.R.error_msgf "block device %s not found" (Name.to_string block_name)
+          Error (`Msg (Fmt.str "block device %s not found" (Name.to_string block_name)))
         | Some (_, active) ->
           if active then
-            Rresult.R.error_msgf "block device %s already in use" (Name.to_string block_name)
+            Error (`Msg (Fmt.str "block device %s already in use" (Name.to_string block_name)))
           else
             Ok ())
       (Ok ()) vm.block_devices
@@ -182,8 +183,8 @@ let check_vm t name vm =
     | None -> Ok ()
     | Some _ -> Error (`Msg "vm with same name already exists")
   in
-  policy_ok >>= fun () ->
-  block_ok >>= fun () ->
+  let* () = policy_ok in
+  let* () = block_ok in
   vm_ok
 
 let insert_vm t name vm =
@@ -197,7 +198,7 @@ let insert_vm t name vm =
 let check_block t name size =
   let block_ok = match find_block t name with
     | Some _ ->
-      Rresult.R.error_msgf "block device with name %a already exists" Name.pp name
+      Error (`Msg (Fmt.str "block device with name %a already exists" Name.pp name))
     | None -> Ok ()
   and policy_ok =
     let dom = Name.domain name in
@@ -211,15 +212,14 @@ let check_block t name size =
         if size <= limit - used then
           Ok ()
         else
-          Rresult.R.error_msgf
-            "block device policy limit of %d MB (used %d MB) would be exceeded by the request (%d MB)"
-            limit used size
+          Error (`Msg (Fmt.str "block device policy limit of %d MB (used %d MB) would be exceeded by the request (%d MB)"
+                         limit used size))
   in
-  block_ok >>= fun () ->
+  let* () = block_ok in
   policy_ok
 
 let insert_block t name size =
-  check_block t name size >>= fun () ->
+  let* () = check_block t name size in
   let block_devices = fst (Vmm_trie.insert name (size, false) t.block_devices) in
   let t' = { t with block_devices } in
   report_vms t' name;
@@ -234,23 +234,23 @@ let sub_policy ~super ~sub =
     | None, Some _ -> false
   in
   if super.Policy.vms < sub.Policy.vms then
-    Rresult.R.error_msgf "policy above allows %d unikernels, which is fewer than %d"
-      super.Policy.vms sub.Policy.vms
+    Error (`Msg (Fmt.str "policy above allows %d unikernels, which is fewer than %d"
+                   super.Policy.vms sub.Policy.vms))
   else if super.Policy.memory < sub.Policy.memory then
-    Rresult.R.error_msgf "policy above allows %d MB memory, which is fewer than %d MB"
-      super.Policy.memory sub.Policy.memory
+    Error (`Msg (Fmt.str "policy above allows %d MB memory, which is fewer than %d MB"
+                   super.Policy.memory sub.Policy.memory))
   else if not (IS.subset sub.Policy.cpuids super.Policy.cpuids) then
-    Rresult.R.error_msgf "policy above allows CPUids %a, which is not a superset of %a"
-      Fmt.(list ~sep:(any ", ") int) (IS.elements super.Policy.cpuids)
-      Fmt.(list ~sep:(any ", ") int) (IS.elements sub.Policy.cpuids)
+    Error (`Msg (Fmt.str "policy above allows CPUids %a, which is not a superset of %a"
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements super.Policy.cpuids)
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements sub.Policy.cpuids)))
   else if not (String.Set.subset sub.Policy.bridges super.Policy.bridges) then
-    Rresult.R.error_msgf "policy above allows bridges %a, which is not a superset of %a"
-      Fmt.(list ~sep:(any ", ") string) (String.Set.elements super.Policy.bridges)
-      Fmt.(list ~sep:(any ", ") string) (String.Set.elements sub.Policy.bridges)
+    Error (`Msg (Fmt.str "policy above allows bridges %a, which is not a superset of %a"
+                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements super.Policy.bridges)
+                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements sub.Policy.bridges)))
   else if not (sub_block sub.Policy.block super.Policy.block) then
-    Rresult.R.error_msgf "policy above allows %d MB block storage, which is fewer than %d MB"
-      (match super.Policy.block with None -> 0 | Some x -> x)
-      (match sub.Policy.block with None -> 0 | Some x -> x)
+    Error (`Msg (Fmt.str "policy above allows %d MB block storage, which is fewer than %d MB"
+                   (match super.Policy.block with None -> 0 | Some x -> x)
+                   (match sub.Policy.block with None -> 0 | Some x -> x)))
   else
     Ok ()
 
@@ -262,14 +262,14 @@ let check_policies_above t name sub =
       match find_policy t prefix with
       | None -> go (Name.domain prefix)
       | Some super ->
-        sub_policy ~super ~sub >>= fun () ->
+        let* () = sub_policy ~super ~sub in
         go (Name.domain prefix)
   in
   go (Name.domain name)
 
 let check_policies_below t curname super =
   Vmm_trie.fold curname t.policies (fun name policy res ->
-      res >>= fun () ->
+      let* () = res in
       if Name.equal curname name then
         res
       else
@@ -290,32 +290,29 @@ let check_vms t name p =
   in
   let policy_block = match p.Policy.block with None -> 0 | Some x -> x in
   if not (IS.subset cpuids p.Policy.cpuids) then
-    Rresult.R.error_msgf "policy allows CPUids %a, which is not a superset of %a"
-      Fmt.(list ~sep:(any ", ") int) (IS.elements p.Policy.cpuids)
-      Fmt.(list ~sep:(any ", ") int) (IS.elements cpuids)
+    Error (`Msg (Fmt.str "policy allows CPUids %a, which is not a superset of %a"
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements p.Policy.cpuids)
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements cpuids)))
   else if not (String.Set.subset bridges p.Policy.bridges) then
-    Rresult.R.error_msgf "policy allows bridges %a, which is not a superset of %a"
-      Fmt.(list ~sep:(any ", ") string) (String.Set.elements p.Policy.bridges)
-      Fmt.(list ~sep:(any ", ") string) (String.Set.elements bridges)
+    Error (`Msg (Fmt.str "policy allows bridges %a, which is not a superset of %a"
+                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements p.Policy.bridges)
+                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements bridges)))
   else if vms > p.Policy.vms then
-    Rresult.R.error_msgf
-      "unikernel would exceed running unikernel limit set by policy to %d, running %d"
-      p.Policy.vms vms
+    Error (`Msg (Fmt.str "unikernel would exceed running unikernel limit set by policy to %d, running %d"
+                   p.Policy.vms vms))
   else if used_memory > p.Policy.memory then
-    Rresult.R.error_msgf
-      "unikernel would exceed running memory limit set by policy to %d MB, used %d MB"
-      p.Policy.memory used_memory
+    Error (`Msg (Fmt.str "unikernel would exceed running memory limit set by policy to %d MB, used %d MB"
+                   p.Policy.memory used_memory))
   else if block > policy_block then
-    Rresult.R.error_msgf
-      "unikernel would exceed running block storage limit set by policy to %d MB, used %d MB"
-      policy_block block
+    Error (`Msg (Fmt.str "unikernel would exceed running block storage limit set by policy to %d MB, used %d MB"
+                   policy_block block))
   else
     Ok ()
 
 let insert_policy t name p =
-  check_policies_above t name p >>= fun () ->
-  check_policies_below t name p >>= fun () ->
-  check_vms t name p >>= fun () ->
+  let* () = check_policies_above t name p in
+  let* () = check_policies_below t name p in
+  let* () = check_vms t name p in
   let policies = fst (Vmm_trie.insert name p t.policies) in
   Metrics.add policy_metrics (fun x -> x (Name.to_string name)) (fun d -> d p);
   Ok { t with policies }

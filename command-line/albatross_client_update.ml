@@ -72,9 +72,9 @@ let prepare_update ~happy_eyeballs level host dryrun = function
         | Ok unikernel ->
           let tmpfile = Fpath.v (Filename.temp_file "albatross" "unikernel") in
           let r =
-            let open Rresult.R.Infix in
-            Bos.OS.File.write tmpfile unikernel >>= fun () ->
-            Vmm_unix.manifest_devices_match ~bridges ~block_devices tmpfile
+            Result.bind
+              (Bos.OS.File.write tmpfile unikernel)
+              (fun () -> Vmm_unix.manifest_devices_match ~bridges ~block_devices tmpfile)
           in
           ignore (Bos.OS.File.delete tmpfile);
           match r with

@@ -71,11 +71,9 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
         key_ids extensions Signing_request.((info csr).public_key) capub
       in
       let issuer = Certificate.subject cert in
-      match
-        Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
-          (Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
-      with
-      | Error `Msg m -> Lwt.fail_with m
+      match Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer with
+      | Error e ->
+        Lwt.fail_with (Fmt.to_to_string X509.Validation.pp_signature_error e)
       | Ok mycert ->
         let certificates = `Single ([ mycert ; cert ], tmpkey) in
         X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->

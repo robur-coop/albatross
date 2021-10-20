@@ -3,8 +3,6 @@
 open Albatross_provision
 open Vmm_asn
 
-open Rresult.R.Infix
-
 let csr priv name cmd =
   let ext =
     let v = to_cert_extension cmd in
@@ -16,10 +14,11 @@ let csr priv name cmd =
   X509.Signing_request.create name ~extensions priv
 
 let jump key_type bits id cmd =
+  let (let*) = Result.bind in
   Mirage_crypto_rng_unix.initialize () ;
   let name = Vmm_core.Name.to_string id in
-  priv_key key_type bits name >>= fun priv ->
-  csr priv name cmd >>= fun csr ->
+  let* priv = priv_key key_type bits name in
+  let* csr = csr priv name cmd in
   let enc = X509.Signing_request.encode_pem csr in
   Bos.OS.File.write Fpath.(v name + ".req") (Cstruct.to_string enc)
 

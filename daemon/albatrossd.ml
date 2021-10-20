@@ -140,8 +140,9 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
   state := Vmm_vmmd.init_block_devices !state;
-  Rresult.R.error_msg_to_invalid_arg
-    (Vmm_unix.check_commands ());
+  (match Vmm_unix.check_commands () with
+   | Error `Msg m -> invalid_arg m
+   | Ok () -> ());
   match Vmm_vmmd.restore_unikernels () with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->

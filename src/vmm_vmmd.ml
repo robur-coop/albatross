@@ -4,8 +4,7 @@ open Astring
 
 open Vmm_core
 
-open Rresult
-open R.Infix
+let (let*) = Result.bind
 
 type 'a t = {
   console_counter : int64 ;
@@ -169,13 +168,15 @@ let remove_stats t name =
   (t, (header, `Command (`Stats_cmd `Stats_remove)))
 
 let handle_create t name vm_config =
-  (match Vmm_resources.find_vm t.resources name with
-   | Some _ -> Error (`Msg "VM with same name is already running")
-   | None -> Ok ()) >>= fun () ->
+  let* () =
+    match Vmm_resources.find_vm t.resources name with
+    | Some _ -> Error (`Msg "VM with same name is already running")
+    | None -> Ok ()
+  in
   Logs.debug (fun m -> m "now checking resource policies") ;
-  Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
+  let* () = Vmm_resources.check_vm t.resources name vm_config in
   (* prepare VM: save VM image to disk, create fifo, ... *)
-  Vmm_unix.prepare name vm_config >>= fun (taps, digest) ->
+  let* taps, digest = Vmm_unix.prepare name vm_config in
   Logs.debug (fun m -> m "prepared vm with taps %a"
                  Fmt.(list ~sep:(any ",@ ") (pair ~sep:(any " -> ") string string))
                  taps) ;
@@ -190,20 +191,20 @@ let handle_create t name vm_config =
        - update resources
        --> if either the first or second fails, then the fail continuation
            below needs to be called *)
-    Vmm_resources.check_vm t.resources name vm_config >>= fun () ->
+    let* () = Vmm_resources.check_vm t.resources name vm_config in
     let block_devices =
       List.map (fun (n, device) ->
           n, Name.block_name name (match device with None -> n | Some a -> a))
         vm_config.Unikernel.block_devices
     in
-    Vmm_unix.exec name vm_config taps block_devices digest >>| fun vm ->
+    let* vm = Vmm_unix.exec name vm_config taps block_devices digest in
     Logs.debug (fun m -> m "exec()ed vm") ;
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
     dump_unikernels t ;
     Logs.info (fun m -> m "created %a: %a" Name.pp name Unikernel.pp vm);
     let t, stat_out = setup_stats t name vm in
-    (t, stat_out, `Success (`String "created VM"), name, vm)
+    Ok (t, stat_out, `Success (`String "created VM"), name, vm)
   and fail () =
     match Vmm_unix.free_system_resources name (List.map snd taps) with
     | Ok () -> `Failure "could not create VM: console failed"
@@ -227,7 +228,7 @@ let handle_shutdown t name vm r =
 let handle_policy_cmd t id = function
   | `Policy_remove ->
     Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;
-    Vmm_resources.remove_policy t.resources id >>= fun resources ->
+    let* resources = Vmm_resources.remove_policy t.resources id in
     Ok ({ t with resources }, `End (`Success (`String "removed policy")))
   | `Policy_add policy ->
     Logs.debug (fun m -> m "insert policy %a" Name.pp id) ;
@@ -238,7 +239,7 @@ let handle_policy_cmd t id = function
     if same_policy then
       Ok (t, `Loop (`Success (`String "no modification of policy")))
     else
-      Vmm_resources.insert_policy t.resources id policy >>= fun resources ->
+      let* resources = Vmm_resources.insert_policy t.resources id policy in
       Ok ({ t with resources }, `Loop (`Success (`String "added policy")))
   | `Policy_info ->
     Logs.debug (fun m -> m "policy %a" Name.pp id) ;
@@ -283,17 +284,19 @@ let handle_unikernel_cmd t id = function
       | Some u ->
         let cfg = u.Unikernel.config in
         let img = cfg.Unikernel.image in
-        (if cfg.Unikernel.compressed then
-           if compress_level > 0 then
-             Ok (true, img)
-           else
-             Vmm_compress.uncompress_cs img >>| fun blob ->
-             (false, blob)
-         else
-         if compress_level = 0 then
-           Ok (false, img)
-         else
-           Ok (true, Vmm_compress.compress_cs compress_level img)) >>= fun (compress, img) ->
+        let* compress, img =
+          if cfg.Unikernel.compressed then
+            if compress_level > 0 then
+              Ok (true, img)
+            else
+              let* blob = Vmm_compress.uncompress_cs img in
+              Ok (false, blob)
+          else
+          if compress_level = 0 then
+            Ok (false, img)
+          else
+            Ok (true, Vmm_compress.compress_cs compress_level img)
+        in
         let r = `Unikernel_image (compress, img) in
         Ok (t, `End (`Success r))
     end
@@ -304,7 +307,7 @@ let handle_unikernel_cmd t id = function
         match Vmm_resources.remove_vm t.resources id with
         | Error _ -> t.resources | Ok r -> r
       in
-      Vmm_resources.check_vm resources id vm_config >>= fun () ->
+      let* () = Vmm_resources.check_vm resources id vm_config in
       match Vmm_resources.find_vm t.resources id with
       | None ->
         ignore (stop_create t id);
@@ -338,8 +341,8 @@ let handle_block_cmd t id = function
       | None -> Error (`Msg "remove block: not found")
       | Some (_, true) -> Error (`Msg "remove block: is in use")
       | Some (_, false) ->
-        Vmm_unix.destroy_block id >>= fun () ->
-        Vmm_resources.remove_block t.resources id >>= fun resources ->
+        let* () = Vmm_unix.destroy_block id in
+        let* resources = Vmm_resources.remove_block t.resources id in
         Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
   | `Block_add (size, compressed, data) ->
@@ -351,21 +354,25 @@ let handle_block_cmd t id = function
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
-        Vmm_resources.check_block t.resources id size >>= fun () ->
-        (match data with
-         | None -> Ok None
-         | Some img ->
-           (if compressed then
-              Vmm_compress.uncompress_cs img
+        let* () = Vmm_resources.check_block t.resources id size in
+        let* data =
+          match data with
+          | None -> Ok None
+          | Some img ->
+            let* img =
+              if compressed then
+                Vmm_compress.uncompress_cs img
+              else
+                Ok img
+            in
+            let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+            if size_in_bytes >= Cstruct.length img then
+              Ok (Some img)
             else
-              Ok img) >>= fun img ->
-           Vmm_unix.bytes_of_mb size >>= fun size_in_bytes ->
-           if size_in_bytes >= Cstruct.length img then
-             Ok (Some img)
-           else
-             Error (`Msg "data exceeds block size")) >>= fun data ->
-        Vmm_unix.create_block ?data id size >>= fun () ->
-        Vmm_resources.insert_block t.resources id size >>= fun resources ->
+              Error (`Msg "data exceeds block size")
+        in
+        let* () = Vmm_unix.create_block ?data id size in
+        let* resources = Vmm_resources.insert_block t.resources id size in
         Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
   | `Block_set (compressed, data) ->
@@ -373,17 +380,21 @@ let handle_block_cmd t id = function
       | None -> Error (`Msg "set block: not found")
       | Some (_, true) -> Error (`Msg "set block: is in use")
       | Some (size, false) ->
-        (if compressed then
-           Vmm_compress.uncompress_cs data
-         else
-           Ok data) >>= fun data ->
-        Vmm_unix.bytes_of_mb size >>= fun size_in_bytes ->
-        (if size_in_bytes >= Cstruct.length data then
-           Ok ()
-         else
-           Error (`Msg "data exceeds block size")) >>= fun () ->
-        Vmm_unix.destroy_block id >>= fun () ->
-        Vmm_unix.create_block ~data id size >>= fun () ->
+        let* data =
+          if compressed then
+            Vmm_compress.uncompress_cs data
+          else
+            Ok data
+        in
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+        let* () =
+          if size_in_bytes >= Cstruct.length data then
+            Ok ()
+          else
+            Error (`Msg "data exceeds block size")
+        in
+        let* () = Vmm_unix.destroy_block id in
+        let* () = Vmm_unix.create_block ~data id size in
         Ok (t, `End (`Success (`String "set block device")))
     end
   | `Block_dump level ->
@@ -391,7 +402,7 @@ let handle_block_cmd t id = function
       | None -> Error (`Msg "dump block: not found")
       | Some (_, true) -> Error (`Msg "dump block: is in use")
       | Some (_, false) ->
-        Vmm_unix.dump_block id >>= fun data ->
+        let* data = Vmm_unix.dump_block id in
         let compress, data =
           if level = 0 then
             false, data

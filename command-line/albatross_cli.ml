@@ -115,10 +115,10 @@ let setup_log style_renderer level =
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
-  let open Rresult.R.Infix in
+  let (let*) = Result.bind in
   let img_file = Fpath.v image in
-  Bos.OS.File.read img_file >>= fun image ->
-  Vmm_unix.manifest_devices_match ~bridges ~block_devices img_file >>| fun () ->
+  let* image = Bos.OS.File.read img_file in
+  let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices img_file in
   let image, compressed = match compression with
     | 0 -> Cstruct.of_string image, false
     | level ->
@@ -130,14 +130,14 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
     if restart_on_fail then `Restart exits else `Quit
   in
   let config = { Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
-  if force then `Unikernel_force_create config else `Unikernel_create config
+  if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let create_block size compression data =
-  let open Rresult.R.Infix in
+  let (let*) = Result.bind in
   match data with
   | None -> Ok (`Block_add (size, false, None))
   | Some image ->
-    Vmm_unix.bytes_of_mb size >>= fun size_in_mb ->
+    let* size_in_mb = Vmm_unix.bytes_of_mb size in
     if size_in_mb >= Cstruct.length image then
       let compressed, img =
         if compression > 0 then
