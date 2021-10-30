@@ -53,19 +53,18 @@ let decode_version cs =
 open Vmm_core
 open Vmm_commands
 
-open Rresult
 open Astring
 
 let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
 
-open Rresult.R.Infix
-
 let guard p err = if p then Ok () else Error err
+
+let (let*) = Result.bind
 
 let decode_strict codec cs =
   match Asn.decode codec cs with
   | Ok (a, cs) ->
-    guard (Cstruct.length cs = 0) (`Msg "trailing bytes") >>= fun () ->
+    let* () = guard (Cstruct.length cs = 0) (`Msg "trailing bytes") in
     Ok a
   | Error (`Parse msg) -> Error (`Msg msg)
 

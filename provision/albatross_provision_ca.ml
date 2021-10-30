@@ -1,9 +1,10 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Rresult.R.Infix
 open X509
 
 open Albatross_provision
+
+let (let*) = Result.bind
 
 let l_exts =
   Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
@@ -40,7 +41,7 @@ let sign_csr dbname cacert key csr days =
   (* TODO: check delegation! verify whitelisted commands!? *)
   match albatross_extension csr with
   | Ok v ->
-    Vmm_asn.of_cert_extension v >>= fun (version, cmd) ->
+    let* version, cmd = Vmm_asn.of_cert_extension v in
     if not Vmm_commands.(is_current version) then
       Logs.warn (fun m -> m "version in request (%a) different from our version %a, using ours"
                     Vmm_commands.pp_version version Vmm_commands.pp_version Vmm_commands.current);
@@ -60,12 +61,12 @@ let sign_csr dbname cacert key csr days =
 
 let sign_main _ db cacert cakey csrname days =
   Mirage_crypto_rng_unix.initialize () ;
-  Bos.OS.File.read (Fpath.v cacert) >>= fun cacert ->
-  Certificate.decode_pem (Cstruct.of_string cacert) >>= fun cacert ->
-  Bos.OS.File.read (Fpath.v cakey) >>= fun pk ->
-  Private_key.decode_pem (Cstruct.of_string pk) >>= fun cakey ->
-  Bos.OS.File.read (Fpath.v csrname) >>= fun enc ->
-  Signing_request.decode_pem (Cstruct.of_string enc) >>= fun csr ->
+  let* cacert = Bos.OS.File.read (Fpath.v cacert) in
+  let* cacert = Certificate.decode_pem (Cstruct.of_string cacert) in
+  let* pk = Bos.OS.File.read (Fpath.v cakey) in
+  let* cakey = Private_key.decode_pem (Cstruct.of_string pk) in
+  let* enc = Bos.OS.File.read (Fpath.v csrname) in
+  let* csr = Signing_request.decode_pem (Cstruct.of_string enc) in
   sign_csr (Fpath.v db) cacert cakey csr days
 
 let help _ man_format cmds = function
@@ -75,13 +76,13 @@ let help _ man_format cmds = function
 
 let generate _ name db days sname sdays key_type bits =
   Mirage_crypto_rng_unix.initialize () ;
-  priv_key key_type bits name >>= fun key ->
+  let* key = priv_key key_type bits name in
   let name = [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
-  Signing_request.create name key >>= fun csr ->
-  sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) >>= fun () ->
-  priv_key key_type bits sname >>= fun skey ->
+  let* csr = Signing_request.create name key in
+  let* () = sign ~certname:"cacert" (d_exts ()) name key csr (Duration.of_day days) in
+  let* skey = priv_key key_type bits sname in
   let sname = [ Distinguished_name.(Relative_distinguished_name.singleton (CN sname)) ] in
-  Signing_request.create sname skey >>= fun csr ->
+  let* csr = Signing_request.create sname skey in
   sign ~dbname:(Fpath.v db) s_exts name key csr (Duration.of_day sdays)
 
 open Cmdliner

@@ -10,35 +10,35 @@ exception Escape of ((int * int) * (int * int)) * Jsonm.error
 
 let find_string_value k = function
   | `Null | `Bool _ | `Float _ | `String _ | `A _ ->
-    Rresult.R.error_msgf "couldn't find %s in json" k
+    Error (`Msg (Fmt.str "couldn't find %s in json" k))
   | `O dict ->
     match List.find_opt (fun (key, _) -> String.equal k key) dict with
     | Some (_, `String value) -> Ok value
-    | _ -> Rresult.R.error_msgf "couldn't find %s in json dictionary" k
+    | _ -> Error (`Msg (Fmt.str "couldn't find %s in json dictionary" k))
 
 let find_devices x =
-  let open Rresult in
+  let (let*) = Result.bind in
   let device dev =
-    find_string_value "name" dev >>= fun name ->
-    find_string_value "type" dev >>| fun typ ->
-    name, typ
+    let* name = find_string_value "name" dev in
+    let* typ = find_string_value "type" dev in
+    Ok (name, typ)
   in
   match x with
   | `Null | `Bool _ | `Float _ | `String _ | `A _ ->
-    Rresult.R.error_msg "couldn't find devices in json"
+    Error (`Msg "couldn't find devices in json")
   | `O dict ->
     match List.find_opt (fun (key, _) -> String.equal key "devices") dict with
     | Some (_, `A devices) ->
       List.fold_left
         (fun acc dev ->
-           acc >>= fun (block_devices, networks) ->
-           device dev >>= fun (name, typ) ->
+           let* block_devices, networks = acc in
+           let* name, typ = device dev in
            match typ with
            | "BLOCK_BASIC" -> Ok (name :: block_devices, networks)
            | "NET_BASIC" -> Ok (block_devices, name :: networks)
-           | _ -> Rresult.R.error_msgf "unknown device type %s in json" typ)
+           | _ -> Error (`Msg (Fmt.str "unknown device type %s in json" typ)))
         (Ok ([], [])) devices
-    | _ -> Rresult.R.error_msg "devices field is not array in json"
+    | _ -> Error (`Msg "devices field is not array in json")
 
 let json_of_string src =
   let dec d = match Jsonm.decode d with

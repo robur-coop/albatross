@@ -1,9 +1,10 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Astring
-open Rresult.R.Infix
 
 open Vmm_core
+
+let (let*) = Result.bind
 
 external sysconf_clock_tick : unit -> int = "vmmanage_sysconf_clock_tick"
 
@@ -107,7 +108,7 @@ let string_of_file filename =
     let content = input_line fh in
     close_in_noerr fh ;
     Ok content
-  with _ -> Rresult.R.error_msgf "Error reading file %S" filename
+  with _ -> Error (`Msg (Fmt.str "Error reading file %S" filename))
 
 let parse_proc_stat s =
   let stats_opt =
@@ -133,24 +134,26 @@ let read_proc_status pid =
         | Some acc, Some x -> Some (x :: acc)
         | _ -> None) (Some []) |>
     Option.to_result ~none:(`Msg "failed to parse /proc/<pid>/status")
-  with _ -> Rresult.R.error_msgf "error reading file /proc/%d/status" pid
+  with _ -> Error (`Msg (Fmt.str "error reading file /proc/%d/status" pid))
 
 let linux_rusage pid =
-  (match Unix.stat ("/proc/" ^ string_of_int pid) with
-   | { Unix.st_ctime = start; _ } ->
-     let frac = Float.rem start 1. in
-     Ok (Int64.of_float start, int_of_float (frac *. 1_000_000.))
-   | exception Unix.Unix_error (Unix.ENOENT,_,_) -> Error (`Msg "failed to stat process") ) >>= fun start ->
+  let* start =
+    match Unix.stat ("/proc/" ^ string_of_int pid) with
+    | { Unix.st_ctime = start; _ } ->
+      let frac = Float.rem start 1. in
+      Ok (Int64.of_float start, int_of_float (frac *. 1_000_000.))
+    | exception Unix.Unix_error (Unix.ENOENT,_,_) -> Error (`Msg "failed to stat process")
+  in
   (* reading /proc/<pid>/stat - since it may disappear mid-time,
      best to have it in memory *)
-  string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") >>= fun data ->
-  parse_proc_stat data >>= fun stat_vals ->
-  string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") >>= fun data ->
+  let* data = string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") in
+  let* stat_vals = parse_proc_stat data in
+  let* data = string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") in
   let statm_vals = Astring.String.cuts ~sep:" " data in
-  read_proc_status pid >>= fun status ->
+  let* status = read_proc_status pid in
   let assoc_i64 key : (int64, _) result =
     let e x = Option.to_result ~none:(`Msg "error parsing /proc/<pid>/status") x in
-    e (List.assoc_opt key status) >>= fun v ->
+    let* v = e (List.assoc_opt key status) in
     e (Int64.of_string_opt v)
   in
   let i64 s = try Ok (Int64.of_string s) with
@@ -166,21 +169,21 @@ let linux_rusage pid =
     t * 1_000_000L / clock_tick
   in
   if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
-    i64 (List.nth stat_vals 9) >>= fun minflt ->
-    i64 (List.nth stat_vals 11) >>= fun majflt ->
-    i64 (List.nth stat_vals 13) >>= fun utime -> (* divide by sysconf(_SC_CLK_TCK) *)
-    i64 (List.nth stat_vals 14) >>= fun stime -> (* divide by sysconf(_SC_CLK_TCK) *)
+    let* minflt = i64 (List.nth stat_vals 9) in
+    let* majflt = i64 (List.nth stat_vals 11) in
+    let* utime = i64 (List.nth stat_vals 13) in (* divide by sysconf(_SC_CLK_TCK) *)
+    let* stime = i64 (List.nth stat_vals 14) in (* divide by sysconf(_SC_CLK_TCK) *)
     let runtime = us_of_int64 Int64.(add utime stime) in
     let utime = time_of_int64 utime
     and stime = time_of_int64 stime in
-    i64 (List.nth stat_vals 22) >>= fun vsize -> (* in bytes *)
-    i64 (List.nth stat_vals 23) >>= fun rss -> (* in pages *)
-    i64 (List.nth stat_vals 35) >>= fun nswap -> (* not maintained, 0 *)
-    i64 (List.nth statm_vals 3) >>= fun tsize ->
-    i64 (List.nth statm_vals 5) >>= fun dsize -> (* data + stack *)
-    i64 (List.nth statm_vals 5) >>= fun ssize -> (* data + stack *)
-    assoc_i64 "voluntary_ctxt_switches" >>= fun nvcsw ->
-    assoc_i64 "nonvoluntary_ctxt_switches" >>= fun nivcsw ->
+    let* vsize = i64 (List.nth stat_vals 22) in (* in bytes *)
+    let* rss = i64 (List.nth stat_vals 23) in (* in pages *)
+    let* nswap = i64 (List.nth stat_vals 35) in (* not maintained, 0 *)
+    let* tsize = i64 (List.nth statm_vals 3) in
+    let* dsize = i64 (List.nth statm_vals 5) in (* data + stack *)
+    let* ssize = i64 (List.nth statm_vals 5) in (* data + stack *)
+    let* nvcsw = assoc_i64 "voluntary_ctxt_switches" in
+    let* nivcsw = assoc_i64 "nonvoluntary_ctxt_switches" in
     let rusage = { Stats.utime ; stime ; maxrss = rss ; ixrss = 0L ;
          idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
          msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw ; nivcsw }
@@ -272,7 +275,7 @@ let add_pid t vmid vmmdev pid nics =
       else
         List.rev acc
     in
-    Ok (go (List.length nics) [] max_nic) >>= fun nic_ids ->
+    let nic_ids = go (List.length nics) [] max_nic in
     Logs.info (fun m -> m "adding %a %d %a" Name.pp vmid pid pp_nics nics) ;
     let pid_nic = IM.add pid (Error 4, vmmdev, nic_ids) t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
@@ -287,7 +290,7 @@ let handle t socket (hdr, wire) =
       let id = hdr.Vmm_commands.name in
       match cmd with
       | `Stats_add (vmmdev, pid, taps) ->
-        add_pid t id vmmdev pid taps >>= fun t ->
+        let* t = add_pid t id vmmdev pid taps in
         Ok (t, None, "added")
       | `Stats_remove ->
         let t = remove_vmid t id in

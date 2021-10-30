@@ -1,8 +1,8 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open Rresult
-open Rresult.R.Infix
 open X509
+
+let (let*) = Result.bind
 
 (* we skip all non-albatross certificates *)
 let cert_name cert =
@@ -50,7 +50,7 @@ let wire_command_of_cert cert =
   match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
   | None -> Error `Not_present
   | Some (_, data) ->
-    Vmm_asn.of_cert_extension data >>= fun (v, wire) ->
+    let* v, wire = Vmm_asn.of_cert_extension data in
     if not Vmm_commands.(is_current v) then
       Logs.warn (fun m -> m "version mismatch, received %a current %a"
                     Vmm_commands.pp_version v
@@ -64,32 +64,40 @@ let extract_policies chain =
       | Ok acc, Error `Not_present -> Ok acc
       | Ok _, Error (`Msg msg) -> Error (`Msg msg)
       | Ok (prefix, acc), Ok (_, `Policy_cmd `Policy_add p) ->
-        (cert_name cert >>= function
+        let* name =
+          let* cn = cert_name cert in
+          match cn with
           | None -> Ok prefix
-          | Some x -> Vmm_core.Name.prepend x prefix) >>| fun name ->
-        (name, (name, p) :: acc)
+          | Some x -> Vmm_core.Name.prepend x prefix
+        in
+        Ok (name, (name, p) :: acc)
       | _, Ok wire ->
-        R.error_msgf "unexpected wire %a" Vmm_commands.pp (snd wire))
+        Error (`Msg (Fmt.str "unexpected wire %a" Vmm_commands.pp (snd wire))))
     (Ok (Vmm_core.Name.root, [])) chain
 
 let handle chain =
-  (if List.length chain < 10 then
-     Ok ()
-   else
-     Error (`Msg "certificate chain too long")) >>= fun () ->
-  separate_chain chain >>= fun (leaf, rest) ->
+  let* () =
+    if List.length chain < 10 then
+      Ok ()
+    else
+      Error (`Msg "certificate chain too long")
+  in
+  let* leaf, rest = separate_chain chain in
   (* use subject common names of intermediate certs as prefix *)
-  name rest >>= fun name' ->
+  let* name' = name rest in
   (* and subject common name of leaf certificate -- allowing dots in CN -- as postfix *)
-  (cert_name leaf >>= function
+  let* name =
+    let* cn = cert_name leaf in
+    match cn with
     | None | Some "." -> Ok name'
     | Some x ->
-      Vmm_core.Name.of_string x >>| fun post ->
-      Vmm_core.Name.concat name' post) >>= fun name ->
+      let* post = Vmm_core.Name.of_string x in
+      Ok (Vmm_core.Name.concat name' post)
+  in
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
                  Vmm_core.Name.pp name Certificate.pp leaf
                  Fmt.(list ~sep:(any " -> ") Certificate.pp) rest);
-  extract_policies rest >>= fun (_, policies) ->
+  let* _, policies = extract_policies rest in
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   match wire_command_of_cert leaf with
   | Error `Msg p -> Error (`Msg p)

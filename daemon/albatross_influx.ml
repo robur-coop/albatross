@@ -276,7 +276,7 @@ let client influx vm drop =
     query_sock vm c >>= function
     | Error e ->
       let err =
-        Rresult.R.error_msgf "error %s while writing to stat socket" (str_of_e e)
+        Error (`Msg (Fmt.str "error %s while writing to stat socket" (str_of_e e)))
       in
       Lwt.return err
     | Ok () ->

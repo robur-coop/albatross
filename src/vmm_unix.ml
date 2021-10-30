@@ -1,8 +1,8 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-open Rresult
-
 open Vmm_core
+
+let (let*) = Result.bind
 
 let dbdir = ref (Fpath.v "/nonexisting")
 
@@ -24,7 +24,7 @@ let check_solo5_cmd name =
     Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(!dbdir / name)))
   with
   | Ok cmd, _ | _, Ok cmd -> Ok cmd
-  | _ -> R.error_msgf "%s does not exist" name
+  | _ -> Error (`Msg (Fmt.str "%s does not exist" name))
 
 (* Pure OCaml implementation of SystemD's sd_listen_fds.
  * Note: this implementation does not unset environment variables. *)
@@ -49,18 +49,21 @@ let sd_listen_fds () =
 (* here we check that the binaries we use in this file are actually present *)
 let check_commands () =
   let uname_cmd = Bos.Cmd.v "uname" in
-  Bos.OS.Cmd.must_exist uname_cmd >>= fun _ ->
+  let* _ = Bos.OS.Cmd.must_exist uname_cmd in
   let cmds =
     match Lazy.force uname with
     | Linux -> [ "ip" ; "taskset" ]
     | FreeBSD -> [ "ifconfig" ; "cpuset" ]
   in
-  List.fold_left
-    (fun acc cmd -> acc >>= fun _ ->
-      Bos.OS.Cmd.must_exist (Bos.Cmd.v cmd))
-    (Ok uname_cmd) cmds >>= fun _ ->
-  check_solo5_cmd "solo5-elftool" >>| fun _ ->
-  ()
+  let* _ =
+    List.fold_left
+      (fun acc cmd ->
+         let* _ = acc in
+         Bos.OS.Cmd.must_exist (Bos.Cmd.v cmd))
+      (Ok uname_cmd) cmds
+  in
+  let* _ = check_solo5_cmd "solo5-elftool" in
+  Ok ()
   (* we could check for solo5-hvt OR solo5-spt, but in practise we need
      to handle either being absent and we get an image of that type anyways *)
 
@@ -83,7 +86,7 @@ let check_commands () =
 let pp_unix_err ppf e = Fmt.string ppf (Unix.error_message e)
 
 let err_empty_line = "no command, empty command line"
-let err_file f e = R.error_msgf "%a: %a" Fpath.pp f pp_unix_err e
+let err_file f e = Error (`Msg (Fmt.str "%a: %a" Fpath.pp f pp_unix_err e))
 
 let rec openfile fn mode perm = try Unix.openfile fn mode perm with
   | Unix.Unix_error (Unix.EINTR, _, _) -> openfile fn mode perm
@@ -115,7 +118,6 @@ let close_no_err fd = try close fd with _ -> ()
    (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 let dump, restore =
-  let open R.Infix in
   let state_file ?(name = "state") () =
     if Fpath.is_seg name then
       Fpath.(!dbdir / name)
@@ -124,18 +126,19 @@ let dump, restore =
   in
   (fun ?name data ->
      let state_file = state_file ?name () in
-     Bos.OS.File.exists state_file >>= fun exists ->
-     (if exists then begin
-        let bak = Fpath.(state_file + "bak") in
-        Bos.OS.U.(error_to_msg @@ rename state_file bak)
-      end else Ok ()) >>= fun () ->
+     let* exists = Bos.OS.File.exists state_file in
+     let* () =
+       if exists then begin
+         let bak = Fpath.(state_file + "bak") in
+         Bos.OS.U.(error_to_msg @@ rename state_file bak)
+       end else Ok ()
+     in
      Bos.OS.File.write state_file (Cstruct.to_string data)),
   (fun ?name () ->
      let state_file = state_file ?name () in
-     Bos.OS.File.exists state_file >>= fun exists ->
+     let* exists = Bos.OS.File.exists state_file in
      if exists then
-       Bos.OS.File.read state_file >>| fun data ->
-       Cstruct.of_string data
+       Result.map Cstruct.of_string (Bos.OS.File.read state_file)
      else Error `NoFile)
 
 let block_sub = "block"
@@ -156,17 +159,18 @@ let rec fifo_exists file =
   | Unix.Unix_error (Unix.ENOENT, _, _) -> Error (`Msg "noent")
   | Unix.Unix_error (Unix.EINTR, _, _) -> fifo_exists file
   | Unix.Unix_error (e, _, _) ->
-      R.error_msgf "file %a exists: %s" Fpath.pp file (Unix.error_message e)
+    Error (`Msg (Fmt.str "file %a exists: %s" Fpath.pp file
+                   (Unix.error_message e)))
 
 let create_tap bridge =
   match Lazy.force uname with
   | FreeBSD ->
     let cmd = Bos.Cmd.(v "ifconfig" % "tap" % "create") in
-    Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun name ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) >>= fun () ->
+    let* name = Bos.OS.Cmd.(run_out cmd |> out_string |> success) in
+    let* () = Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) in
     Ok name
   | Linux ->
-    Bos.(OS.Cmd.(run_out Cmd.(v "ip" % "tuntap" % "show") |> out_lines |> success)) >>= fun taps ->
+    let* taps = Bos.(OS.Cmd.(run_out Cmd.(v "ip" % "tuntap" % "show") |> out_lines |> success)) in
     let prefix = "vmmtap" in
     let plen = String.length prefix in
     let num acc n =
@@ -177,9 +181,9 @@ let create_tap bridge =
     let taps = List.fold_left num IS.empty taps in
     let rec find_n x = if IS.mem x taps then find_n (succ x) else x in
     let tap = prefix ^ string_of_int (find_n 0) in
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % tap % "mode" % "tap") >>= fun () ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "up") >>= fun () ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "master" % bridge) >>= fun () ->
+    let* () = Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "tuntap" % "add" % tap % "mode" % "tap") in
+    let* () = Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "up") in
+    let* () = Bos.OS.Cmd.run Bos.Cmd.(v "ip" % "link" % "set" % "dev" % tap % "master" % bridge) in
     Ok tap
 
 let destroy_tap tap =
@@ -193,23 +197,28 @@ let destroy_tap tap =
 type solo5_target = Spt | Hvt
 
 let solo5_image_target image =
-  check_solo5_cmd "solo5-elftool" >>= fun cmd ->
+  let* cmd = check_solo5_cmd "solo5-elftool" in
   let cmd = Bos.Cmd.(cmd % "query-abi" % p image) in
-  Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun s ->
-  R.error_to_msg ~pp_error:Jsonm.pp_error
-    (Vmm_json.json_of_string s) >>= fun data ->
-  Vmm_json.find_string_value "target" data >>= function
+  let* s = Bos.OS.Cmd.(run_out cmd |> out_string |> success) in
+  let* data =
+    Result.map_error (fun e -> `Msg (Fmt.to_to_string Jsonm.pp_error e))
+      (Vmm_json.json_of_string s)
+  in
+  let* solo5_target = Vmm_json.find_string_value "target" data in
+  match solo5_target with
   | "spt" -> Ok Spt | "hvt" -> Ok Hvt
-  | x -> R.error_msgf "unsupported solo5 target %s" x
+  | x -> Error (`Msg (Fmt.str "unsupported solo5 target %s" x))
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
 
 let solo5_image_devices image =
-  check_solo5_cmd "solo5-elftool" >>= fun cmd ->
+  let* cmd = check_solo5_cmd "solo5-elftool" in
   let cmd = Bos.Cmd.(cmd % "query-manifest" % p image) in
-  Bos.OS.Cmd.(run_out cmd |> out_string |> success) >>= fun s ->
-  R.error_to_msg ~pp_error:Jsonm.pp_error
-    (Vmm_json.json_of_string s) >>= fun data ->
+  let* s = Bos.OS.Cmd.(run_out cmd |> out_string |> success) in
+  let* data =
+    Result.map_error (fun e -> `Msg (Fmt.to_to_string Jsonm.pp_error e))
+      (Vmm_json.json_of_string s)
+  in
   Vmm_json.find_devices data
 
 let equal_string_lists b1 b2 err =
@@ -217,20 +226,21 @@ let equal_string_lists b1 b2 err =
   if String.Set.(equal (of_list b1) (of_list b2)) then
     Ok ()
   else
-    R.error_msg err
+    Error (`Msg err)
 
 let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
-  equal_string_lists manifest_block block_devices
-    "specified block device(s) does not match with manifest" >>= fun () ->
+  let* () = equal_string_lists manifest_block block_devices
+      "specified block device(s) does not match with manifest"
+  in
   equal_string_lists manifest_net bridges
     "specified bridge(s) does not match with the manifest"
 
 let manifest_devices_match ~bridges ~block_devices image_file =
-  solo5_image_devices image_file >>=
+  let* things = solo5_image_devices image_file in
   let bridges = List.map fst bridges
   and block_devices = List.map fst block_devices
   in
-  devices_match ~bridges ~block_devices
+  devices_match ~bridges ~block_devices things
 
 let bridge_name (service, b) = match b with None -> service | Some b -> b
 
@@ -240,34 +250,40 @@ let bridge_exists bridge_name =
     | FreeBSD -> Bos.Cmd.(v "ifconfig" % bridge_name)
     | Linux -> Bos.Cmd.(v "ip" % "link" % "show" % bridge_name)
   in
-  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
-  |> R.reword_error (fun _e -> R.msgf "interface %s does not exist" bridge_name)
+  Result.map_error
+    (fun _e -> `Msg (Fmt.str "interface %s does not exist" bridge_name))
+    (Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success))
 
 let bridges_exist bridges =
   List.fold_left
-    (fun acc b -> acc >>= fun () -> bridge_exists (bridge_name b))
+    (fun acc b ->
+       let* () = acc in
+       bridge_exists (bridge_name b))
     (Ok ()) bridges
 
 let prepare name (vm : Unikernel.config) =
-  (match vm.Unikernel.typ with
-   | `Solo5 ->
-     if vm.Unikernel.compressed then
-       match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
-       | Ok blob -> Ok blob
-       | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
-     else
-       Ok (Cstruct.to_string vm.Unikernel.image)) >>= fun image ->
+  let* image =
+    match vm.Unikernel.typ with
+    | `Solo5 ->
+      if vm.Unikernel.compressed then
+        match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
+        | Ok blob -> Ok blob
+        | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+      else
+        Ok (Cstruct.to_string vm.Unikernel.image)
+  in
   let filename = Name.image_file name in
-  Bos.OS.File.write filename image >>= fun () ->
+  let* () = Bos.OS.File.write filename image in
   let digest = Mirage_crypto.Hash.SHA256.digest (Cstruct.of_string image) in
-  solo5_image_target filename >>= fun target ->
-  check_solo5_cmd (solo5_tender target) >>= fun _ ->
-  manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename >>= fun () ->
-  bridges_exist vm.Unikernel.bridges >>= fun () ->
+  let* target = solo5_image_target filename in
+  let* _ = check_solo5_cmd (solo5_tender target) in
+  let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename in
+  let* () = bridges_exist vm.Unikernel.bridges in
   let fifo = Name.fifo_file name in
-  begin match fifo_exists fifo with
+  let* () =
+    match fifo_exists fifo with
     | Ok true -> Ok ()
-    | Ok false -> R.error_msgf "file %a exists and is not a fifo" Fpath.pp fifo
+    | Ok false -> Error (`Msg (Fmt.str "file %a exists and is not a fifo" Fpath.pp fifo))
     | Error _ ->
       let old_umask = Unix.umask 0 in
       let _ = Unix.umask (old_umask land 0o707) in
@@ -278,14 +294,16 @@ let prepare name (vm : Unikernel.config) =
       with
       | Unix.Unix_error (e, f, _) ->
         let _ = Unix.umask old_umask in
-        R.error_msgf "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e
-  end >>= fun () ->
-  List.fold_left (fun acc arg ->
-      acc >>= fun acc ->
-      let bridge = bridge_name arg in
-      create_tap bridge >>= fun tap ->
-      Ok ((fst arg, tap) :: acc))
-    (Ok []) vm.Unikernel.bridges >>= fun taps ->
+        Error (`Msg (Fmt.str "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e))
+  in
+  let* taps =
+    List.fold_left (fun acc arg ->
+        let* acc = acc in
+        let bridge = bridge_name arg in
+        let* tap = create_tap bridge in
+        Ok ((fst arg, tap) :: acc))
+      (Ok []) vm.Unikernel.bridges
+  in
   Ok (List.rev taps, digest)
 
 let vm_device vm =
@@ -295,9 +313,12 @@ let vm_device vm =
 
 let free_system_resources name taps =
   (* same order as prepare! *)
-  Bos.OS.File.delete (Name.image_file name) >>= fun () ->
-  Bos.OS.File.delete (Name.fifo_file name) >>= fun () ->
-  List.fold_left (fun r n -> r >>= fun () -> destroy_tap n) (Ok ()) taps
+  let* () = Bos.OS.File.delete (Name.image_file name) in
+  let* () = Bos.OS.File.delete (Name.fifo_file name) in
+  List.fold_left (fun r n ->
+      let* () = r in
+      destroy_tap n)
+    (Ok ()) taps
 
 let cpuset cpu =
   let cpustring = string_of_int cpu in
@@ -320,10 +341,10 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
-  cpuset config.Unikernel.cpuid >>= fun cpuset ->
+  let* cpuset = cpuset config.Unikernel.cpuid in
   let filename = Name.image_file name in
-  solo5_image_target filename >>= fun target ->
-  check_solo5_cmd (solo5_tender target) >>= fun tender ->
+  let* target = solo5_image_target filename in
+  let* tender = check_solo5_cmd (solo5_tender target) in
   let cmd =
     Bos.Cmd.(of_list cpuset %% tender % mem %%
              of_list net %% of_list macs %% of_list blocks %
@@ -334,7 +355,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let line = Array.of_list line in
   let fifo = Name.fifo_file name in
   Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
-  write_fd_for_file fifo >>= fun stdout ->
+  let* stdout = write_fd_for_file fifo in
   Logs.debug (fun m -> m "opened file descriptor!");
   try
     Logs.debug (fun m -> m "creating process");
@@ -348,7 +369,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
-    R.error_msgf "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_err e
+    Error (`Msg (Fmt.str "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_err e))
 
 let destroy vm = Unix.kill vm.Unikernel.pid Sys.sigterm
 
@@ -361,16 +382,16 @@ let bytes_of_mb size =
 
 let create_block ?data name size =
   let block_name = block_file name in
-  Bos.OS.File.exists block_name >>= function
-  | true -> Error (`Msg "file already exists")
-  | false ->
+  let* block_exists = Bos.OS.File.exists block_name in
+  if block_exists then
+    Error (`Msg "file already exists")
+  else
     let dir = block_dir () in
-    (Bos.OS.Path.exists dir >>= function
-      | false -> Bos.OS.Dir.create ~mode:0o700 dir
-      | true -> Ok true) >>= fun _ ->
+    let* dir_exists = Bos.OS.Path.exists dir in
+    let* _ = (if dir_exists then Ok true else Bos.OS.Dir.create ~mode:0o700 dir) in
     let data = Option.value ~default:Cstruct.empty data in
-    Bos.OS.File.write ~mode:0o600 block_name (Cstruct.to_string data) >>= fun () ->
-    bytes_of_mb size >>= fun size' ->
+    let* () = Bos.OS.File.write ~mode:0o600 block_name (Cstruct.to_string data) in
+    let* size' = bytes_of_mb size in
     Bos.OS.File.truncate block_name size'
 
 let destroy_block name =
@@ -378,11 +399,11 @@ let destroy_block name =
 
 let dump_block name =
   let block_name = block_file name in
-  Bos.OS.File.exists block_name >>= function
-  | false -> Error (`Msg "file does not exist")
-  | true ->
-    Bos.OS.File.read block_name >>| fun data ->
-    Cstruct.of_string data
+  let* block_exists = Bos.OS.File.exists block_name in
+  if not block_exists then
+    Error (`Msg "file does not exist")
+  else
+    Result.map Cstruct.of_string (Bos.OS.File.read block_name)
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then
@@ -392,16 +413,16 @@ let mb_of_bytes size =
 
 let find_block_devices () =
   let dir = block_dir () in
-  Bos.OS.Dir.contents ~rel:true dir >>= fun files ->
+  let* files = Bos.OS.Dir.contents ~rel:true dir in
   List.fold_left (fun acc file ->
-      acc >>= fun acc ->
+      let* acc = acc in
       let path = Fpath.append dir file in
-      Bos.OS.File.exists path >>= function
-      | false ->
+      let* p_exists = Bos.OS.File.exists path in
+      if not p_exists then begin
         Logs.warn (fun m -> m "file %a doesn't exist, but was listed" Fpath.pp path) ;
         Ok acc
-      | true ->
-        Bos.OS.Path.stat path >>= fun stats ->
+      end else
+        let* stats = Bos.OS.Path.stat path in
         match mb_of_bytes stats.Unix.st_size, Name.of_string (Fpath.to_string file) with
         | Error (`Msg msg), _ ->
           Logs.warn (fun m -> m "file %a size error: %s" Fpath.pp path msg) ;
