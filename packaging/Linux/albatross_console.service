@@ -9,7 +9,7 @@ After=syslog.target
 [Service]
 Type=simple
 User=albatross
-ExecStart=/usr/local/sbin/albatross-console --systemd-socket-activation --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/sbin/albatross-console --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross
 ExecStartPre=/bin/mkdir -p %t/albatross/fifo
