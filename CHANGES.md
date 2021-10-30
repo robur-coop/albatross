@@ -1,3 +1,10 @@
+# v1.3.1 (2021-10-30)
+
+- Linux: install binaries into /usr/sbin, adjust systemd scripts
+  (#89 by @reynir, fixed by @hannesm)
+- remove rresult dependency (@hannesm)
+- remove deprecated Fmt functions (@dinosaure)
+
 # v1.3.0 (2021-09-14)
 
 - provide arguments for public-key-type and bits, the default is now
