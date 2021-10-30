@@ -17,7 +17,7 @@ let find_string_value k = function
     | _ -> Error (`Msg (Fmt.str "couldn't find %s in json dictionary" k))
 
 let find_devices x =
-  let (let*) = Result.bind in
+  let ( let* ) = Result.bind in
   let device dev =
     let* name = find_string_value "name" dev in
     let* typ = find_string_value "type" dev in

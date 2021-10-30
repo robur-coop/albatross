@@ -14,7 +14,7 @@ let csr priv name cmd =
   X509.Signing_request.create name ~extensions priv
 
 let jump key_type bits id cmd =
-  let (let*) = Result.bind in
+  let ( let* ) = Result.bind in
   Mirage_crypto_rng_unix.initialize () ;
   let name = Vmm_core.Name.to_string id in
   let* priv = priv_key key_type bits name in

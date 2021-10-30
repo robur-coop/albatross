@@ -4,7 +4,7 @@ open X509
 
 open Albatross_provision
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let l_exts =
   Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])

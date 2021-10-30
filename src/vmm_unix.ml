@@ -2,7 +2,7 @@
 
 open Vmm_core
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let dbdir = ref (Fpath.v "/nonexisting")
 

@@ -4,7 +4,7 @@ open Astring
 
 open Vmm_core
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 type t = {
   policies : Policy.t Vmm_trie.t ;

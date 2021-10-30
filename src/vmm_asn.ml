@@ -59,7 +59,7 @@ let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
 
 let guard p err = if p then Ok () else Error err
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let decode_strict codec cs =
   match Asn.decode codec cs with

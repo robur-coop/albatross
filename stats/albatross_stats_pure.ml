@@ -4,7 +4,7 @@ open Astring
 
 open Vmm_core
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 external sysconf_clock_tick : unit -> int = "vmmanage_sysconf_clock_tick"
 

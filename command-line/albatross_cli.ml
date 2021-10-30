@@ -115,7 +115,7 @@ let setup_log style_renderer level =
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
-  let (let*) = Result.bind in
+  let ( let* ) = Result.bind in
   let img_file = Fpath.v image in
   let* image = Bos.OS.File.read img_file in
   let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices img_file in
@@ -133,7 +133,7 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let create_block size compression data =
-  let (let*) = Result.bind in
+  let ( let* ) = Result.bind in
   match data with
   | None -> Ok (`Block_add (size, false, None))
   | Some image ->

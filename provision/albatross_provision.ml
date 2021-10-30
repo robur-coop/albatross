@@ -1,6 +1,6 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let timestamps validity =
   let now = Ptime_clock.now () in

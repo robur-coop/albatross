@@ -2,7 +2,7 @@
 
 open X509
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 (* we skip all non-albatross certificates *)
 let cert_name cert =
