@@ -44,14 +44,14 @@ for f in albatross_stats \
 	 albatross_console \
 	 albatross_daemon
 do
-    install $basedir/packaging/Linux/$f.service $systemddir/$f.service;
-    install $basedir/packaging/Linux/$f.socket $systemddir/$f.socket;
+    install -m 0644 $basedir/packaging/Linux/$f.service $systemddir/$f.service;
+    install -m 0644 $basedir/packaging/Linux/$f.socket $systemddir/$f.socket;
 done
 
 # install debian metadata
-install $basedir/packaging/debian/control $debiandir/control
-install $basedir/packaging/debian/changelog $debiandir/changelog
-install $basedir/packaging/debian/copyright $debiandir/copyright
+install -m 0644 $basedir/packaging/debian/control $debiandir/control
+install -m 0644 $basedir/packaging/debian/changelog $debiandir/changelog
+install -m 0644 $basedir/packaging/debian/copyright $debiandir/copyright
 install $basedir/packaging/debian/postinst $debiandir/postinst
 
 dpkg-deb --build $rootdir $basedir/albatross.deb
