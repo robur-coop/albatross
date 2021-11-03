@@ -3,4 +3,5 @@ ALBATROSS_USER=albatross
 
 groupadd -g 496 $ALBATROSS_USER
 useradd -g 496 -u 496 -d /nonexistent -s /usr/sbin/nologin $ALBATROSS_USER
-sudo mkdir -m 0700 -p /var/lib/albatross/block
+mkdir -m 0700 -p /var/lib/albatross/block
+chown $ALBATROSS_USER:$ALBATROSS_USER /var/lib/albatross /var/lib/albatross/block
