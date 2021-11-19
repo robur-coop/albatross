@@ -39,25 +39,32 @@ let sign_csr dbname cacert key csr days =
                Distinguished_name.pp ri.Signing_request.subject);
   let issuer = Certificate.subject cacert in
   (* TODO: check delegation! verify whitelisted commands!? *)
-  match albatross_extension csr with
-  | Ok v ->
-    let* version, cmd = Vmm_asn.of_cert_extension v in
-    if not Vmm_commands.(is_current version) then
-      Logs.warn (fun m -> m "version in request (%a) different from our version %a, using ours"
-                    Vmm_commands.pp_version version Vmm_commands.pp_version Vmm_commands.current);
-    let exts, default_days = match cmd with
-      | `Policy_cmd (`Policy_add _) -> d_exts (), 365
-      | _ -> l_exts, 1
-    in
-    let days = match days with None -> default_days | Some x -> x in
-    Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd);
-    (* the "false" is here since X509 validation bails on exts marked as
-       critical (as required), but has no way to supply which extensions
-       are actually handled by the application / caller *)
-    let v' = Vmm_asn.to_cert_extension cmd in
-    let extensions = Extension.(add (Unsupported Vmm_asn.oid) (false, v') exts) in
-    sign ~dbname extensions issuer key csr (Duration.of_day days)
-  | Error e -> Error e
+  let* extensions, days =
+    match albatross_extension csr with
+    | Ok v ->
+      let* version, cmd = Vmm_asn.of_cert_extension v in
+      if not Vmm_commands.(is_current version) then
+        Logs.warn (fun m -> m "version in request (%a) different from our version %a, using ours"
+                      Vmm_commands.pp_version version Vmm_commands.pp_version Vmm_commands.current);
+      let exts, default_days = match cmd with
+        | `Policy_cmd (`Policy_add _) -> d_exts (), 365
+        | _ -> l_exts, 1
+      in
+      let days = Option.value ~default:default_days days in
+      Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd);
+      (* the "false" is here since X509 validation bails on exts marked as
+         critical (as required), but has no way to supply which extensions
+         are actually handled by the application / caller *)
+      let v' = Vmm_asn.to_cert_extension cmd in
+      let extensions = Extension.(add (Unsupported Vmm_asn.oid) (false, v') exts) in
+      Ok (extensions, days)
+    | Error _ ->
+      Logs.warn (fun m -> m "signing certificate without albatross extension (e.g. host certificate)");
+      let days = Option.value ~default:365 days in
+      let extensions = s_exts in
+      Ok (extensions, days)
+  in
+  sign ~dbname extensions issuer key csr (Duration.of_day days)
 
 let sign_main _ db cacert cakey csrname days =
   Mirage_crypto_rng_unix.initialize () ;
