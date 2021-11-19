@@ -109,7 +109,7 @@ let classify_tls_error = function
                  (Printexc.to_string exn));
     Albatross_cli.Local_authentication_failed
   | Tls_lwt.Tls_failure (`Error (`AuthenticationFailure _)) as exn ->
-    Logs.err (fun m -> m "remove authentication failure %s"
+    Logs.err (fun m -> m "remote authentication failure %s"
                  (Printexc.to_string exn));
     Albatross_cli.Remote_authentication_failed
   | exn ->
