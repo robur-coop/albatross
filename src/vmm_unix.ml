@@ -194,13 +194,17 @@ let destroy_tap tap =
   in
   Bos.OS.Cmd.run cmd
 
+let owee_buf_of_cstruct cs =
+  let buf = Bigarray.Array1.create Bigarray.Int8_unsigned Bigarray.c_layout (Cstruct.length cs) in
+  for i = 0 to Cstruct.length cs - 1 do
+    buf.{i} <- Cstruct.get_uint8 cs i
+  done;
+  buf
+
 type solo5_target = Spt | Hvt
 
 let solo5_image_target image =
-  let buf : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t =
-    Obj.magic (Cstruct.to_bigarray image : (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t)
-  in
-  let* abi = Solo5_elftool.query_abi buf in
+  let* abi = Solo5_elftool.query_abi (owee_buf_of_cstruct image) in
   match abi.target with
   | Solo5_elftool.Hvt -> Ok Hvt
   | Solo5_elftool.Spt -> Ok Spt
@@ -209,10 +213,7 @@ let solo5_image_target image =
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
 
 let solo5_image_devices image =
-  let buf : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t =
-    Obj.magic (Cstruct.to_bigarray image : (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t)
-  in
-  let* mft = Solo5_elftool.query_manifest buf in
+  let* mft = Solo5_elftool.query_manifest (owee_buf_of_cstruct image) in
   Ok (List.fold_left
         (fun (block_devices, networks) -> function
            | Solo5_elftool.Dev_block_basic name -> name :: block_devices, networks
