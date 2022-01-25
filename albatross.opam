@@ -38,6 +38,8 @@ depends: [
   "hex"
   "http-lwt-client" {>= "0.0.4"}
   "happy-eyeballs-lwt"
+  "solo5-elftool" {>= "0.2"}
+  "owee" {>= "0.4"}
 ]
 build: [
   ["dune" "subst"] {dev}

@@ -4,4 +4,5 @@
   (wrapped false)
   (libraries logs ipaddr bos ptime astring duration cstruct jsonm
              bigstringaf decompress.de decompress.zl lwt lwt.unix
-             ptime.clock.os asn1-combinators metrics mirage-crypto hex))
+             ptime.clock.os asn1-combinators metrics mirage-crypto hex
+             solo5-elftool))

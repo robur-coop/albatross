@@ -197,29 +197,27 @@ let destroy_tap tap =
 type solo5_target = Spt | Hvt
 
 let solo5_image_target image =
-  let* cmd = check_solo5_cmd "solo5-elftool" in
-  let cmd = Bos.Cmd.(cmd % "query-abi" % p image) in
-  let* s = Bos.OS.Cmd.(run_out cmd |> out_string |> success) in
-  let* data =
-    Result.map_error (fun e -> `Msg (Fmt.to_to_string Jsonm.pp_error e))
-      (Vmm_json.json_of_string s)
+  let buf : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t =
+    Obj.magic (Cstruct.to_bigarray image : (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t)
   in
-  let* solo5_target = Vmm_json.find_string_value "target" data in
-  match solo5_target with
-  | "spt" -> Ok Spt | "hvt" -> Ok Hvt
-  | x -> Error (`Msg (Fmt.str "unsupported solo5 target %s" x))
+  let* abi = Solo5_elftool.query_abi buf in
+  match abi.target with
+  | Solo5_elftool.Hvt -> Ok Hvt
+  | Solo5_elftool.Spt -> Ok Spt
+  | x -> Error (`Msg (Fmt.str "unsupported solo5 target %a" Solo5_elftool.pp_abi_target x))
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
 
 let solo5_image_devices image =
-  let* cmd = check_solo5_cmd "solo5-elftool" in
-  let cmd = Bos.Cmd.(cmd % "query-manifest" % p image) in
-  let* s = Bos.OS.Cmd.(run_out cmd |> out_string |> success) in
-  let* data =
-    Result.map_error (fun e -> `Msg (Fmt.to_to_string Jsonm.pp_error e))
-      (Vmm_json.json_of_string s)
+  let buf : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t =
+    Obj.magic (Cstruct.to_bigarray image : (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t)
   in
-  Vmm_json.find_devices data
+  let* mft = Solo5_elftool.query_manifest buf in
+  Ok (List.fold_left
+        (fun (block_devices, networks) -> function
+           | Solo5_elftool.Dev_block_basic name -> name :: block_devices, networks
+           | Solo5_elftool.Dev_net_basic name -> block_devices, name :: networks)
+        ([], []) mft.entries)
 
 let equal_string_lists b1 b2 err =
   let open Astring in
@@ -235,8 +233,8 @@ let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
   equal_string_lists manifest_net bridges
     "specified bridge(s) does not match with the manifest"
 
-let manifest_devices_match ~bridges ~block_devices image_file =
-  let* things = solo5_image_devices image_file in
+let manifest_devices_match ~bridges ~block_devices image =
+  let* things = solo5_image_devices image in
   let bridges = List.map fst bridges
   and block_devices = List.map fst block_devices
   in
@@ -267,17 +265,17 @@ let prepare name (vm : Unikernel.config) =
     | `Solo5 ->
       if vm.Unikernel.compressed then
         match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
-        | Ok blob -> Ok blob
+        | Ok blob -> Ok (Cstruct.of_string blob)
         | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
       else
-        Ok (Cstruct.to_string vm.Unikernel.image)
+        Ok vm.Unikernel.image
   in
   let filename = Name.image_file name in
-  let* () = Bos.OS.File.write filename image in
-  let digest = Mirage_crypto.Hash.SHA256.digest (Cstruct.of_string image) in
-  let* target = solo5_image_target filename in
+  let digest = Mirage_crypto.Hash.SHA256.digest image in
+  let* target = solo5_image_target image in
   let* _ = check_solo5_cmd (solo5_tender target) in
-  let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices filename in
+  let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices image in
+  let* () = Bos.OS.File.write filename (Cstruct.to_string image) in
   let* () = bridges_exist vm.Unikernel.bridges in
   let fifo = Name.fifo_file name in
   let* () =
@@ -342,8 +340,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   let* cpuset = cpuset config.Unikernel.cpuid in
-  let filename = Name.image_file name in
-  let* target = solo5_image_target filename in
+  let* target = solo5_image_target config.Unikernel.image in
   let* tender = check_solo5_cmd (solo5_tender target) in
   let cmd =
     Bos.Cmd.(of_list cpuset %% tender % mem %%

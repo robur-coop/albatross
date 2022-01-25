@@ -16,30 +16,6 @@ let find_string_value k = function
     | Some (_, `String value) -> Ok value
     | _ -> Error (`Msg (Fmt.str "couldn't find %s in json dictionary" k))
 
-let find_devices x =
-  let ( let* ) = Result.bind in
-  let device dev =
-    let* name = find_string_value "name" dev in
-    let* typ = find_string_value "type" dev in
-    Ok (name, typ)
-  in
-  match x with
-  | `Null | `Bool _ | `Float _ | `String _ | `A _ ->
-    Error (`Msg "couldn't find devices in json")
-  | `O dict ->
-    match List.find_opt (fun (key, _) -> String.equal key "devices") dict with
-    | Some (_, `A devices) ->
-      List.fold_left
-        (fun acc dev ->
-           let* block_devices, networks = acc in
-           let* name, typ = device dev in
-           match typ with
-           | "BLOCK_BASIC" -> Ok (name :: block_devices, networks)
-           | "NET_BASIC" -> Ok (block_devices, name :: networks)
-           | _ -> Error (`Msg (Fmt.str "unknown device type %s in json" typ)))
-        (Ok ([], [])) devices
-    | _ -> Error (`Msg "devices field is not array in json")
-
 let json_of_string src =
   let dec d = match Jsonm.decode d with
     | `Lexeme l -> l

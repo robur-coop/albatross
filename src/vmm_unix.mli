@@ -41,5 +41,5 @@ val restore : ?name:string -> unit -> (Cstruct.t, [> `Msg of string | `NoFile ])
 val vm_device : Unikernel.t -> (string, [> `Msg of string ]) result
 
 val manifest_devices_match : bridges:(string * string option) list ->
-  block_devices:(string * string option) list -> Fpath.t ->
+  block_devices:(string * string option) list -> Cstruct.t ->
   (unit, [> `Msg of string]) result
