@@ -118,7 +118,6 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
   let ( let* ) = Result.bind in
   let img_file = Fpath.v image in
   let* image = Bos.OS.File.read img_file in
-  let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices img_file in
   let image, compressed = match compression with
     | 0 -> Cstruct.of_string image, false
     | level ->
@@ -129,6 +128,7 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
     let exits = match exit_codes with [] -> None | xs -> Some (IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
+  let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices image in
   let config = { Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 

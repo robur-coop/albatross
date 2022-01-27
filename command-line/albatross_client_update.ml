@@ -70,13 +70,9 @@ let prepare_update ~happy_eyeballs level host dryrun = function
           Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
           Lwt.return (Error Albatross_cli.Http_error)
         | Ok unikernel ->
-          let tmpfile = Fpath.v (Filename.temp_file "albatross" "unikernel") in
-          let r =
-            Result.bind
-              (Bos.OS.File.write tmpfile unikernel)
-              (fun () -> Vmm_unix.manifest_devices_match ~bridges ~block_devices tmpfile)
+          let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
+              (Cstruct.of_string unikernel)
           in
-          ignore (Bos.OS.File.delete tmpfile);
           match r with
           | Error `Msg msg ->
             Logs.err (fun m -> m "manifest failed: %s" msg);
