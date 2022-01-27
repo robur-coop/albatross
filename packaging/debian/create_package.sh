@@ -9,16 +9,16 @@ fi
 
 basedir=$(realpath "$(dirname "$0")"/../..)
 bdir=$basedir/_build/install/default/bin
-tmpd=$basedir/_build/stage
+gtmpd=$basedir/_build/stage
 rootdir=$tmpd/rootdir
-sbindir=$rootdir/usr/sbin
+libexec=$rootdir/usr/libexec/albatross
 bindir=$rootdir/usr/bin
 systemddir=$rootdir/usr/lib/systemd/system
 debiandir=$rootdir/DEBIAN
 
 trap 'rm -rf $tmpd' 0 INT EXIT
 
-mkdir -p "$sbindir" "$bindir" "$debiandir" "$systemddir"
+mkdir -p "$libexecdir" "$bindir" "$debiandir" "$systemddir"
 
 # stage daemon binaries
 for f in albatrossd \
@@ -27,7 +27,7 @@ for f in albatrossd \
              albatross-tls-endpoint \
              albatross-tls-inetd \
              albatross-stats
-do install $bdir/$f $sbindir/$f; done
+do install $bdir/$f $libexecdir/$f; done
 
 # stage client binaries
 for f in albatross-stat-client \
