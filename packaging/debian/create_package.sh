@@ -9,7 +9,7 @@ fi
 
 basedir=$(realpath "$(dirname "$0")"/../..)
 bdir=$basedir/_build/install/default/bin
-gtmpd=$basedir/_build/stage
+tmpd=$basedir/_build/stage
 rootdir=$tmpd/rootdir
 libexec=$rootdir/usr/libexec/albatross
 bindir=$rootdir/usr/bin
