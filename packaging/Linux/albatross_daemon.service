@@ -8,7 +8,7 @@ Type=simple
 # TODO not necessarily needs to be run as root, anything that can solo5-spt/hvt,
 #  create tap interfaces should be fine!
 User=root
-ExecStart=/usr/sbin/albatrossd --systemd-socket-activation --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/libexec/albatross/albatrossd --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 #RuntimeDirectoryPreserve=yes
 #RuntimeDirectory=albatross
 PIDFile=%t/albatross/daemon.pid

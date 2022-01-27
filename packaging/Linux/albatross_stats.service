@@ -9,7 +9,7 @@ After=syslog.target
 [Service]
 Type=simple
 User=albatross
-ExecStart=/usr/sbin/albatross-stats --systemd-socket-activation --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/libexec/albatross/albatross-stats --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross albatross/util
 PIDFile=%t/albatross/stat.pid
