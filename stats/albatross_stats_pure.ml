@@ -302,5 +302,6 @@ let handle t socket (hdr, wire) =
         Ok ({ t with name_sockets }, close, "subscribed")
     end
   | _ ->
-    Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire (hdr, wire)) ;
+    Logs.err (fun m -> m "unexpected wire %a"
+                 (Vmm_commands.pp_wire ~verbose:false) (hdr, wire)) ;
     Error (`Msg "unexpected command")

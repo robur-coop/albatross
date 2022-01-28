@@ -62,9 +62,10 @@ type exit_status =
   | Http_error
 
 let output_result ((hdr, reply) as wire) =
+  let verbose = match Logs.level () with Some Logs.Debug -> true | _ -> false in
   match reply with
   | `Success s ->
-    Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
     let write_to_file name compressed data =
       let filename =
         let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
@@ -99,14 +100,14 @@ let output_result ((hdr, reply) as wire) =
     end;
     Ok ()
   | `Data _ ->
-    Logs.app (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
     Ok ()
   | `Failure _ ->
-    Logs.warn (fun m -> m "%a" Vmm_commands.pp_wire wire);
+    Logs.warn (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
     Error Remote_command_failed
   | `Command _ ->
     Logs.err (fun m -> m "received unexpected command %a"
-                 Vmm_commands.pp_wire wire);
+                 (Vmm_commands.pp_wire ~verbose) wire);
     Error Internal_error
 
 let setup_log style_renderer level =

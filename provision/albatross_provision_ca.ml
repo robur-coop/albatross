@@ -51,7 +51,7 @@ let sign_csr dbname cacert key csr days =
         | _ -> l_exts, 1
       in
       let days = Option.value ~default:default_days days in
-      Logs.app (fun m -> m "signing %a" Vmm_commands.pp cmd);
+      Logs.app (fun m -> m "signing %a" (Vmm_commands.pp ~verbose:false) cmd);
       (* the "false" is here since X509 validation bails on exts marked as
          critical (as required), but has no way to supply which extensions
          are actually handled by the application / caller *)

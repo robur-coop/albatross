@@ -21,7 +21,8 @@ let read version fd tls =
     Vmm_lwt.read_wire fd >>= function
     | Error _ -> Lwt.return (`Failure "exception while reading from fd")
     | Ok (hdr, pay) ->
-      Logs.debug (fun m -> m "read proxying %a" Vmm_commands.pp_wire (hdr, pay)) ;
+      Logs.debug (fun m -> m "read proxying %a"
+                     (Vmm_commands.pp_wire ~verbose:false) (hdr, pay)) ;
       let wire = { hdr with version }, pay in
       Vmm_tls_lwt.write_tls tls wire >>= function
       | Ok () -> loop ()
@@ -33,7 +34,8 @@ let process fd =
   Vmm_lwt.read_wire fd >|= function
   | Error _ -> `Failure "error reading from fd"
   | Ok (hdr, pay) ->
-    Logs.debug (fun m -> m "proxying %a" Vmm_commands.pp_wire (hdr, pay));
+    Logs.debug (fun m -> m "proxying %a"
+                   (Vmm_commands.pp_wire ~verbose:false) (hdr, pay));
     pay
 
 let handle tls =
@@ -70,7 +72,7 @@ let handle tls =
                      | Ok (_, `Success _) -> Ok ()
                      | Ok wire ->
                        Error (`Msg (Fmt.str "expected success when adding policy, got: %a"
-                                      Vmm_commands.pp_wire wire)))
+                                      (Vmm_commands.pp_wire ~verbose:false) wire)))
                (Ok ()) policies
            | _ -> Lwt.return (Ok ())) >>= function
           | Error (`Msg msg) ->

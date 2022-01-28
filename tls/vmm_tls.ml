@@ -72,7 +72,8 @@ let extract_policies chain =
         in
         Ok (name, (name, p) :: acc)
       | _, Ok wire ->
-        Error (`Msg (Fmt.str "unexpected wire %a" Vmm_commands.pp (snd wire))))
+        Error (`Msg (Fmt.str "unexpected wire %a"
+                       (Vmm_commands.pp ~verbose:false) (snd wire))))
     (Ok (Vmm_core.Name.root, [])) chain
 
 let handle chain =
