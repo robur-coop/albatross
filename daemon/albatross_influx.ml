@@ -224,8 +224,8 @@ let rec read_sock_write_tcp drop c ?fd addr =
         | Error e ->
           Logs.err (fun m -> m "error %s while writing to tcp (%s)"
                        (str_of_e e) name) ;
-          safe_close fd >|= fun () ->
-          false
+          safe_close fd >>= fun () ->
+          read_sock_write_tcp drop c addr
       end
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
