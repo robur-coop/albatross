@@ -84,6 +84,7 @@ Init scripts for FreeBSD are provided in the `packaging/FreeBSD/rc.d`
 subdirectory, and a script to create a FreeBSD package
 `packaging/FreeBSD/create_package.sh`.
 For Linux, systemd service scripts are available in `packaging/Linux`.
+Consider removing `NetworkManager-wait-online.service` from the `Wants=` directive in albatross.service if you don't need it.
 
 It may help to read [the _outdated_ blog article](https://hannes.nqsb.io/Posts/VMM)
 for the motivation behind albatross and an overview of its functionality.
