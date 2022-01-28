@@ -1,3 +1,28 @@
+# v1.4.0 (2022-01-28)
+
+- albatross-provision-ca: support signing of server certificates
+- use solo5-elftool (developed in OCaml) instead of binary, avoids solo5
+  dependency for albatross-client-* (#94 @reynir, fixes #93), removes jsonm
+  dependency
+- albatross-influx: reconnect TCP to influx (telegraf) host (#97 @hannesm,
+  fixes #69)
+- by default, do not print argv in unikernel_info (and pp_wire). only if the
+  logging level is verbose (#96 @hannesm, fixes @92)
+- avoid file descriptor leak on Linux in albatross-stats when reading
+  /proc/<pid>/status (#99 @hannesm)
+- remove astring dependency (#99 @hannesm)
+- Debian packaging
+  - install metadata and service scripts with 0644 permissions (@reynir)
+  - postinst: do not use sudo (@reynir)
+  - postinst: set ownerhip of /var/lib/albatross and /var/lib/albatross/block
+    to $ALBATROSS_USER (@reynir)
+  - postinst: create group and user only if they do not exist yet (@reynir)
+  - install daemons into /usr/libexec/albatross to avoid accidental invocation
+    (@hannesm #95, fixes #91)
+  - add network.target and NetworkManager-wait-online.service to dependencies
+    of albatross_daemon to ensure bridges already exists (#98 @reynir,
+    fixes #90)
+
 # v1.3.1 (2021-10-30)
 
 - Linux: install binaries into /usr/sbin, adjust systemd scripts
