@@ -1,5 +1,9 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+module String_set = Set.Make(String)
+
+module String_map = Map.Make(String)
+
 let conn_metrics kind =
   let s = ref (0, 0) in
   let open Metrics in
@@ -16,8 +20,6 @@ let conn_metrics kind =
       | `Open -> s := (succ (fst !s), succ (snd !s))
       | `Close -> s := (pred (fst !s), snd !s));
      Metrics.add src (fun x -> x kind) (fun d -> d ()))
-
-open Astring
 
 let tmpdir = ref (Fpath.v "/nonexisting")
 
@@ -57,18 +59,27 @@ module Name = struct
     | x::xs, y::ys -> x = y && equal xs ys
     | _ -> false
 
+  (* from OCaml 4.13 bytes.ml *)
+  let for_all p s =
+    let n = String.length s in
+    let rec loop i =
+      if i = n then true
+      else if p (String.unsafe_get s i) then loop (succ i)
+      else false in
+    loop 0
+
   let [@inline always] valid_label s =
     String.length s < 20 &&
     String.length s > 0 &&
     String.get s 0 <> '-' && (* leading may not be '-' *)
-    String.for_all (function
+    for_all (function
         | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' -> true
         | _ -> false)
       s (* only LDH (letters, digits, hyphen)! *)
 
   let to_string = function
     | [] -> "."
-    | ids -> String.concat ~sep:"." ids
+    | ids -> String.concat "." ids
 
   let to_list x = x
 
@@ -116,7 +127,7 @@ module Name = struct
     List.rev (dev :: List.rev (domain vm_name))
 
   let of_string str =
-    let id = String.cuts ~sep:"." str in
+    let id = String.split_on_char '.' str in
     if List.for_all valid_label id then
       Ok id
     else
@@ -148,7 +159,7 @@ module Name = struct
     let prefix = "\x00\x80\x41"
     and ours = Digest.string (to_string (bridge :: name))
     in
-    Macaddr.of_octets_exn (prefix ^ String.take ~min:3 ~max:3 ours)
+    Macaddr.of_octets_exn (prefix ^ String.sub ours 0 3)
 end
 
 module Policy = struct
@@ -161,7 +172,7 @@ module Policy = struct
     cpuids : IS.t ;
     memory : int ;
     block : int option ;
-    bridges : String.Set.t ;
+    bridges : String_set.t ;
   }
 
   let equal p1 p2 =
@@ -174,13 +185,13 @@ module Policy = struct
     IS.equal p1.cpuids p2.cpuids &&
     eq_int p1.memory p2.memory &&
     eq_opt p1.block p2.block &&
-    String.Set.equal p1.bridges p2.bridges
+    String_set.equal p1.bridges p2.bridges
 
   let pp ppf res =
     Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
       res.vms pp_is res.cpuids res.memory
       Fmt.(option ~none:(any "no") int) res.block
-      (String.Set.pp ~sep:Fmt.(any ", ") Fmt.string) res.bridges
+      Fmt.(list ~sep:(any ", ") string) (String_set.elements res.bridges)
 end
 
 module Unikernel = struct

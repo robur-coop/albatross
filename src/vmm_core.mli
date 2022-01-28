@@ -1,5 +1,9 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
+module String_set : Set.S with type elt = string
+
+module String_map : Map.S with type key = string
+
 val conn_metrics : string -> [ `Close | `Open ] -> unit
 
 val set_tmpdir : Fpath.t -> unit
@@ -60,7 +64,7 @@ module Policy : sig
     cpuids : IS.t;
     memory : int;
     block : int option;
-    bridges : Astring.String.Set.t;
+    bridges : String_set.t;
   }
 
   val equal : t -> t -> bool

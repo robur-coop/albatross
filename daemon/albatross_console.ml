@@ -12,11 +12,9 @@
 
 open Lwt.Infix
 
-open Astring
-
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
-let active = ref String.Map.empty
+let active = ref Vmm_core.String_map.empty
 
 let read_console id name ring fd =
   Lwt.catch (fun () ->
@@ -27,14 +25,14 @@ let read_console id name ring fd =
         Logs.debug (fun m -> m "read %s" line) ;
         let t = Ptime_clock.now () in
         Vmm_ring.write ring (t, line) ;
-        (match String.Map.find name !active with
+        (match Vmm_core.String_map.find_opt name !active with
          | None -> Lwt.return_unit
          | Some (version, fd) ->
            let header = Vmm_commands.header ~version id in
            Vmm_lwt.write_wire fd (header, `Data (`Console_data (t, line))) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
-             active := String.Map.remove name !active
+             active := Vmm_core.String_map.remove name !active
            | Ok () -> Lwt.return_unit) >>=
         loop
       in
@@ -64,7 +62,7 @@ let open_fifo name =
         Logs.err (fun m -> m "%a error while reading %s" Fpath.pp fifo (Printexc.to_string exn)) ;
         Lwt.return None)
 
-let t = ref String.Map.empty
+let t = ref Vmm_core.String_map.empty
 
 let fifos = Vmm_core.conn_metrics "fifo"
 
@@ -73,10 +71,10 @@ let add_fifo id =
   open_fifo id >|= function
   | None -> Error (`Msg "opening")
   | Some f ->
-    let ring = match String.Map.find name !t with
+    let ring = match Vmm_core.String_map.find_opt name !t with
       | None ->
         let ring = Vmm_ring.create "" () in
-        let map = String.Map.add name ring !t in
+        let map = Vmm_core.String_map.add name ring !t in
         t := map ;
         ring
       | Some ring -> ring
@@ -88,15 +86,15 @@ let add_fifo id =
 let subscribe s version id =
   let name = Vmm_core.Name.to_string id in
   Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp id) ;
-  match String.Map.find name !t with
+  match Vmm_core.String_map.find_opt name !t with
   | None ->
-    active := String.Map.add name (version, s) !active ;
+    active := Vmm_core.String_map.add name (version, s) !active ;
     Lwt.return (None, "waiting for VM")
   | Some r ->
-    (match String.Map.find name !active with
+    (match Vmm_core.String_map.find_opt name !active with
      | None -> Lwt.return_unit
      | Some (_, s) -> Vmm_lwt.safe_close s) >|= fun () ->
-    active := String.Map.add name (version, s) !active ;
+    active := Vmm_core.String_map.add name (version, s) !active ;
     (Some r, "subscribed")
 
 let send_history s version r id since =

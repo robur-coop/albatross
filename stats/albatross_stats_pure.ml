@@ -1,7 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Astring
-
 open Vmm_core
 
 let ( let* ) = Result.bind
@@ -112,11 +110,15 @@ let string_of_file filename =
 
 let parse_proc_stat s =
   let stats_opt =
-    let ( let* ) = Option.bind in
-    let* (pid, rest) = Astring.String.cut ~sep:" (" s in
-    let* (tcomm, rest) = Astring.String.cut ~rev:true ~sep:") " rest in
-    let rest = Astring.String.cuts ~sep:" " rest in
-    Some (pid :: tcomm :: rest)
+    match String.index_opt s '(', String.rindex_opt s ')' with
+    | Some idxa, Some idxb ->
+      let pid = String.sub s 0 (idxa - 1)
+      and tcomm = String.sub s (idxa + 1) (idxb - idxa - 1)
+      and rest = String.sub s (idxb + 2) (String.length s - (idxb + 2))
+      in
+      let rest = String.split_on_char ' ' rest in
+      Some (pid :: tcomm :: rest)
+    | _ -> None
   in
   Option.to_result ~none:(`Msg "unable to parse /proc/<pid>/stat") stats_opt
 
@@ -129,9 +131,16 @@ let read_proc_status pid =
         with End_of_file -> acc in
       read_lines []
     in
-    List.map (Astring.String.cut ~sep:":\t") lines |>
+    List.map (String.split_on_char ':') lines |>
     List.fold_left (fun acc x -> match acc, x with
-        | Some acc, Some x -> Some (x :: acc)
+        | Some acc, k :: v ->
+          (* strip leading tab character *)
+          let v = String.concat ":" v in
+          if String.length v > 1 then
+            let v = String.sub v 1 (String.length v - 1) in
+            Some ((k, v) :: acc)
+          else
+            None
         | _ -> None) (Some []) |>
     Option.to_result ~none:(`Msg "failed to parse /proc/<pid>/status")
   with _ -> Error (`Msg (Fmt.str "error reading file /proc/%d/status" pid))
@@ -149,7 +158,7 @@ let linux_rusage pid =
   let* data = string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") in
   let* stat_vals = parse_proc_stat data in
   let* data = string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") in
-  let statm_vals = Astring.String.cuts ~sep:" " data in
+  let statm_vals = String.split_on_char ' ' data in
   let* status = read_proc_status pid in
   let assoc_i64 key : (int64, _) result =
     let e x = Option.to_result ~none:(`Msg "error parsing /proc/<pid>/status") x in

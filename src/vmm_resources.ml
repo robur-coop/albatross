@@ -1,7 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Astring
-
 open Vmm_core
 
 let ( let* ) = Result.bind
@@ -42,7 +40,7 @@ let policy_metrics =
   let tag = Tags.string "domain" in
   Src.v ~doc ~tags:Tags.[tag] ~data "vmm-policies"
 
-let no_policy = Policy.{ vms = 0 ; cpuids = IS.empty ; memory = 0 ; block = None ; bridges = Astring.String.Set.empty }
+let no_policy = Policy.{ vms = 0 ; cpuids = IS.empty ; memory = 0 ; block = None ; bridges = String_set.empty }
 
 (* we should confirm the following invariant: Vm or Block have no siblings *)
 
@@ -139,7 +137,7 @@ let remove_block t name =
       report_vms t' name;
       Ok t'
 
-let bridge_allowed set s = String.Set.mem s set
+let bridge_allowed set s = String_set.mem s set
 
 let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.config) =
   if succ running_vms > p.Policy.vms then
@@ -243,10 +241,10 @@ let sub_policy ~super ~sub =
     Error (`Msg (Fmt.str "policy above allows CPUids %a, which is not a superset of %a"
                    Fmt.(list ~sep:(any ", ") int) (IS.elements super.Policy.cpuids)
                    Fmt.(list ~sep:(any ", ") int) (IS.elements sub.Policy.cpuids)))
-  else if not (String.Set.subset sub.Policy.bridges super.Policy.bridges) then
+  else if not (String_set.subset sub.Policy.bridges super.Policy.bridges) then
     Error (`Msg (Fmt.str "policy above allows bridges %a, which is not a superset of %a"
-                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements super.Policy.bridges)
-                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements sub.Policy.bridges)))
+                   Fmt.(list ~sep:(any ", ") string) (String_set.elements super.Policy.bridges)
+                   Fmt.(list ~sep:(any ", ") string) (String_set.elements sub.Policy.bridges)))
   else if not (sub_block sub.Policy.block super.Policy.block) then
     Error (`Msg (Fmt.str "policy above allows %d MB block storage, which is fewer than %d MB"
                    (match super.Policy.block with None -> 0 | Some x -> x)
@@ -284,19 +282,19 @@ let check_vms t name p =
     Vmm_trie.fold name t.unikernels
       (fun _ vm (bridges, cpuids) ->
          let config = vm.Unikernel.config in
-         (String.Set.(union (of_list (Unikernel.bridges config)) bridges),
+         (String_set.(union (of_list (Unikernel.bridges config)) bridges),
           IS.add config.Unikernel.cpuid cpuids))
-      (String.Set.empty, IS.empty)
+      (String_set.empty, IS.empty)
   in
   let policy_block = match p.Policy.block with None -> 0 | Some x -> x in
   if not (IS.subset cpuids p.Policy.cpuids) then
     Error (`Msg (Fmt.str "policy allows CPUids %a, which is not a superset of %a"
                    Fmt.(list ~sep:(any ", ") int) (IS.elements p.Policy.cpuids)
                    Fmt.(list ~sep:(any ", ") int) (IS.elements cpuids)))
-  else if not (String.Set.subset bridges p.Policy.bridges) then
+  else if not (String_set.subset bridges p.Policy.bridges) then
     Error (`Msg (Fmt.str "policy allows bridges %a, which is not a superset of %a"
-                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements p.Policy.bridges)
-                   Fmt.(list ~sep:(any ", ") string) (String.Set.elements bridges)))
+                   Fmt.(list ~sep:(any ", ") string) (String_set.elements p.Policy.bridges)
+                   Fmt.(list ~sep:(any ", ") string) (String_set.elements bridges)))
   else if vms > p.Policy.vms then
     Error (`Msg (Fmt.str "unikernel would exceed running unikernel limit set by policy to %d, running %d"
                    p.Policy.vms vms))

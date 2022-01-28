@@ -1,6 +1,5 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open Astring
 open Vmm_core
 
 open Lwt.Infix
@@ -38,7 +37,7 @@ let init_influx name data =
               Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
               (get_cache ()) []
           in
-          let datas = String.concat ~sep:"" datas in
+          let datas = String.concat "" datas in
           Vmm_lwt.write_raw socket (Bytes.unsafe_of_string datas) >|= function
           | Ok () -> ()
           | Error `Exception ->
@@ -151,7 +150,7 @@ let create_block size compression data =
       Error (`Msg "data exceeds size")
 
 let policy vms memory cpus block bridges =
-  let bridges = String.Set.of_list bridges
+  let bridges = String_set.of_list bridges
   and cpuids = IS.of_list cpus
   in
   Policy.{ vms ; cpuids ; memory ; block ; bridges }
@@ -167,11 +166,12 @@ let ip_port : (Ipaddr.V4.t * int) Arg.converter =
   let default_port = 8094 in
   let parse s =
     match
-      match String.cut ~sep:":" s with
-      | None -> Ok (s, default_port)
-      | Some (ip, port) -> match int_of_string port with
+      match String.split_on_char ':' s with
+      | [ ip ; port ] -> begin match int_of_string port with
         | exception Failure _ -> Error "non-numeric port"
         | port -> Ok (ip, port)
+        end
+      | _ -> Ok (s, default_port)
     with
     | Error msg -> `Error msg
     | Ok (ip, port) -> match Ipaddr.V4.of_string ip with
@@ -186,13 +186,14 @@ let influx =
 
 let host_port : (string * int) Arg.converter =
   let parse s =
-    match String.cut ~sep:":" s with
-    | None -> `Error "broken: no port specified"
-    | Some (hostname, port) ->
-      try
-        `Ok (hostname, int_of_string port)
-      with
-        Not_found -> `Error "failed to parse port"
+    match String.split_on_char ':' s with
+    | [ hostname ; port ] ->
+      begin try
+          `Ok (hostname, int_of_string port)
+        with
+          Not_found -> `Error "failed to parse port"
+      end
+    | _ -> `Error "broken: no port specified"
   in
   parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
 
@@ -204,9 +205,9 @@ let vm_c =
   (parse, Name.pp)
 
 let bridge_tap_c =
-  let parse s = match Astring.String.cut ~sep:":" s with
-    | None -> `Error "broken, format is bridge:tap"
-    | Some (bridge, tap) -> `Ok (bridge, tap)
+  let parse s = match String.split_on_char ':' s with
+    | [ bridge ; tap ] -> `Ok (bridge, tap)
+    | _ -> `Error "broken, format is bridge:tap"
   in
   (parse, fun ppf (bridge, tap) -> Format.fprintf ppf "%s:%s" bridge tap)
 
@@ -228,9 +229,10 @@ let opt_vm_name =
 
 let uri_c =
   let parse s =
-    match String.cuts ~sep:"/" s with
+    match String.split_on_char '/' s with
     | ("http:" | "https:") :: "" :: _host :: [] -> `Ok s
-    | ("http:" | "https:") :: "" :: _host :: "" :: [] -> `Ok (String.drop ~rev:true ~min:1 ~max:1 s)
+    | ("http:" | "https:") :: "" :: _host :: "" :: [] ->
+      `Ok (String.sub s 0 (String.length s - 1))
     | _ -> `Error ("expected http[s]://hostname")
   in
   (parse, Fmt.string)
@@ -323,9 +325,10 @@ let args =
   Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
 
 let colon_separated_c =
-  let parse s = match Astring.String.cut ~sep:":" s with
-    | None -> `Ok (s, None)
-    | Some (a, b) -> `Ok (a, Some b)
+  let parse s = match String.split_on_char ':' s with
+    | [ a ; b ] -> `Ok (a, Some b)
+    | [ _ ] -> `Ok (s, None)
+    | _ -> `Error "format is 'name' or 'name:device-name'"
   in
   (parse, fun ppf (a, b) -> Fmt.pf ppf "%s:%s" a
        (match b with None -> a | Some b -> b))

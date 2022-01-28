@@ -174,9 +174,13 @@ let create_tap bridge =
     let prefix = "vmmtap" in
     let plen = String.length prefix in
     let num acc n =
-      match Astring.String.(cut ~sep:":" (snd (span ~min:plen ~max:plen n))) with
-      | Some (x, _) -> (try IS.add (int_of_string x) acc with Failure _ -> acc)
-      | None -> acc
+      let nlen = String.length n in
+      if nlen > plen then
+        match String.split_on_char ':' (String.sub n plen (nlen - plen)) with
+        | x :: _ -> (try IS.add (int_of_string x) acc with Failure _ -> acc)
+        | _ -> acc
+      else
+        acc
     in
     let taps = List.fold_left num IS.empty taps in
     let rec find_n x = if IS.mem x taps then find_n (succ x) else x in
@@ -221,8 +225,7 @@ let solo5_image_devices image =
         ([], []) mft.entries)
 
 let equal_string_lists b1 b2 err =
-  let open Astring in
-  if String.Set.(equal (of_list b1) (of_list b2)) then
+  if String_set.(equal (of_list b1) (of_list b2)) then
     Ok ()
   else
     Error (`Msg err)

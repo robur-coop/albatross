@@ -1,10 +1,8 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open Astring
+type 'a t = N of 'a option * 'a t Vmm_core.String_map.t
 
-type 'a t = N of 'a option * 'a t String.Map.t
-
-let empty = N (None, String.Map.empty)
+let empty = N (None, Vmm_core.String_map.empty)
 
 let insert id e t =
   let rec go (N (es, m)) = function
@@ -14,28 +12,28 @@ let insert id e t =
         | Some es' -> N (Some e, m), Some es'
       end
     | x::xs ->
-      let n = match String.Map.find_opt x m with
+      let n = match Vmm_core.String_map.find_opt x m with
         | None -> empty
         | Some n -> n
       in
       let entry, ret = go n xs in
-      N (es, String.Map.add x entry m), ret
+      N (es, Vmm_core.String_map.add x entry m), ret
   in
   go t (Vmm_core.Name.to_list id)
 
 let remove id t =
   let rec go (N (es, m)) = function
-    | [] -> if String.Map.is_empty m then None else Some (N (None, m))
+    | [] -> if Vmm_core.String_map.is_empty m then None else Some (N (None, m))
     | x::xs ->
-      let n' = match String.Map.find_opt x m with
+      let n' = match Vmm_core.String_map.find_opt x m with
         | None -> None
         | Some n -> go n xs
       in
       let m' = match n' with
-        | None -> String.Map.remove x m
-        | Some entry -> String.Map.add x entry m
+        | None -> Vmm_core.String_map.remove x m
+        | Some entry -> Vmm_core.String_map.add x entry m
       in
-      if String.Map.is_empty m' && es = None then None else Some (N (es, m'))
+      if Vmm_core.String_map.is_empty m' && es = None then None else Some (N (es, m'))
   in
   match go t (Vmm_core.Name.to_list id) with
   | None -> empty
@@ -45,7 +43,7 @@ let find id t =
   let rec go (N (es, m)) = function
     | [] -> es
     | x::xs ->
-      match String.Map.find_opt x m with
+      match Vmm_core.String_map.find_opt x m with
       | None -> None
       | Some n -> go n xs
   in
@@ -61,7 +59,7 @@ let collect id t =
     function
     | [] -> acc'
     | x::xs ->
-      match String.Map.find_opt x m with
+      match Vmm_core.String_map.find_opt x m with
       | None -> acc'
       | Some n -> go acc' (Vmm_core.Name.append_exn x prefix) n xs
   in
@@ -76,14 +74,15 @@ let all t =
     in
     List.fold_left (fun acc (name, node) ->
         go acc (Vmm_core.Name.append_exn name prefix) node)
-      acc' (String.Map.bindings m)
+      acc' (Vmm_core.String_map.bindings m)
   in
   go [] Vmm_core.Name.root t
 
 let fold id t f acc =
   let rec explore (N (es, m)) prefix acc =
     let acc' =
-      String.Map.fold (fun name node acc -> explore node (Vmm_core.Name.append_exn name prefix) acc)
+      Vmm_core.String_map.fold (fun name node acc ->
+          explore node (Vmm_core.Name.append_exn name prefix) acc)
         m acc
     in
     match es with
@@ -92,7 +91,7 @@ let fold id t f acc =
   and down prefix (N (es, m)) =
     match prefix with
     | [] -> explore (N (es, m)) Vmm_core.Name.root acc
-    | x :: xs -> match String.Map.find_opt x m with
+    | x :: xs -> match Vmm_core.String_map.find_opt x m with
       | None -> acc
       | Some n -> down xs n
   in

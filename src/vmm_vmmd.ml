@@ -1,7 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Astring
-
 open Vmm_core
 
 let ( let* ) = Result.bind
@@ -10,8 +8,8 @@ type 'a t = {
   console_counter : int64 ;
   stats_counter : int64 ;
   resources : Vmm_resources.t ;
-  waiters : 'a String.Map.t ;
-  restarting : String.Set.t ;
+  waiters : 'a String_map.t ;
+  restarting : String_set.t ;
 }
 (* the life of a unikernel
    - once started, if restart-on-fail is enabled, a waiter will be add to t.waiters
@@ -55,35 +53,35 @@ let waiter t id =
   let t = remove_resources t id in
   let name = Name.to_string id in
   if not !in_shutdown then dump_unikernels t ;
-  match String.Map.find name t.waiters with
+  match String_map.find_opt name t.waiters with
   | None -> t, None
   | Some waiter ->
-    let waiters = String.Map.remove name t.waiters in
-    let restarting = String.Set.add name t.restarting in
+    let waiters = String_map.remove name t.waiters in
+    let restarting = String_set.add name t.restarting in
     { t with waiters ; restarting }, Some waiter
 
 let register t id create =
   let name = Name.to_string id in
   let task, waiter = create () in
-  { t with waiters = String.Map.add name waiter t.waiters }, task
+  { t with waiters = String_map.add name waiter t.waiters }, task
 
 let register_restart t id create =
   let name = Name.to_string id in
-  match String.Map.find name t.waiters with
+  match String_map.find_opt name t.waiters with
   | Some _ -> Logs.err (fun m -> m "restart attempted to overwrite waiter"); None
   | _ -> Some (register t id create)
 
 let may_restart t id =
   let n = Name.to_string id in
-  if String.Set.mem n t.restarting then
-    let restarting = String.Set.remove n t.restarting in
+  if String_set.mem n t.restarting then
+    let restarting = String_set.remove n t.restarting in
     { t with restarting }, true
   else
     t, false
 
 let stop_create t id =
   let name = Name.to_string id in
-  match String.Map.find name t.waiters with
+  match String_map.find_opt name t.waiters with
   | None ->
     let t, may = may_restart t id in
     if may then
@@ -91,7 +89,7 @@ let stop_create t id =
     else
       Error (`Msg "destroy: not found")
   | Some _ ->
-    let waiters = String.Map.remove name t.waiters in
+    let waiters = String_map.remove name t.waiters in
     let t = { t with waiters } in
     Ok (t, `End (`Success (`String "destroyed: removed waiter")))
 
@@ -110,8 +108,8 @@ let empty = {
   console_counter = 1L ;
   stats_counter = 1L ;
   resources = Vmm_resources.empty ;
-  waiters = String.Map.empty ;
-  restarting = String.Set.empty ;
+  waiters = String_map.empty ;
+  restarting = String_set.empty ;
 }
 
 let init_block_devices t =

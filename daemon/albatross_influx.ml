@@ -2,8 +2,6 @@
 
 open Lwt.Infix
 
-open Astring
-
 open Vmm_core
 open Vmm_core.Stats
 
@@ -98,7 +96,7 @@ module P = struct
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "resource_usage,vm=%s %s" vm (String.concat ~sep:"," fields)
+    Printf.sprintf "resource_usage,vm=%s %s" vm (String.concat "," fields)
 
   let encode_kinfo_mem vm mem =
     let now = Unix.gettimeofday () in
@@ -118,19 +116,19 @@ module P = struct
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "kinfo_mem,vm=%s %s" vm (String.concat ~sep:"," fields)
+    Printf.sprintf "kinfo_mem,vm=%s %s" vm (String.concat "," fields)
 
   let encode_vmm vm xs =
     let escape s =
-      let cutted = String.cuts ~sep:"," s in
-      let cutted = String.concat ~sep:"\\," cutted in
-      let cutted = String.cuts ~sep:" " cutted in
-      let cutted = String.concat ~sep:"\\ " cutted in
-      let cutted = String.cuts ~sep:"=" cutted in
-      String.concat ~sep:"\\=" cutted
+      let cutted = String.split_on_char ',' s in
+      let cutted = String.concat "\\," cutted in
+      let cutted = String.split_on_char ' ' cutted in
+      let cutted = String.concat "\\ " cutted in
+      let cutted = String.split_on_char '=' cutted in
+      String.concat "\\=" cutted
     in
     Printf.sprintf "vmm,vm=%s %s" vm
-      (String.concat ~sep:","
+      (String.concat ","
          (List.map (fun (k, v) -> (escape k) ^ "=" ^ (i64 v)) xs))
 
   let i32 i = Printf.sprintf "%lui" i
@@ -158,7 +156,7 @@ module P = struct
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
     Printf.sprintf "interface,vm=%s,bridge=%s %s"
-      vm ifd.bridge (String.concat ~sep:"," fields)
+      vm ifd.bridge (String.concat "," fields)
 end
 
 let command = ref 1L
@@ -214,7 +212,7 @@ let rec read_sock_write_tcp drop c ?fd addr =
       let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
       let vmm = match vmm with None -> [] | Some vmm -> [ P.encode_vmm name vmm ] in
       let taps = List.map (P.encode_if name) ifs in
-      let out = (String.concat ~sep:"\n" (ru :: mem @ vmm @ taps)) ^ "\n" in
+      let out = (String.concat "\n" (ru :: mem @ vmm @ taps)) ^ "\n" in
       Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
       begin
         Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function

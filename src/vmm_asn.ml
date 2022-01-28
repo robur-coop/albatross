@@ -53,8 +53,6 @@ let decode_version cs =
 open Vmm_core
 open Vmm_commands
 
-open Astring
-
 let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
 
 let guard p err = if p then Ok () else Error err
@@ -74,7 +72,7 @@ let projections_of asn =
 
 let policy =
   let f (cpuids, vms, memory, block, bridges) =
-    let bridges = String.Set.of_list bridges
+    let bridges = String_set.of_list bridges
     and cpuids = IS.of_list cpuids
     in
     Policy.{ vms ; cpuids ; memory ; block ; bridges }
@@ -83,7 +81,7 @@ let policy =
      policy.Policy.vms,
      policy.Policy.memory,
      policy.Policy.block,
-     String.Set.elements policy.Policy.bridges)
+     String_set.elements policy.Policy.bridges)
   in
   Asn.S.map f g @@
   Asn.S.(sequence5
