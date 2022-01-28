@@ -434,5 +434,6 @@ let handle_command t (header, payload) =
     | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t id vc
     | `Command (`Block_cmd bc) -> handle_block_cmd t id bc
     | _ ->
-      Logs.err (fun m -> m "ignoring %a" Vmm_commands.pp_wire (header, payload)) ;
+      Logs.err (fun m -> m "ignoring %a"
+                   (Vmm_commands.pp_wire ~verbose:false) (header, payload)) ;
       Error (`Msg "unknown command"))

@@ -149,7 +149,8 @@ let handle s addr =
             Vmm_lwt.read_wire s >|= fun _ -> ()
       end
     | Ok wire ->
-      Logs.err (fun m -> m "unexpected wire %a" Vmm_commands.pp_wire wire) ;
+      Logs.err (fun m -> m "unexpected wire %a"
+                   (Vmm_commands.pp_wire ~verbose:false) wire) ;
       Lwt.return ()
   in
   loop () >>= fun () ->

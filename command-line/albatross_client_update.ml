@@ -87,6 +87,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
             Lwt.return (Ok (`Unikernel_force_create config))
     end
   | Ok w ->
-    Logs.err (fun m -> m "unexpected reply: %a" Vmm_commands.pp_wire w);
+    Logs.err (fun m -> m "unexpected reply: %a"
+                 (Vmm_commands.pp_wire ~verbose:false) w);
     Lwt.return (Error Albatross_cli.Communication_failed)
   | Error _ -> Lwt.return (Error Albatross_cli.Communication_failed)

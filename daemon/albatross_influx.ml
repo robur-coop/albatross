@@ -228,7 +228,8 @@ let rec read_sock_write_tcp drop c ?fd addr =
           false
       end
     | Ok wire ->
-      Logs.warn (fun m -> m "ignoring %a" Vmm_commands.pp_wire wire) ;
+      Logs.warn (fun m -> m "ignoring %a"
+                    (Vmm_commands.pp_wire ~verbose:false) wire) ;
       Lwt.return (Some fd) >>= fun fd ->
       read_sock_write_tcp drop c ?fd addr
 

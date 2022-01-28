@@ -222,7 +222,7 @@ module Unikernel = struct
       (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) xs)
 
   let pp_config ppf (vm : config) =
-    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a"
+    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
       pp_typ vm.typ
       vm.compressed
       (Cstruct.length vm.image)
@@ -230,6 +230,9 @@ module Unikernel = struct
       vm.cpuid vm.memory
       pp_opt_list vm.block_devices
       pp_opt_list vm.bridges
+
+  let pp_config_with_argv ppf (vm : config) =
+    Fmt.pf ppf "%a@ argv %a" pp_config vm
       Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) vm.argv
 
   let restart_handler config =
@@ -271,14 +274,18 @@ module Unikernel = struct
 
   let pp_info ppf (info : info) =
     let `Hex hex_digest = Hex.of_cstruct info.digest in
-    Fmt.pf ppf "typ %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ argv %a@ digest %s"
+    Fmt.pf ppf "typ %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ digest %s"
       pp_typ info.typ
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
       pp_opt_list info.block_devices
       pp_opt_list info.bridges
-      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) info.argv
       hex_digest
+
+  let pp_info_with_argv ppf (info : info) =
+    Fmt.pf ppf "%a@ argv %a"
+      pp_info info
+      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) info.argv
 end
 
 module Stats = struct

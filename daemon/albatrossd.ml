@@ -76,7 +76,8 @@ let handle cons_out stat_out fd addr =
         (* TODO should we terminate the connection on write failure? *)
         Vmm_lwt.write_wire fd (hdr, wire') >|= fun _ -> ()
       in
-      Logs.debug (fun m -> m "read %a" Vmm_commands.pp_wire (hdr, wire));
+      Logs.debug (fun m -> m "read %a"
+                     (Vmm_commands.pp_wire ~verbose:false) (hdr, wire));
       Lwt_mutex.lock create_lock >>= fun () ->
       match Vmm_vmmd.handle_command !state (hdr, wire) with
       | Error wire' -> Lwt_mutex.unlock create_lock; out wire'
@@ -119,7 +120,9 @@ let write_reply name fd txt (hdr, cmd) =
         invalid_arg "wrong sequence number received"
       end else begin
         Logs.debug (fun m -> m "%s: received valid reply from %s %a (request %a)"
-                       txt name Vmm_commands.pp_wire (hdr', reply) Vmm_commands.pp_wire (hdr, cmd)) ;
+                       txt name
+                       (Vmm_commands.pp_wire ~verbose:false) (hdr', reply)
+                       (Vmm_commands.pp_wire ~verbose:false) (hdr, cmd)) ;
         match reply with
         | `Success _ -> Ok ()
         | `Failure msg ->
@@ -189,7 +192,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
        and stat_out txt wire = match s with
          | None ->
            Logs.info (fun m -> m "ignoring stat %s %a" txt
-                         Vmm_commands.pp_wire wire);
+                         (Vmm_commands.pp_wire ~verbose:false) wire);
            Lwt.return_unit
          | Some s -> write_reply "stat" s txt wire >|= fun _ -> ()
        in

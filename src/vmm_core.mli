@@ -90,6 +90,8 @@ module Unikernel : sig
 
   val pp_config : config Fmt.t
 
+  val pp_config_with_argv : config Fmt.t
+
   val restart_handler : config -> bool
 
   type t = {
@@ -116,6 +118,8 @@ module Unikernel : sig
   val info : t -> info
 
   val pp_info : info Fmt.t
+
+  val pp_info_with_argv : info Fmt.t
 
 end
 

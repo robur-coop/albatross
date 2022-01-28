@@ -58,7 +58,7 @@ type t = [
   | `Block_cmd of block_cmd
 ]
 
-val pp : t Fmt.t
+val pp : verbose:bool -> t Fmt.t
 
 type data = [
   | `Console_data of Ptime.t * string
@@ -95,6 +95,6 @@ type res = [
 
 type wire = header * res
 
-val pp_wire : wire Fmt.t
+val pp_wire : verbose:bool -> wire Fmt.t
 
 val endpoint : t -> service * [ `End | `Read ]
