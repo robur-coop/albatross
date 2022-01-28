@@ -131,6 +131,7 @@ let read_proc_status pid =
         with End_of_file -> acc in
       read_lines []
     in
+    close_in_noerr fh ;
     List.map (String.split_on_char ':') lines |>
     List.fold_left (fun acc x -> match acc, x with
         | Some acc, k :: v ->
