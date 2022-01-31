@@ -1,3 +1,7 @@
+# v1.4.1 (2022-01-31)
+
+- Debian packaging fix typo in lib_exec_dir (create_package.sh, #100 @dinosaure)
+
 # v1.4.0 (2022-01-28)
 
 - albatross-provision-ca: support signing of server certificates
