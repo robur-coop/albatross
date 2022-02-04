@@ -344,7 +344,17 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   let* cpuset = cpuset config.Unikernel.cpuid in
-  let* target = solo5_image_target config.Unikernel.image in
+  let* target =
+    let* image =
+      if config.Unikernel.compressed then
+        match Vmm_compress.uncompress (Cstruct.to_string config.Unikernel.image) with
+        | Ok blob -> Ok (Cstruct.of_string blob)
+        | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+      else
+        Ok config.Unikernel.image
+    in
+    solo5_image_target image
+  in
   let* tender = check_solo5_cmd (solo5_tender target) in
   let cmd =
     Bos.Cmd.(of_list cpuset %% tender % mem %%
