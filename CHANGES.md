@@ -1,3 +1,9 @@
+# v1.4.2 (2022-02-04)
+
+- fix issues "use OCaml solo5-elftool instead of binary" where the compressed
+  unikernel image was passed to the tool (if albatross-provision-request was
+  used, and in albatross-daemon) (#101 by @palainp, fixed in #102 by @hannesm)
+
 # v1.4.1 (2022-01-31)
 
 - Debian packaging fix typo in lib_exec_dir (create_package.sh, #100 @dinosaure)
