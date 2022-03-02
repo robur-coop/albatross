@@ -1,0 +1,15 @@
+[Unit]
+# To configure this service, please use the following command
+# to create an override configuration:
+# systemctl edit albatross_influx.service
+Description=Albatross influx reporting daemon (albatross-influx)
+Requires=albatross_stats.socket
+After=syslog.target
+
+[Service]
+Type=simple
+User=albatross
+ExecStart=/usr/libexec/albatross/albatross-influx --influx=127.0.0.1 --tmpdir="%t/albatross/" -vv
+
+[Install]
+WantedBy=multi-user.target

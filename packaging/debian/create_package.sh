@@ -47,6 +47,8 @@ do
     install -m 0644 $basedir/packaging/Linux/$f.service $systemddir/$f.service;
     install -m 0644 $basedir/packaging/Linux/$f.socket $systemddir/$f.socket;
 done
+install -m 0644 $basedir/packaging/Linux/albatross_influx.service \
+        $systemddir/albatross_influx.service
 
 # install debian metadata
 install -m 0644 $basedir/packaging/debian/control $debiandir/control
