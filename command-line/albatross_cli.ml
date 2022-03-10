@@ -162,54 +162,37 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
-let ip_port : (Ipaddr.V4.t * int) Arg.converter =
-  let default_port = 8094 in
-  let parse s =
-    match
-      match String.split_on_char ':' s with
-      | [ ip ; port ] -> begin match int_of_string port with
-        | exception Failure _ -> Error "non-numeric port"
-        | port -> Ok (ip, port)
-        end
-      | _ -> Ok (s, default_port)
-    with
-    | Error msg -> `Error msg
-    | Ok (ip, port) -> match Ipaddr.V4.of_string ip with
-      | Ok ip -> `Ok (ip, port)
-      | Error `Msg msg -> `Error msg
-  in
-  parse, fun ppf (ip, port) -> Format.fprintf ppf "%a:%d" Ipaddr.V4.pp ip port
+let ip_port =
+  let pp ppf (ip, port) = Format.fprintf ppf "%a:%d" Ipaddr.V4.pp ip port in
+  Arg.conv (Ipaddr.V4.with_port_of_string ~default:8094, pp)
 
 let influx =
   let doc = "IP address and port (default: 8094) to report metrics to in influx line protocol" in
   Arg.(value & opt (some ip_port) None & info [ "influx" ] ~doc ~docv:"INFLUXHOST[:PORT]")
 
-let host_port : (string * int) Arg.converter =
+let host_port =
   let parse s =
     match String.split_on_char ':' s with
     | [ hostname ; port ] ->
       begin try
-          `Ok (hostname, int_of_string port)
+          Ok (hostname, int_of_string port)
         with
-          Not_found -> `Error "failed to parse port"
+          Not_found -> Error (`Msg "failed to parse port")
       end
-    | _ -> `Error "broken: no port specified"
+    | _ -> Error (`Msg "broken: no port specified")
   in
-  parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p
+  Arg.conv (parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p)
 
-let vm_c =
-  let parse s = match Name.of_string s with
-    | Error (`Msg msg) -> `Error msg
-    | Ok name -> `Ok name
-  in
-  (parse, Name.pp)
+let vm_c = Arg.conv (Name.of_string, Name.pp)
 
 let bridge_tap_c =
   let parse s = match String.split_on_char ':' s with
-    | [ bridge ; tap ] -> `Ok (bridge, tap)
-    | _ -> `Error "broken, format is bridge:tap"
+    | [ bridge ; tap ] -> Ok (bridge, tap)
+    | _ -> Error (`Msg "broken, format is bridge:tap")
+  and pp ppf (bridge, tap) =
+    Format.fprintf ppf "%s:%s" bridge tap
   in
-  (parse, fun ppf (bridge, tap) -> Format.fprintf ppf "%s:%s" bridge tap)
+  Arg.conv (parse, pp)
 
 let bridge_taps =
   let doc = "Bridge and tap device names" in
@@ -230,12 +213,12 @@ let opt_vm_name =
 let uri_c =
   let parse s =
     match String.split_on_char '/' s with
-    | ("http:" | "https:") :: "" :: _host :: [] -> `Ok s
+    | ("http:" | "https:") :: "" :: _host :: [] -> Ok s
     | ("http:" | "https:") :: "" :: _host :: "" :: [] ->
-      `Ok (String.sub s 0 (String.length s - 1))
-    | _ -> `Error ("expected http[s]://hostname")
+      Ok (String.sub s 0 (String.length s - 1))
+    | _ -> Error (`Msg ("expected http[s]://hostname"))
   in
-  (parse, Fmt.string)
+  Arg.conv (parse, Fmt.string)
 
 (* https://builds.robur.coop/ or https://builds.robur.coop *)
 let http_host =
@@ -280,13 +263,11 @@ let block_size =
 
 let data_c =
   let parse s =
-    let f = Fpath.v s in
-    match Bos.OS.File.read f with
-    | Ok data -> `Ok (Cstruct.of_string data)
-    | Error (`Msg m) -> `Error m
+    Result.map Cstruct.of_string (Bos.OS.File.read (Fpath.v s))
+  and pp ppf data =
+    Format.fprintf ppf "file with %d bytes" (Cstruct.length data)
   in
-  parse,
-  fun ppf data -> Format.fprintf ppf "file with %d bytes" (Cstruct.length data)
+  Arg.conv (parse, pp)
 
 let block_data =
   let doc = "Block device content." in
@@ -326,12 +307,13 @@ let args =
 
 let colon_separated_c =
   let parse s = match String.split_on_char ':' s with
-    | [ a ; b ] -> `Ok (a, Some b)
-    | [ _ ] -> `Ok (s, None)
-    | _ -> `Error "format is 'name' or 'name:device-name'"
+    | [ a ; b ] -> Ok (a, Some b)
+    | [ _ ] -> Ok (s, None)
+    | _ -> Error (`Msg "format is 'name' or 'name:device-name'")
+  and pp ppf (a, b) =
+    Fmt.pf ppf "%s:%s" a (match b with None -> a | Some b -> b)
   in
-  (parse, fun ppf (a, b) -> Fmt.pf ppf "%s:%s" a
-       (match b with None -> a | Some b -> b))
+  Arg.conv (parse, pp)
 
 let block =
   let doc = "Block device name (block or name:block-device-name)" in
@@ -351,14 +333,14 @@ let exit_code =
 
 let timestamp_c =
   let parse s = match Ptime.of_rfc3339 s with
-    | Ok (t, _, _) -> `Ok t
+    | Ok (t, _, _) -> Ok t
     | Error _ ->
       (* let's try to add T00:00:00-00:00 *)
       match Ptime.of_rfc3339 (s ^ "T00:00:00-00:00") with
-      | Ok (t, _, _) -> `Ok t
-      | Error _ -> `Error "couldn't parse timestamp"
+      | Ok (t, _, _) -> Ok t
+      | Error _ -> Error (`Msg "couldn't parse timestamp")
   in
-  (parse, Ptime.pp_rfc3339 ())
+  Arg.conv (parse, Ptime.pp_rfc3339 ())
 
 let since =
   let doc = "Receive data since a specified timestamp (RFC 3339 encoded)" in
@@ -434,43 +416,51 @@ let exit_status = function
 (* exit status already in use:
    - 0 success
    - 2 OCaml exception
+   - 123 "some error"
    - 124 "cli error"
    - 125 "internal error"
    - 126 (bash) command invoked cannot execute
    - 127 (bash) command not found
    - 255 OCaml abort
 *)
+let remote_command_failed = 117
 let http_failed = 118
 let local_authentication_failed = 119
 let remote_authentication_failed = 120
 let communication_failed = 121
 let connect_failed = 122
-let remote_command_failed = 123
 
 let exit_status_to_int = function
-  | Success -> 0
+  | Success -> Cmd.Exit.ok
   | Local_authentication_failed -> local_authentication_failed
   | Remote_authentication_failed -> remote_authentication_failed
   | Communication_failed -> communication_failed
   | Connect_failed -> connect_failed
   | Remote_command_failed -> remote_command_failed
-  | Cli_failed -> Term.exit_status_cli_error
-  | Internal_error -> Term.exit_status_internal_error
+  | Cli_failed -> Cmd.Exit.cli_error
+  | Internal_error -> Cmd.Exit.internal_error
   | Http_error -> http_failed
 
+let exit_status_of_result = function
+  | Ok (`Help | `Version) -> Cmd.Exit.ok
+  | Ok `Ok a -> exit_status_to_int a
+  | Error `Term -> Cmd.Exit.cli_error
+  | Error `Parse -> Cmd.Exit.cli_error
+  | Error `Exn -> Cmd.Exit.internal_error
+
 let exits =
-  Term.exit_info ~doc:"on communication (read or write) failure"
+  Cmd.Exit.info ~doc:"on communication (read or write) failure"
     communication_failed ::
-  Term.exit_info ~doc:"on connection failure" connect_failed ::
-  Term.exit_info ~doc:"on remote command execution failure"
+  Cmd.Exit.info ~doc:"on connection failure" connect_failed ::
+  Cmd.Exit.info ~doc:"on remote command execution failure"
     remote_command_failed ::
-  Term.exit_info ~doc:"on HTTP interaction failure" http_failed ::
-  Term.default_exits
+  Cmd.Exit.info ~doc:"on HTTP interaction failure" http_failed ::
+  Cmd.Exit.defaults
 
 let auth_exits =
-  [ Term.exit_info ~doc:"on local authentication failure \
+  [ Cmd.Exit.info ~doc:"on local authentication failure \
                          (certificate not accepted by remote)"
       local_authentication_failed ;
-    Term.exit_info ~doc:"on remote authentication failure \
+    Cmd.Exit.info ~doc:"on remote authentication failure \
                          (couldn't validate trust anchor)"
       remote_authentication_failed ]

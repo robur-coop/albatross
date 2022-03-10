@@ -57,7 +57,10 @@ let port =
   Arg.(value & opt int 1025 & info [ "port" ] ~doc)
 
 let cmd =
-  Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir),
-  Term.info "albatross-tls-endpoint" ~version
+  let term =
+    Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir)
+  and info = Cmd.info "albatross-tls-endpoint" ~version
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

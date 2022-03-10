@@ -75,10 +75,10 @@ let cmd =
     `P "$(tname) connects to an Albatross server and initiates a TLS handshake" ]
   in
   let exits = auth_exits @ exits in
-  Term.(const run_client $ setup_log $ cas $ client_cert $ client_key $ destination),
-  Term.info "albatross-client-remote-tls" ~version ~doc ~man ~exits
+  let term =
+    Term.(const run_client $ setup_log $ cas $ client_cert $ client_key $ destination)
+  and info = Cmd.info "albatross-client-remote-tls" ~version ~doc ~man ~exits
+  in
+  Cmd.v info term
 
-let () =
-  match Term.eval cmd with
-  | `Ok x -> exit (exit_status_to_int x)
-  | y -> exit (Term.exit_status_of_result y)
+let () = exit (Cmd.eval_value cmd |> Albatross_cli.exit_status_of_result)

@@ -176,7 +176,10 @@ open Cmdliner
 open Albatross_cli
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir)),
-  Term.info "albatross-console" ~version
+  let term =
+    Term.(term_result (const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir))
+  and info = Cmd.info "albatross-console" ~version
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

@@ -302,9 +302,10 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir)),
-  Term.info "albatross-influx" ~version ~doc ~man
+  let term =
+    Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir))
+  and info = Cmd.info "albatross-influx" ~version ~doc ~man
+  in
+  Cmd.v info term
 
-let () =
-  match Term.eval cmd
-  with `Error _ -> exit 1 | _ -> exit 0
+let () = exit (Cmd.eval cmd)

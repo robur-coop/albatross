@@ -151,8 +151,11 @@ let destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroy a virtual machine."]
   in
-  Term.(term_result (const destroy $ setup_log $ socket $ vm_name $ tmpdir)),
-  Term.info "destroy" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const destroy $ setup_log $ socket $ vm_name $ tmpdir))
+  and info = Cmd.info "destroy" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let remove_policy_cmd =
   let doc = "removes a policy" in
@@ -160,8 +163,11 @@ let remove_policy_cmd =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
-  Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "remove_policy" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name $ tmpdir))
+  and info = Cmd.info "remove_policy" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let info_cmd =
   let doc = "information about VMs" in
@@ -169,8 +175,11 @@ let info_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about VMs."]
   in
-  Term.(term_result (const info_ $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "info" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const info_ $ setup_log $ socket $ opt_vm_name $ tmpdir))
+  and info = Cmd.info "info" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let get_cmd =
   let doc = "retrieve a VM" in
@@ -178,8 +187,11 @@ let get_cmd =
     [`S "DESCRIPTION";
      `P "Downloads a VM."]
   in
-  Term.(term_result (const get $ setup_log $ socket $ vm_name $ compress_level 0 $ tmpdir)),
-  Term.info "get" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const get $ setup_log $ socket $ vm_name $ compress_level 0 $ tmpdir))
+  and info = Cmd.info "get" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let policy_cmd =
   let doc = "active policies" in
@@ -187,8 +199,11 @@ let policy_cmd =
     [`S "DESCRIPTION";
      `P "Shows information about policies."]
   in
-  Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "policy" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name $ tmpdir))
+  and info = Cmd.info "policy" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let add_policy_cmd =
   let doc = "Add a policy" in
@@ -196,8 +211,11 @@ let add_policy_cmd =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
-  Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir)),
-  Term.info "add_policy" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir))
+  and info = Cmd.info "add_policy" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let create_cmd =
   let doc = "creates a virtual machine" in
@@ -205,8 +223,11 @@ let create_cmd =
     [`S "DESCRIPTION";
      `P "Creates a virtual machine."]
   in
-  Term.(term_result (const create $ setup_log $ socket $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir)),
-  Term.info "create" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const create $ setup_log $ socket $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir))
+  and info = Cmd.info "create" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let console_cmd =
   let doc = "console of a VM" in
@@ -214,8 +235,11 @@ let console_cmd =
     [`S "DESCRIPTION";
      `P "Shows console output of a VM."]
   in
-  Term.(term_result (const console $ setup_log $ socket $ vm_name $ since $ count $ tmpdir)),
-  Term.info "console" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const console $ setup_log $ socket $ vm_name $ since $ count $ tmpdir))
+  and info = Cmd.info "console" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let stats_subscribe_cmd =
   let doc = "statistics of VMs" in
@@ -223,8 +247,11 @@ let stats_subscribe_cmd =
     [`S "DESCRIPTION";
      `P "Shows statistics of VMs."]
   in
-  Term.(term_result (const stats_subscribe $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "stats" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const stats_subscribe $ setup_log $ socket $ opt_vm_name $ tmpdir))
+  and info = Cmd.info "stats" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let stats_remove_cmd =
   let doc = "remove statistics of VM" in
@@ -232,8 +259,11 @@ let stats_remove_cmd =
     [`S "DESCRIPTION";
      `P "Removes statistics of VM."]
   in
-  Term.(term_result (const stats_remove $ setup_log $ socket $ opt_vm_name $ tmpdir)),
-  Term.info "stats_remove" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const stats_remove $ setup_log $ socket $ opt_vm_name $ tmpdir))
+  and info = Cmd.info "stats_remove" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let stats_add_cmd =
   let doc = "Add VM to statistics gathering" in
@@ -241,8 +271,11 @@ let stats_add_cmd =
     [`S "DESCRIPTION";
      `P "Add VM to statistics gathering."]
   in
-  Term.(term_result (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps $ tmpdir)),
-  Term.info "stats_add" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const stats_add $ setup_log $ socket $ opt_vm_name $ vmm_dev_req0 $ pid_req1 $ bridge_taps $ tmpdir))
+  and info = Cmd.info "stats_add" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let block_info_cmd =
   let doc = "Information about block devices" in
@@ -250,8 +283,11 @@ let block_info_cmd =
     [`S "DESCRIPTION";
      `P "Block device information."]
   in
-  Term.(term_result (const block_info $ setup_log $ socket $ opt_block_name $ tmpdir)),
-  Term.info "block" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const block_info $ setup_log $ socket $ opt_block_name $ tmpdir))
+  and info = Cmd.info "block" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let block_create_cmd =
   let doc = "Create a block device" in
@@ -259,8 +295,11 @@ let block_create_cmd =
     [`S "DESCRIPTION";
      `P "Creation of a block device."]
   in
-  Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ compress_level 0 $ opt_block_data $ tmpdir)),
-  Term.info "create_block" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const block_create $ setup_log $ socket $ block_name $ block_size $ compress_level 0 $ opt_block_data $ tmpdir))
+  and info = Cmd.info "create_block" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let block_set_cmd =
   let doc = "Set data to a block device" in
@@ -268,8 +307,11 @@ let block_set_cmd =
     [`S "DESCRIPTION";
      `P "Set data to a block device."]
   in
-  Term.(term_result (const block_set $ setup_log $ socket $ block_name $ compress_level 0 $ block_data $ tmpdir)),
-  Term.info "set_block" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const block_set $ setup_log $ socket $ block_name $ compress_level 0 $ block_data $ tmpdir))
+  and info = Cmd.info "set_block" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let block_dump_cmd =
   let doc = "Dump data of a block device" in
@@ -277,8 +319,11 @@ let block_dump_cmd =
     [`S "DESCRIPTION";
      `P "Dump data of a block device."]
   in
-  Term.(term_result (const block_dump $ setup_log $ socket $ block_name $ compress_level 0 $ tmpdir)),
-  Term.info "dump_block" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const block_dump $ setup_log $ socket $ block_name $ compress_level 0 $ tmpdir))
+  and info = Cmd.info "dump_block" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let block_destroy_cmd =
   let doc = "Destroys a block device" in
@@ -286,8 +331,11 @@ let block_destroy_cmd =
     [`S "DESCRIPTION";
      `P "Destroys a block device."]
   in
-  Term.(term_result (const block_destroy $ setup_log $ socket $ block_name $ tmpdir)),
-  Term.info "destroy_block" ~doc ~man ~exits
+  let term =
+    Term.(term_result (const block_destroy $ setup_log $ socket $ block_name $ tmpdir))
+  and info = Cmd.info "destroy_block" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let update_cmd =
   let doc = " Update a unikernel from the binary repository" in
@@ -295,33 +343,20 @@ let update_cmd =
     [`S "DESCRIPTION";
      `P "Check and update a unikernel from the binary repository"]
   in
-  Term.(const update $ setup_log $ socket $ http_host $ dryrun $ compress_level 0 $ vm_name $ tmpdir),
-  Term.info "update" ~doc ~man ~exits
+  let term =
+    Term.(const update $ setup_log $ socket $ http_host $ dryrun $ compress_level 0 $ vm_name $ tmpdir)
+  and info = Cmd.info "update" ~doc ~man ~exits
+  in
+  Cmd.v info term
 
 let help_cmd =
   let topic =
     let doc = "The topic to get help on. `topics' lists the topics." in
     Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
   in
-  let doc = "display help about vmmc" in
-  let man =
-    [`S "DESCRIPTION";
-     `P "Prints help about albatross local client commands and subcommands"]
-  in
-  Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ topic)),
-  Term.info "help" ~doc ~man ~exits
+  Term.(ret (const help $ setup_log $ socket $ Arg.man_format $ Term.choice_names $ topic))
 
-let default_cmd =
-  let doc = "VMM local client" in
-  let man = [
-    `S "DESCRIPTION" ;
-    `P "$(tname) connects to albatrossd via a local socket" ]
-  in
-  Term.(ret (const help $ setup_log $ socket $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross-client-local" ~version ~doc ~man ~exits
-
-let cmds = [ help_cmd ;
-             policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
+let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              block_set_cmd ; block_dump_cmd ;
@@ -330,6 +365,11 @@ let cmds = [ help_cmd ;
              update_cmd ]
 
 let () =
-  match Term.eval_choice default_cmd cmds with
-  | `Ok x -> exit (exit_status_to_int x)
-  | y -> exit (Term.exit_status_of_result y)
+  let doc = "VMM local client" in
+  let man = [
+    `S "DESCRIPTION" ;
+    `P "$(tname) connects to albatrossd via a local socket" ]
+  in
+  let info = Cmd.info "albatross-client-local" ~version ~doc ~man ~exits in
+  let group = Cmd.group ~default:help_cmd info cmds in
+  exit (Cmd.eval_value group |> Albatross_cli.exit_status_of_result)

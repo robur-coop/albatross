@@ -68,7 +68,10 @@ let vmname =
   Arg.(value & opt (some string) None & info [ "name" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ pid $ vmname $ interval $ tmpdir)),
-  Term.info "albatross-stat-client" ~version
+  let term =
+    Term.(term_result (const jump $ setup_log $ pid $ vmname $ interval $ tmpdir))
+  and info = Cmd.info "albatross-stat-client" ~version
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)
