@@ -11,7 +11,7 @@ let init_influx name data =
   match data with
   | None -> ()
   | Some (ip, port) ->
-    Logs.info (fun m -> m "stats connecting to %a:%d" Ipaddr.V4.pp ip port);
+    Logs.info (fun m -> m "stats connecting to %a:%d" Ipaddr.pp ip port);
     Metrics.enable_all ();
     Metrics_lwt.init_periodic (fun () -> Lwt_unix.sleep 10.);
     Metrics_lwt.periodically (Metrics_rusage.rusage_src ~tags:[]);
@@ -24,8 +24,10 @@ let init_influx name data =
         (match !fd with
          | Some _ -> Lwt.return_unit
          | None ->
-           let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.V4.to_inet_addr ip, port) in
-           Vmm_lwt.connect Lwt_unix.PF_INET addr >|= function
+           let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port)
+           and fam = Lwt_unix.(match ip with Ipaddr.V4 _ -> PF_INET | Ipaddr.V6 _ -> PF_INET6)
+           in
+           Vmm_lwt.connect fam addr >|= function
            | None -> Logs.err (fun m -> m "connection failure to stats")
            | Some fd' -> fd := Some fd') >>= fun () ->
         match !fd with
@@ -163,8 +165,8 @@ let setup_log =
         $ Logs_cli.level ())
 
 let ip_port =
-  let pp ppf (ip, port) = Format.fprintf ppf "%a:%d" Ipaddr.V4.pp ip port in
-  Arg.conv (Ipaddr.V4.with_port_of_string ~default:8094, pp)
+  let pp ppf (ip, port) = Format.fprintf ppf "%a:%d" Ipaddr.pp ip port in
+  Arg.conv (Ipaddr.with_port_of_string ~default:8094, pp)
 
 let influx =
   let doc = "IP address and port (default: 8094) to report metrics to in influx line protocol" in

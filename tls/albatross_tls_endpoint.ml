@@ -6,9 +6,10 @@ open Albatross_tls_common
 
 let server_socket port =
   let open Lwt_unix in
-  let s = socket PF_INET SOCK_STREAM 0 in
+  let s = socket PF_INET6 SOCK_STREAM 0 in
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
+  setsockopt s IPV6_ONLY false ;
   bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
   listen s 10 ;
   Lwt.return s
