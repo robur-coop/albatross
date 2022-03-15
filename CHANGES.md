@@ -1,3 +1,11 @@
+# v1.4.3 (2022-03-15)
+
+- Debian packaging: set architecture to DEB_TARGET_ARCH (@reynir)
+- FreeBSD packaging: normalize version number (. instead of -) (@hannesm)
+- Add systemd service script for albatross_influx (@hannesm)
+- Update to cmdliner 1.1.0 (#104 @hannesm)
+- Support IPv6 in daemon (albatross_tls_endpoint) and influx (#104 @hannesm)
+
 # v1.4.2 (2022-02-04)
 
 - fix issues "use OCaml solo5-elftool instead of binary" where the compressed
