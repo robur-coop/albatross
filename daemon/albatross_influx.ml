@@ -175,20 +175,20 @@ let safe_close s =
        Logs.err (fun m -> m "exception %s while closing" (Printexc.to_string e)) ;
        Lwt.return_unit)
 
-let rec read_sock_write_tcp drop c ?fd addr =
+let rec read_sock_write_tcp drop c ?fd fam addr =
   match fd with
   | None ->
     begin
       Logs.debug (fun m -> m "new connection to TCP") ;
-      Vmm_lwt.connect Lwt_unix.PF_INET addr >>= function
+      Vmm_lwt.connect fam addr >>= function
       | None ->
         Logs.warn (fun m -> m "error connecting to influxd %a, retrying in 5s"
                       Vmm_lwt.pp_sockaddr addr);
         Lwt_unix.sleep 5.0 >>= fun () ->
-        read_sock_write_tcp drop c addr
+        read_sock_write_tcp drop c fam addr
       | Some fd ->
         Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
-        read_sock_write_tcp drop c ~fd addr
+        read_sock_write_tcp drop c ~fd fam addr
     end
   | Some fd ->
     Logs.debug (fun m -> m "reading from unix socket") ;
@@ -218,18 +218,18 @@ let rec read_sock_write_tcp drop c ?fd addr =
         Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
         | Ok () ->
           Logs.debug (fun m -> m "wrote successfully") ;
-          read_sock_write_tcp drop c ~fd addr
+          read_sock_write_tcp drop c ~fd fam addr
         | Error e ->
           Logs.err (fun m -> m "error %s while writing to tcp (%s)"
                        (str_of_e e) name) ;
           safe_close fd >>= fun () ->
-          read_sock_write_tcp drop c addr
+          read_sock_write_tcp drop c fam addr
       end
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a"
                     (Vmm_commands.pp_wire ~verbose:false) wire) ;
       Lwt.return (Some fd) >>= fun fd ->
-      read_sock_write_tcp drop c ?fd addr
+      read_sock_write_tcp drop c ?fd fam addr
 
 let query_sock vm c =
   let header = Vmm_commands.header ~sequence:!command vm in
@@ -253,7 +253,9 @@ let client influx vm drop =
   match influx with
   | None -> Lwt.return (Error (`Msg "influx host not provided"))
   | Some (ip, port) ->
-    let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.V4.to_inet_addr ip, port) in
+    let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port)
+    and fam = Lwt_unix.(match ip with Ipaddr.V4 _ -> PF_INET | Ipaddr.V6 _ -> PF_INET6)
+    in
 
     (* loop *)
     (* the query task queries the stat_socket at each
@@ -279,7 +281,7 @@ let client influx vm drop =
       in
       Lwt.return err
     | Ok () ->
-      read_sock_write_tcp drop c addr >>= fun restart ->
+      read_sock_write_tcp drop c fam addr >>= fun restart ->
       if restart then loop () else Lwt.return (Ok ())
   in
   loop ()
@@ -302,9 +304,10 @@ let cmd =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
-  Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir)),
-  Term.info "albatross-influx" ~version ~doc ~man
+  let term =
+    Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir))
+  and info = Cmd.info "albatross-influx" ~version ~doc ~man
+  in
+  Cmd.v info term
 
-let () =
-  match Term.eval cmd
-  with `Error _ -> exit 1 | _ -> exit 0
+let () = exit (Cmd.eval cmd)

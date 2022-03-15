@@ -125,8 +125,11 @@ let generate_cmd =
     [`S "DESCRIPTION";
      `P "Generates a certificate authority."]
   in
-  Term.(term_result (const generate $ setup_log $ nam $ db $ days $ sname $ sday $ pub_key_type $ key_bits)),
-  Term.info "generate" ~doc ~man
+  let term =
+    Term.(term_result (const generate $ setup_log $ nam $ db $ days $ sname $ sday $ pub_key_type $ key_bits))
+  and info = Cmd.info "generate" ~doc ~man
+  in
+  Cmd.v info term
 
 let days =
   let doc = "Number of days" in
@@ -142,33 +145,27 @@ let sign_cmd =
     [`S "DESCRIPTION";
      `P "Signs the certificate signing request."]
   in
-  Term.(term_result (const sign_main $ setup_log $ db $ cacert $ key $ csr $ days)),
-  Term.info "sign" ~doc ~man
+  let term =
+    Term.(term_result (const sign_main $ setup_log $ db $ cacert $ key $ csr $ days))
+  and info = Cmd.info "sign" ~doc ~man
+  in
+  Cmd.v info term
 
 let help_cmd =
   let topic =
     let doc = "The topic to get help on. `topics' lists the topics." in
     Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
   in
-  let doc = "display help about albatross_priviion_ca" in
-  let man =
-    [`S "DESCRIPTION";
-     `P "Prints help about commands and subcommands"]
-  in
-  Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ topic)),
-  Term.info "help" ~doc ~man
+  Term.(ret (const help $ setup_log $ Arg.man_format $ Term.choice_names $ topic))
 
-let default_cmd =
+let cmds = [ sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)]
+
+let () =
   let doc = "Albatross CA provisioning" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) does CA operations (creation, sign, etc.)" ]
   in
-  Term.(ret (const help $ setup_log $ Term.man_format $ Term.choice_names $ Term.pure None)),
-  Term.info "albatross-provision-ca" ~version ~doc ~man
-
-let cmds = [ help_cmd ; sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)]
-
-let () =
-  match Term.eval_choice default_cmd cmds
-  with `Ok () -> exit 0 | _ -> exit 1
+  let info = Cmd.info "albatross-provision-ca" ~version ~doc ~man in
+  let group = Cmd.group ~default:help_cmd info cmds in
+  exit (Cmd.eval group)

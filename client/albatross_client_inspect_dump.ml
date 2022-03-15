@@ -24,7 +24,9 @@ let file =
   Arg.(value & opt (some string) None & info [ "file" ] ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ file $ dbdir)),
-  Term.info "albatross-client-inspect-dump" ~version
+  let term = Term.(term_result (const jump $ setup_log $ file $ dbdir))
+  and info = Cmd.info "albatross-client-inspect-dump" ~version
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

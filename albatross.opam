@@ -13,12 +13,12 @@ depends: [
   "conf-pkg-config" {build}
   "conf-libnl3" {os = "linux"}
   "lwt" {>= "3.0.0"}
-  "ipaddr" {>= "4.0.0"}
+  "ipaddr" {>= "5.3.0"}
   "cstruct" {>= "6.0.0"}
   "logs"
   "bos"
   "ptime"
-  "cmdliner" {>= "1.0.0" & < "1.1.0"}
+  "cmdliner" {>= "1.1.0"}
   "fmt" {>= "0.8.7"}
   "x509" {>= "0.13.0"}
   "tls" {>= "0.13.1"}

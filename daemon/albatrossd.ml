@@ -219,7 +219,10 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
 open Cmdliner
 
 let cmd =
-  Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats),
-  Term.info "albatrossd" ~version:Albatross_cli.version
+  let term =
+    Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats)
+  and info = Cmd.info "albatrossd" ~version:Albatross_cli.version
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

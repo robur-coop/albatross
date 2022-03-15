@@ -6,9 +6,10 @@ open Albatross_tls_common
 
 let server_socket port =
   let open Lwt_unix in
-  let s = socket PF_INET SOCK_STREAM 0 in
+  let s = socket PF_INET6 SOCK_STREAM 0 in
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
+  setsockopt s IPV6_ONLY false ;
   bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
   listen s 10 ;
   Lwt.return s
@@ -57,7 +58,10 @@ let port =
   Arg.(value & opt int 1025 & info [ "port" ] ~doc)
 
 let cmd =
-  Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir),
-  Term.info "albatross-tls-endpoint" ~version
+  let term =
+    Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir)
+  and info = Cmd.info "albatross-tls-endpoint" ~version
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)
