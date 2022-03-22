@@ -10,11 +10,6 @@ After=syslog.target
 Type=simple
 User=albatross
 ExecStart=/usr/libexec/albatross/albatross-console --systemd-socket-activation --tmpdir="%t/albatross/" -vv
-RuntimeDirectoryPreserve=yes
-RuntimeDirectory=albatross
-ExecStartPre=/bin/mkdir -p %t/albatross/fifo
-ExecStartPre=/bin/chmod 2770 %t/albatross/fifo
-ExecStartPre=/bin/mkdir -p %t/albatross/util
 PIDFile=%t/albatross/console.pid
 RestrictAddressFamilies=AF_UNIX
 

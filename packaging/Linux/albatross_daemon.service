@@ -12,6 +12,11 @@ ExecStart=/usr/libexec/albatross/albatrossd --systemd-socket-activation --tmpdir
 #RuntimeDirectoryPreserve=yes
 #RuntimeDirectory=albatross
 PIDFile=%t/albatross/daemon.pid
+RuntimeDirectoryPreserve=yes
+RuntimeDirectory=albatross
+ExecStartPre=/bin/mkdir -p %t/albatross/fifo
+ExecStartPre=/bin/chmod 2770 %t/albatross/fifo
+ExecStartPre=/bin/mkdir -p %t/albatross/util
 
 ## hardening stuff
 ProtectSystem=full
