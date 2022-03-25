@@ -177,7 +177,7 @@ let handle_create t name vm_config =
   let* taps, digest = Vmm_unix.prepare name vm_config in
   Logs.debug (fun m -> m "prepared vm with taps %a"
                  Fmt.(list ~sep:(any ",@ ") (pair ~sep:(any " -> ") string string))
-                 taps) ;
+                 (List.map (fun (a,b,_) -> a,b) taps (* FIXME *))) ;
   let cons_out =
     let header = Vmm_commands.header ~sequence:t.console_counter name in
     (header, `Command (`Console_cmd `Console_add))
@@ -204,7 +204,7 @@ let handle_create t name vm_config =
     let t, stat_out = setup_stats t name vm in
     Ok (t, stat_out, `Success (`String "created VM"), name, vm)
   and fail () =
-    match Vmm_unix.free_system_resources name (List.map snd taps) with
+    match Vmm_unix.free_system_resources name (List.map (fun (_,tap,_) -> tap) taps) with
     | Ok () -> `Failure "could not create VM: console failed"
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in

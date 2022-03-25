@@ -13,9 +13,9 @@ val set_dbdir : Fpath.t -> unit
 val check_commands : unit -> (unit, [> `Msg of string ]) result
 
 val prepare : Name.t -> Unikernel.config ->
-  ((string * string) list * Cstruct.t, [> `Msg of string ]) result
+  ((string * string * Macaddr.t option) list * Cstruct.t, [> `Msg of string ]) result
 
-val exec : Name.t -> Unikernel.config -> (string * string) list ->
+val exec : Name.t -> Unikernel.config -> (string * string * Macaddr.t option) list ->
   (string * Name.t) list -> Cstruct.t -> (Unikernel.t, [> `Msg of string ]) result
 
 val free_system_resources : Name.t -> string list -> (unit, [> `Msg of string ]) result
