@@ -105,7 +105,7 @@ module Unikernel : sig
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option) list ;
-    bridges : (string * string option) list ;
+    bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
   }
 
@@ -133,7 +133,7 @@ module Unikernel : sig
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option) list ;
-    bridges : (string * string option) list ;
+    bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
     digest : Cstruct.t ;
   }

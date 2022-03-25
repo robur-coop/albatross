@@ -238,12 +238,12 @@ let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
 
 let manifest_devices_match ~bridges ~block_devices image =
   let* things = solo5_image_devices image in
-  let bridges = List.map fst bridges
+  let bridges = List.map (fun (b,_,_) -> b) bridges
   and block_devices = List.map fst block_devices
   in
   devices_match ~bridges ~block_devices things
 
-let bridge_name (service, b) = match b with None -> service | Some b -> b
+let bridge_name (service, b, _mac) = match b with None -> service | Some b -> b
 
 let bridge_exists bridge_name =
   let cmd =
@@ -302,7 +302,8 @@ let prepare name (vm : Unikernel.config) =
         let* acc = acc in
         let bridge = bridge_name arg in
         let* tap = create_tap bridge in
-        Ok ((fst arg, tap) :: acc))
+        let (service, _, _) = arg in
+        Ok ((service, tap) :: acc))
       (Ok []) vm.Unikernel.bridges
   in
   Ok (List.rev taps, digest)

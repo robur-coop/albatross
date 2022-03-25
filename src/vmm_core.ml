@@ -267,13 +267,13 @@ module Unikernel = struct
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option) list ;
-    bridges : (string * string option) list ;
+    bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
   }
 
   let bridges (vm : config) =
     List.map
-      (fun (net, bri) -> match bri with None -> net | Some s -> s)
+      (fun (net, bri, _mac) -> match bri with None -> net | Some s -> s)
       vm.bridges
 
   let pp_opt_list ppf xs =
@@ -290,7 +290,7 @@ module Unikernel = struct
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       pp_opt_list vm.block_devices
-      pp_opt_list vm.bridges
+      pp_opt_list (List.map (fun (x,y,_z) -> (x, y)) vm.bridges) (* FIXME *)
 
   let pp_config_with_argv ppf (vm : config) =
     Fmt.pf ppf "%a@ argv %a" pp_config vm
@@ -322,7 +322,7 @@ module Unikernel = struct
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option) list ;
-    bridges : (string * string option) list ;
+    bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
     digest : Cstruct.t ;
   }
@@ -340,7 +340,7 @@ module Unikernel = struct
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
       pp_opt_list info.block_devices
-      pp_opt_list info.bridges
+      pp_opt_list (List.map (fun (x,y,_z) -> (x,y)) info.bridges) (* FIXME *)
       hex_digest
 
   let pp_info_with_argv ppf (info : info) =

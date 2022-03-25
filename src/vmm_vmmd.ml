@@ -152,7 +152,7 @@ let setup_stats t name vm =
     let name = match Vmm_unix.vm_device vm with
       | Error _ -> ""
       | Ok name -> name
-    and ifs = Unikernel.(List.combine (List.map fst vm.config.bridges) vm.taps)
+    and ifs = Unikernel.(List.combine (List.map (fun (x,_,_) -> x) vm.config.bridges) vm.taps)
     in
     `Stats_add (name, vm.Unikernel.pid, ifs)
   in
