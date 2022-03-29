@@ -62,7 +62,6 @@ let check_commands () =
          Bos.OS.Cmd.must_exist (Bos.Cmd.v cmd))
       (Ok uname_cmd) cmds
   in
-  let* _ = check_solo5_cmd "solo5-elftool" in
   Ok ()
   (* we could check for solo5-hvt OR solo5-spt, but in practise we need
      to handle either being absent and we get an image of that type anyways *)
