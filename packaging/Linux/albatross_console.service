@@ -9,6 +9,7 @@ After=syslog.target
 [Service]
 Type=simple
 User=albatross
+Group=albatross
 ExecStart=/usr/libexec/albatross/albatross-console --systemd-socket-activation --tmpdir="%t/albatross/" -vv
 PIDFile=%t/albatross/console.pid
 RestrictAddressFamilies=AF_UNIX
