@@ -82,7 +82,7 @@ messages [
           /usr/local/etc/albatross/server.pem \
           /usr/local/etc/albatross/server.key
 
-   * install solo5-hvt and solo5-elftool in PATH or /var/db/albatross
+   * install solo5-hvt in PATH or /var/db/albatross
 
 ===================================================================
 EOD;
