@@ -155,10 +155,18 @@ let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.confi
       Error (`Msg (Fmt.str "bridges %a not allowed by policy"
                      Fmt.(list ~sep:(any ", ") string) disallowed))
 
+let rec locate_policy t domain =
+  if Name.is_root domain then
+    None
+  else
+    match find_policy t domain with
+    | None -> locate_policy t (Name.domain domain)
+    | Some p -> Some p
+
 let check_vm t name vm =
   let policy_ok =
     let dom = Name.domain name in
-    match find_policy t dom with
+    match locate_policy t dom with
     | None -> Ok ()
     | Some p ->
       let used = vm_usage t dom in
@@ -200,7 +208,7 @@ let check_block t name size =
     | None -> Ok ()
   and policy_ok =
     let dom = Name.domain name in
-    match find_policy t dom with
+    match locate_policy t dom with
     | None -> Ok ()
     | Some p ->
       let used = total_block_usage t dom in
