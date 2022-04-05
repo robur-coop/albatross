@@ -93,7 +93,7 @@ module Name = struct
 
   let pp ppf (p, name) =
     Fmt.(pf ppf "[vm: %a:%a]" (list ~sep:(any ":") string) p
-           (option ~none:(any "no name") string) name)
+           (option ~none:(any "") string) name)
 
   let path (p, _) = p
 
@@ -147,14 +147,12 @@ module Name = struct
   let path_to_string x = String.concat ":" x
 
   let path_of_string str =
-    if String.equal str "" then
-      Ok []
+    let ps = String.split_on_char ':' str in
+    let ps = match ps with | ""::tl -> tl | ps -> ps in
+    if List.for_all valid_label ps then
+      Ok ps
     else
-      let ps = String.split_on_char ':' str in
-      if List.for_all valid_label ps then
-        Ok ps
-      else
-        Error (`Msg "invalid path")
+      Error (`Msg "invalid path")
 
   let to_string (p, n) =
     path_to_string p ^ ":" ^ Option.value ~default:"" n
