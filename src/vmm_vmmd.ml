@@ -134,14 +134,14 @@ type 'a create =
   ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
   (unit -> Vmm_commands.res)
 
-let restore_unikernels () =
+let restore_unikernels ~migrate_name () =
   match Vmm_unix.restore () with
   | Error `NoFile ->
     Logs.warn (fun m -> m "no state dump found, starting with no unikernels") ;
     Ok Vmm_trie.empty
   | Error (`Msg msg) -> Error (`Msg ("while reading state: " ^ msg))
   | Ok data ->
-    match Vmm_asn.unikernels_of_cstruct data with
+    match Vmm_asn.unikernels_of_cstruct ~migrate_name data with
     | Error (`Msg msg) -> Error (`Msg ("couldn't parse state: " ^ msg))
     | Ok unikernels ->
       Logs.info (fun m -> m "restored %d unikernels" (List.length (Vmm_trie.all unikernels))) ;
