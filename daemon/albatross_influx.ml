@@ -202,7 +202,7 @@ let rec read_sock_write_tcp drop c ?fd fam addr =
     | Ok (hdr, `Data (`Stats_data (ru, mem, vmm, ifs))) ->
       let name =
         let orig = hdr.Vmm_commands.name
-        and f = if drop then Name.drop_front else (fun a -> a)
+        and f = if drop then Name.drop_path else (fun a -> a)
         in
         let n = f orig in
         let safe = if Name.is_root n then orig else n in
@@ -295,7 +295,7 @@ open Cmdliner
 open Albatross_cli
 
 let drop_label =
-  let doc = "Drop leftmost label" in
+  let doc = "Drop unikernel path" in
   Arg.(value & flag & info [ "drop-label" ] ~doc)
 
 let cmd =

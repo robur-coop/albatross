@@ -1,3 +1,9 @@
 (test
  (name test_asn)
+ (modules test_asn)
  (libraries albatross))
+
+(test
+ (name tests)
+ (modules tests)
+ (libraries albatross alcotest))

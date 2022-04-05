@@ -11,13 +11,13 @@ type t = {
 }
 
 let pp ppf t =
-  Vmm_trie.fold Name.root t.policies
+  Vmm_trie.fold Name.root_path t.policies
     (fun id p () ->
        Fmt.pf ppf "policy %a: %a@." Name.pp id Policy.pp p) () ;
-  Vmm_trie.fold Name.root t.block_devices
+  Vmm_trie.fold Name.root_path t.block_devices
     (fun id (size, used) () ->
        Fmt.pf ppf "block device %a: %d MB (used %B)@." Name.pp id size used) () ;
-  Vmm_trie.fold Name.root t.unikernels
+  Vmm_trie.fold Name.root_path t.unikernels
     (fun id vm () ->
        Fmt.pf ppf "vm %a: %a@." Name.pp id Unikernel.pp_config vm.Unikernel.config) ()
 
@@ -44,27 +44,27 @@ let no_policy = Policy.{ vms = 0 ; cpuids = IS.empty ; memory = 0 ; block = None
 
 (* we should confirm the following invariant: Vm or Block have no siblings *)
 
-let block_usage t name =
-  Vmm_trie.fold name t.block_devices
+let block_usage t path =
+  Vmm_trie.fold path t.block_devices
     (fun _ (size, act) (active, inactive) ->
        if act then active + size, inactive else active, inactive + size)
     (0, 0)
 
-let total_block_usage t name =
-  let act, inact = block_usage t name in
+let total_block_usage t path =
+  let act, inact = block_usage t path in
   act + inact
 
-let vm_usage t name =
-  Vmm_trie.fold name t.unikernels
+let vm_usage t path =
+  Vmm_trie.fold path t.unikernels
     (fun _ vm (vms, memory) -> (succ vms, memory + vm.Unikernel.config.Unikernel.memory))
     (0, 0)
 
 let unikernel_metrics =
   let open Metrics in
   let doc = "VMM unikernels" in
-  let data (t, name) =
-    let vms, memory = vm_usage t name
-    and act, inact = block_usage t name
+  let data (t, path) =
+    let vms, memory = vm_usage t path
+    and act, inact = block_usage t path
     in
     Data.v [
       uint "attached used block" act ;
@@ -77,15 +77,17 @@ let unikernel_metrics =
   let tag = Tags.string "domain" in
   Src.v ~doc ~tags:Tags.[tag] ~data "vmm-unikernels"
 
-let rec report_vms t name =
-  let name' = Name.drop name in
-  let str = Name.to_string name' in
-  Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, name'));
-  if Name.is_root name' then () else report_vms t name'
+let report_vms t name =
+  let rec doit path =
+    let str = Name.path_to_string path in
+    Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, path));
+    if Name.is_root_path path then () else doit (Name.parent_path path)
+  in
+  doit (Name.path name)
 
 let find_vm t name = Vmm_trie.find name t.unikernels
 
-let find_policy t name = Vmm_trie.find name t.policies
+let find_policy t name = Vmm_trie.find_path name t.policies
 
 let find_block t name = Vmm_trie.find name t.block_devices
 
@@ -118,11 +120,11 @@ let remove_vm t name = match find_vm t name with
     report_vms t' name;
     Ok t'
 
-let remove_policy t name = match find_policy t name with
+let remove_policy t path = match find_policy t path with
   | None -> Error (`Msg "unknown policy")
   | Some _ ->
-    let policies = Vmm_trie.remove name t.policies in
-    Metrics.add policy_metrics (fun x -> x (Name.to_string name)) (fun d -> d no_policy);
+    let policies = Vmm_trie.remove_path path t.policies in
+    Metrics.add policy_metrics (fun x -> x (Name.path_to_string path)) (fun d -> d no_policy);
     Ok { t with policies }
 
 let remove_block t name =
@@ -157,11 +159,11 @@ let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.confi
 
 let check_vm t name vm =
   let policy_ok =
-    let dom = Name.domain name in
-    match find_policy t dom with
+    let path = Name.path name in
+    match find_policy t path with
     | None -> Ok ()
     | Some p ->
-      let used = vm_usage t dom in
+      let used = vm_usage t path in
       check_policy p used vm
   and block_ok =
     List.fold_left (fun r (block, dev) ->
@@ -199,11 +201,11 @@ let check_block t name size =
       Error (`Msg (Fmt.str "block device with name %a already exists" Name.pp name))
     | None -> Ok ()
   and policy_ok =
-    let dom = Name.domain name in
-    match find_policy t dom with
+    let path = Name.path name in
+    match find_policy t path with
     | None -> Ok ()
     | Some p ->
-      let used = total_block_usage t dom in
+      let used = total_block_usage t path in
       match p.Policy.block with
       | None -> Error (`Msg "no block devices are allowed by policy")
       | Some limit ->
@@ -252,34 +254,35 @@ let sub_policy ~super ~sub =
   else
     Ok ()
 
-let check_policies_above t name sub =
+let check_policies_above t path sub =
   let rec go prefix =
-    if Name.is_root prefix then
+    if Name.is_root_path prefix then
       Ok ()
     else
-      match find_policy t prefix with
-      | None -> go (Name.domain prefix)
-      | Some super ->
-        let* () = sub_policy ~super ~sub in
-        go (Name.domain prefix)
+      let* () =
+        match find_policy t prefix with
+        | None -> Ok ()
+        | Some super -> sub_policy ~super ~sub
+      in
+      go (Name.parent_path prefix)
   in
-  go (Name.domain name)
+  go path
 
-let check_policies_below t curname super =
-  Vmm_trie.fold curname t.policies (fun name policy res ->
+let check_policies_below t path super =
+  Vmm_trie.fold path t.policies (fun name policy res ->
       let* () = res in
-      if Name.equal curname name then
+      if Name.is_root name then
         res
       else
         sub_policy ~super ~sub:policy)
     (Ok ())
 
-let check_vms t name p =
-  let (vms, used_memory) = vm_usage t name
-  and block = total_block_usage t name
+let check_vms t path p =
+  let (vms, used_memory) = vm_usage t path
+  and block = total_block_usage t path
   in
   let bridges, cpuids =
-    Vmm_trie.fold name t.unikernels
+    Vmm_trie.fold path t.unikernels
       (fun _ vm (bridges, cpuids) ->
          let config = vm.Unikernel.config in
          (String_set.(union (of_list (Unikernel.bridges config)) bridges),
@@ -307,10 +310,10 @@ let check_vms t name p =
   else
     Ok ()
 
-let insert_policy t name p =
-  let* () = check_policies_above t name p in
-  let* () = check_policies_below t name p in
-  let* () = check_vms t name p in
-  let policies = fst (Vmm_trie.insert name p t.policies) in
-  Metrics.add policy_metrics (fun x -> x (Name.to_string name)) (fun d -> d p);
+let insert_policy t path p =
+  let* () = check_policies_above t path p in
+  let* () = check_policies_below t path p in
+  let* () = check_vms t path p in
+  let policies = fst (Vmm_trie.insert_path path p t.policies) in
+  Metrics.add policy_metrics (fun x -> x (Name.path_to_string path)) (fun d -> d p);
   Ok { t with policies }

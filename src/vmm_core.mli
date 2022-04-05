@@ -24,29 +24,46 @@ end
 module Name : sig
   type t
 
-  val is_root : t -> bool
+  type path
+
   val equal : t -> t -> bool
+
+  val pp : t Fmt.t
+
+  val path : t -> path
+  val name : t -> string option
+
+  val create : path -> string -> (t, [> `Msg of string ]) result
+  val create_of_path : path -> t
+  val create_exn : path -> string -> t
+
+  val drop_prefix_exn : t -> path -> t
+  val drop_path : t -> t
+
+  val to_list : t -> string list
+  val of_list : string list -> (t, [> `Msg of string ]) result
+
+  val path_to_string : path -> string
+  val path_of_string : string -> (path, [> `Msg of string ]) result
+
+  val to_string : t -> string
+  val of_string : string -> (t, [> `Msg of string ]) result
+
+  val path_to_list : path -> string list
+  val path_of_list : string list -> (path, [> `Msg of string ]) result
+
+  val root_path : path
+  val is_root_path : path -> bool
+  val parent_path : path -> path
+
+  val root : t
+  val is_root : t -> bool
+
+  val append_path : path -> string -> (path, [> `Msg of string ]) result
+  val append_path_exn : path -> string -> path
 
   val image_file : t -> Fpath.t
   val fifo_file : t -> Fpath.t
-
-  val of_list : string list -> (t, [> `Msg of string ]) result
-  val to_list : t -> string list
-  val drop : t -> t
-  val drop_front : t -> t
-  val append : string -> t -> (t, [> `Msg of string ]) result
-  val prepend : string -> t -> (t, [> `Msg of string ]) result
-  val append_exn : string -> t -> t
-  val concat : t -> t -> t
-
-  val root : t
-  val valid_label : string -> bool
-  val to_string : t -> string
-  val of_string : string -> (t, [> `Msg of string ]) result
-  val drop_super : super:t -> sub:t -> t option
-  val is_sub : super:t -> sub:t -> bool
-  val domain : t -> t
-  val pp : t Fmt.t
   val block_name : t -> string -> t
 
   val mac : t -> string -> Macaddr.t

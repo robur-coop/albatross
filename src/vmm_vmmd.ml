@@ -223,26 +223,28 @@ let handle_shutdown t name vm r =
   let t, stat_out = remove_stats t name in
   (t, stat_out)
 
-let handle_policy_cmd t id = function
+let handle_policy_cmd t id =
+  let path = Name.path id in
+  function
   | `Policy_remove ->
     Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;
-    let* resources = Vmm_resources.remove_policy t.resources id in
+    let* resources = Vmm_resources.remove_policy t.resources path in
     Ok ({ t with resources }, `End (`Success (`String "removed policy")))
   | `Policy_add policy ->
     Logs.debug (fun m -> m "insert policy %a" Name.pp id) ;
-    let same_policy = match Vmm_resources.find_policy t.resources id with
+    let same_policy = match Vmm_resources.find_policy t.resources path with
       | None -> false
       | Some p' -> Policy.equal policy p'
     in
     if same_policy then
       Ok (t, `Loop (`Success (`String "no modification of policy")))
     else
-      let* resources = Vmm_resources.insert_policy t.resources id policy in
+      let* resources = Vmm_resources.insert_policy t.resources path policy in
       Ok ({ t with resources }, `Loop (`Success (`String "added policy")))
   | `Policy_info ->
     Logs.debug (fun m -> m "policy %a" Name.pp id) ;
     let policies =
-      Vmm_trie.fold id t.resources.Vmm_resources.policies
+      Vmm_trie.fold path t.resources.Vmm_resources.policies
         (fun prefix policy policies-> (prefix, policy) :: policies)
         []
     in
@@ -252,7 +254,7 @@ let handle_unikernel_cmd t id = function
   | `Old_unikernel_info ->
     Logs.debug (fun m -> m "old info %a" Name.pp id) ;
     let vms =
-      Vmm_trie.fold id t.resources.Vmm_resources.unikernels
+      Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
         (fun id vm vms ->
            let cfg = { vm.Unikernel.config with image = Cstruct.empty } in
            (id, cfg) :: vms)
@@ -269,7 +271,7 @@ let handle_unikernel_cmd t id = function
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let infos =
-      Vmm_trie.fold id t.resources.Vmm_resources.unikernels
+      Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
         (fun id vm vms ->
            (id, Unikernel.info vm) :: vms)
         []
@@ -412,7 +414,7 @@ let handle_block_cmd t id = function
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;
     let blocks =
-      Vmm_trie.fold id t.resources.Vmm_resources.block_devices
+      Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.block_devices
         (fun prefix (size, active) blocks -> (prefix, size, active) :: blocks)
         []
     in
