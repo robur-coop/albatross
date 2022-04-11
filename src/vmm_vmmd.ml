@@ -225,6 +225,11 @@ let handle_shutdown t name vm r =
 
 let handle_policy_cmd t id =
   let path = Name.path id in
+  (match Name.name id with
+   | None -> ()
+   | Some x ->
+     Logs.warn (fun m -> m "policy command with non-empty name part %S in %a"
+                   x Name.pp id));
   function
   | `Policy_remove ->
     Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;
@@ -253,12 +258,15 @@ let handle_policy_cmd t id =
 let handle_unikernel_cmd t id = function
   | `Old_unikernel_info ->
     Logs.debug (fun m -> m "old info %a" Name.pp id) ;
+    let empty_image vm = { vm.Unikernel.config with image = Cstruct.empty } in
     let vms =
-      Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-        (fun id vm vms ->
-           let cfg = { vm.Unikernel.config with image = Cstruct.empty } in
-           (id, cfg) :: vms)
-        []
+      match Name.name id with
+      | None ->
+        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
+          (fun id vm vms -> (id, empty_image vm) :: vms) []
+      | Some _ ->
+        Option.fold ~none:[] ~some:(fun vm -> [ id, empty_image vm ])
+          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Old_unikernels vms)))
   | `Old_unikernel_get ->
@@ -271,10 +279,13 @@ let handle_unikernel_cmd t id = function
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let infos =
-      Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-        (fun id vm vms ->
-           (id, Unikernel.info vm) :: vms)
-        []
+      match Name.name id with
+      | None ->
+        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
+          (fun id vm vms -> (id, Unikernel.info vm) :: vms) []
+      | Some _ ->
+        Option.fold ~none:[] ~some:(fun vm -> [ id, Unikernel.info vm ])
+          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Unikernel_info infos)))
   | `Unikernel_get compress_level ->
@@ -414,9 +425,14 @@ let handle_block_cmd t id = function
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;
     let blocks =
-      Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.block_devices
-        (fun prefix (size, active) blocks -> (prefix, size, active) :: blocks)
-        []
+      match Name.name id with
+      | None ->
+        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.block_devices
+          (fun prefix (size, active) blocks -> (prefix, size, active) :: blocks)
+          []
+      | Some _ ->
+        Option.fold ~none:[] ~some:(fun (size, active) -> [ id, size, active ])
+          (Vmm_trie.find id t.resources.Vmm_resources.block_devices)
     in
     Ok (t, `End (`Success (`Block_devices blocks)))
 

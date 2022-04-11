@@ -185,6 +185,19 @@ let host_port =
   in
   Arg.conv (parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p)
 
+let path_c =
+  Arg.conv
+    (Name.path_of_string,
+     fun ppf p -> Name.pp ppf (Name.create_of_path p))
+
+let opt_path =
+  let doc = "path to virtual machines." in
+  Arg.(value & opt path_c Name.root_path & info [ "p" ; "path"] ~doc)
+
+let path =
+  let doc = "path to virtual machines." in
+  Arg.(required & pos 0 (some path_c) None & info [] ~doc ~docv:"PATH")
+
 let vm_c = Arg.conv (Name.of_string, Name.pp)
 
 let bridge_tap_c =

@@ -59,15 +59,18 @@ let jump opt_socket name cmd tmpdir =
       Albatross_cli.exit_status r
   )
 
-let info_policy _ opt_socket name =
-  jump opt_socket name (`Policy_cmd `Policy_info)
+let info_policy _ opt_socket path =
+  jump opt_socket (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd `Policy_info)
 
-let remove_policy _ opt_socket name =
-  jump opt_socket name (`Policy_cmd `Policy_remove)
+let remove_policy _ opt_socket path =
+  jump opt_socket (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd `Policy_remove)
 
-let add_policy _ opt_socket name vms memory cpus block bridges =
+let add_policy _ opt_socket path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump opt_socket name (`Policy_cmd (`Policy_add p))
+  jump opt_socket (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd (`Policy_add p))
 
 let info_ _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_info)
@@ -173,7 +176,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   let term =
-    Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name $ tmpdir))
+    Term.(term_result (const remove_policy $ setup_log $ socket $ opt_path $ tmpdir))
   and info = Cmd.info "remove_policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -209,7 +212,7 @@ let policy_cmd =
      `P "Shows information about policies."]
   in
   let term =
-    Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name $ tmpdir))
+    Term.(term_result (const info_policy $ setup_log $ socket $ opt_path $ tmpdir))
   and info = Cmd.info "policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -221,7 +224,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   let term =
-    Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir))
+    Term.(term_result (const add_policy $ setup_log $ socket $ path $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir))
   and info = Cmd.info "add_policy" ~doc ~man ~exits
   in
   Cmd.v info term

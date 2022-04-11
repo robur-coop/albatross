@@ -22,15 +22,18 @@ let jump key_type bits id cmd =
   let enc = X509.Signing_request.encode_pem csr in
   Bos.OS.File.write Fpath.(v name + ".req") (Cstruct.to_string enc)
 
-let info_policy _ key_type bits name =
-  jump key_type bits name (`Policy_cmd `Policy_info)
+let info_policy _ key_type bits path =
+  jump key_type bits (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd `Policy_info)
 
-let remove_policy _ key_type bits name =
-  jump key_type bits name (`Policy_cmd `Policy_remove)
+let remove_policy _ key_type bits path =
+  jump key_type bits (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd `Policy_remove)
 
-let add_policy _ key_type bits name vms memory cpus block bridges =
+let add_policy _ key_type bits path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump key_type bits name (`Policy_cmd (`Policy_add p))
+  jump key_type bits (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd (`Policy_add p))
 
 let info_ _ key_type bits name =
   jump key_type bits name (`Unikernel_cmd `Unikernel_info)
@@ -104,7 +107,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   let term =
-    Term.(term_result (const remove_policy $ setup_log $ pub_key_type $ key_bits $ opt_vm_name))
+    Term.(term_result (const remove_policy $ setup_log $ pub_key_type $ key_bits $ opt_path))
   and info = Cmd.info "remove_policy" ~doc ~man
   in
   Cmd.v info term
@@ -140,7 +143,7 @@ let policy_cmd =
      `P "Shows information about policies."]
   in
   let term =
-    Term.(term_result (const info_policy $ setup_log $ pub_key_type $ key_bits $ opt_vm_name))
+    Term.(term_result (const info_policy $ setup_log $ pub_key_type $ key_bits $ opt_path))
   and info = Cmd.info "policy" ~doc ~man
   in
   Cmd.v info term
@@ -152,7 +155,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   let term =
-    Term.(term_result (const add_policy $ setup_log $ pub_key_type $ key_bits $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge))
+    Term.(term_result (const add_policy $ setup_log $ pub_key_type $ key_bits $ path $ vms $ mem $ cpus $ opt_block_size $ bridge))
   and info = Cmd.info "add_policy" ~doc ~man
   in
   Cmd.v info term
