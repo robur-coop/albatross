@@ -75,20 +75,27 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
       | Error e ->
         Lwt.fail_with (Fmt.to_to_string X509.Validation.pp_signature_error e)
       | Ok mycert ->
-        let certificates = `Single ([ mycert ; cert ], tmpkey) in
-        X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-        Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
-        | Error `Msg msg ->
-          Logs.err (fun m -> m "connect failed with %s" msg);
+        match host with
+        | "-" ->
+          Logs.app (fun m -> m "leaf cert:@.%s@.@.@.intermediate:@.%s@."
+                       (Cstruct.to_string (X509.Certificate.encode_pem mycert))
+                       (Cstruct.to_string (X509.Certificate.encode_pem cert)));
           Lwt.return (Error Albatross_cli.Connect_failed)
-        | Ok ((ip, port), fd) ->
-          Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
-          let client = Tls.Config.client ~certificates ~authenticator () in
-          Lwt.catch (fun () ->
-              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
-              Logs.debug (fun m -> m "finished tls handshake") ;
-              Ok fd)
-            (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
+        | _ ->
+          let certificates = `Single ([ mycert ; cert ], tmpkey) in
+          X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
+          Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
+          | Error `Msg msg ->
+            Logs.err (fun m -> m "connect failed with %s" msg);
+            Lwt.return (Error Albatross_cli.Connect_failed)
+          | Ok ((ip, port), fd) ->
+            Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
+            let client = Tls.Config.client ~certificates ~authenticator () in
+            Lwt.catch (fun () ->
+                Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
+                Logs.debug (fun m -> m "finished tls handshake") ;
+                Ok fd)
+              (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
 
 let jump endp cert key ca key_type bits name cmd =
   Lwt_main.run (
