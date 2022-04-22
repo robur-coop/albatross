@@ -151,7 +151,39 @@ let help _ _ man_format cmds = function
     `Ok Albatross_cli.Cli_failed
 
 open Cmdliner
+open Vmm_core
 open Albatross_cli
+
+let path_c =
+  Arg.conv
+    (Name.path_of_string,
+     fun ppf p -> Name.pp ppf (Name.create_of_path p))
+
+let opt_path =
+  let doc = "path to virtual machines." in
+  Arg.(value & opt path_c Name.root_path & info [ "p" ; "path"] ~doc)
+
+let path =
+  let doc = "path to virtual machines." in
+  Arg.(required & pos 0 (some path_c) None & info [] ~doc ~docv:"PATH")
+
+let vm_c = Arg.conv (Name.of_string, Name.pp)
+
+let opt_vm_name =
+  let doc = "name of virtual machine." in
+  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
+
+let vm_name =
+  let doc = "Name virtual machine." in
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
+
+let block_name =
+  let doc = "Name of block device." in
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK")
+
+let opt_block_name =
+  let doc = "Name of block device." in
+  Arg.(value & opt vm_c Name.root & info [ "name" ] ~doc)
 
 let socket =
   let doc = "Socket to connect to" in

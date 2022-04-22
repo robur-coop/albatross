@@ -298,6 +298,12 @@ let drop_label =
   let doc = "Drop unikernel path" in
   Arg.(value & flag & info [ "drop-label" ] ~doc)
 
+let vm_c = Arg.conv (Name.of_string, Name.pp)
+
+let opt_vm_name =
+  let doc = "name of virtual machine." in
+  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
+
 let cmd =
   let doc = "Albatross Influx connector" in
   let man = [

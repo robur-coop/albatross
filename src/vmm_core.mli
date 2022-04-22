@@ -30,6 +30,8 @@ module Name : sig
 
   val pp : t Fmt.t
 
+  val valid_label : string -> bool
+
   val path : t -> path
   val name : t -> string option
 

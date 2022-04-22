@@ -13,27 +13,23 @@ let csr priv name cmd =
   let extensions = X509.Signing_request.Ext.(singleton Extensions ext) in
   X509.Signing_request.create name ~extensions priv
 
-let jump key_type bits id cmd =
+let jump key_type bits name cmd =
   let ( let* ) = Result.bind in
   Mirage_crypto_rng_unix.initialize () ;
-  let name = Vmm_core.Name.to_string id in
   let* priv = priv_key key_type bits name in
   let* csr = csr priv name cmd in
   let enc = X509.Signing_request.encode_pem csr in
   Bos.OS.File.write Fpath.(v name + ".req") (Cstruct.to_string enc)
 
 let info_policy _ key_type bits path =
-  jump key_type bits (Vmm_core.Name.create_of_path path)
-    (`Policy_cmd `Policy_info)
+  jump key_type bits path (`Policy_cmd `Policy_info)
 
 let remove_policy _ key_type bits path =
-  jump key_type bits (Vmm_core.Name.create_of_path path)
-    (`Policy_cmd `Policy_remove)
+  jump key_type bits path (`Policy_cmd `Policy_remove)
 
 let add_policy _ key_type bits path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump key_type bits (Vmm_core.Name.create_of_path path)
-    (`Policy_cmd (`Policy_add p))
+  jump key_type bits path (`Policy_cmd (`Policy_add p))
 
 let info_ _ key_type bits name =
   jump key_type bits name (`Unikernel_cmd `Unikernel_info)
@@ -58,7 +54,6 @@ let stats _ key_type bits name =
 
 let block_info _ key_type bits block_name =
   jump key_type bits block_name (`Block_cmd `Block_info)
-
 
 let block_dump _ key_type bits block_name compression =
   jump key_type bits block_name (`Block_cmd (`Block_dump compression))
