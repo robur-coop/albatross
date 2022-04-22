@@ -10,6 +10,8 @@ val current : version
 
 val is_current : version -> bool
 
+val eq_version : version -> version -> bool
+
 (** [pp_version ppf version] pretty prints [version] onto [ppf]. *)
 val pp_version : version Fmt.t
 

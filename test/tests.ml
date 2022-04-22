@@ -78,8 +78,61 @@ let name_tests = [
   "drop path is ok", `Quick, drop_path_good ;
 ]
 
+let test_header =
+  let pp_header ppf Vmm_commands.{ version ; sequence ; name } =
+    Fmt.pf ppf "version %a seq %Lu name %a"
+      Vmm_commands.pp_version version sequence Name.pp name
+  and eq_header a b =
+    Vmm_commands.eq_version a.Vmm_commands.version b.Vmm_commands.version &&
+    Int64.equal a.sequence b.sequence &&
+    Name.equal a.name b.name
+  in
+  Alcotest.testable pp_header eq_header
+
+let console_subscribe_v4 () =
+  let data =
+    Cstruct.of_hex {|
+30 21 30 14 02 01 04 04  08 00 00 00 00 00 00 00
+00 30 05 0c 03 66 6f 6f  a0 09 a0 07 a1 05 a1 03
+02 01 14|}
+  in
+  match Vmm_asn.wire_of_cstruct data with
+  | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
+  | Ok ((hdr, cmd) as w) ->
+    Alcotest.check test_header "header is equal"
+      (Vmm_commands.header ~version:`AV4 (n_o_s "foo"))
+      hdr;
+    match cmd with
+    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
+    | _ -> Alcotest.failf "expected console_subscribe, got %a"
+             (Vmm_commands.pp_wire ~verbose:true) w
+
+let console_subscribe_v5 () =
+  let data =
+    Cstruct.of_hex {|
+30 20 30 13 02 01 05 04  08 00 00 00 00 00 00 00
+00 0c 04 3a 66 6f 6f a0  09 a0 07 a1 05 a1 03 02
+01 14|}
+  in
+  match Vmm_asn.wire_of_cstruct data with
+  | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
+  | Ok ((hdr, cmd) as w) ->
+    Alcotest.check test_header "header is equal"
+      (Vmm_commands.header ~version:`AV5 (n_o_s "foo"))
+      hdr;
+    match cmd with
+    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
+    | _ -> Alcotest.failf "expected console_subscribe, got %a"
+             (Vmm_commands.pp_wire ~verbose:true) w
+
+let command_tests = [
+  "console subscribe version 4", `Quick, console_subscribe_v4 ;
+  "console subscribe version 5", `Quick, console_subscribe_v5 ;
+]
+
 let tests = [
   "Name", name_tests ;
+  "Command", command_tests ;
 ]
 
 let () = Alcotest.run "Basic tests" tests

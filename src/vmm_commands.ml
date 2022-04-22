@@ -14,14 +14,14 @@ let pp_version ppf v =
      | `AV4 -> 4
      | `AV3 -> 3)
 
-let version_eq a b =
+let eq_version a b =
   match a, b with
   | `AV5, `AV5 -> true
   | `AV4, `AV4 -> true
   | `AV3, `AV3 -> true
   | _ -> false
 
-let is_current = version_eq current
+let is_current = eq_version current
 
 type since_count = [ `Since of Ptime.t | `Count of int ]
 
