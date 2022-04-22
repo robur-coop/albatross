@@ -276,7 +276,7 @@ let stats_cmd =
 
 let old_name =
   let f list =
-    match Name.of_list list with
+    match Name.of_string (String.concat "." list) with
     | Error (`Msg msg) -> Asn.S.error (`Parse msg)
     | Ok name -> name
   and g = Name.to_list
