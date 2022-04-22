@@ -6,4 +6,4 @@
 (test
  (name tests)
  (modules tests)
- (libraries albatross alcotest))
+ (libraries albatross albatross.tls alcotest))
