@@ -2,7 +2,7 @@ pkg_install_task_template: &PKG_INSTALL_TASK_TEMPLATE
   pkg_install_script: pkg install -y ocaml-opam gmp gmake pkgconf bash
 
 regular_task_template: &REGULAR_TASK_TEMPLATE
-  dependencies_script: eval `opam env` && opam install -y --deps-only .
+  dependencies_script: eval `opam env` && opam install -y -t --deps-only .
   build_script: eval `opam env` && dune build
   test_script: eval `opam env` && dune runtest
   watermark_script: eval `opam env` && dune subst
