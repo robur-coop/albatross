@@ -25,19 +25,28 @@ let read (fd, next) =
 
 let connect opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
-  let sockaddr = Lwt_unix.ADDR_UNIX (socket sock opt_socket) in
-  Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
-  | None ->
-    Logs.err (fun m -> m "couldn't connect to %a"
-                 Vmm_lwt.pp_sockaddr sockaddr);
-    Lwt.return (Error Albatross_cli.Connect_failed)
-  | Some fd ->
+  let wire =
     let header = Vmm_commands.header name in
-    Vmm_lwt.write_wire fd (header, `Command cmd) >>= function
-    | Error `Exception ->
-      Lwt.return (Error Albatross_cli.Communication_failed)
-    | Ok () ->
-      Lwt.return (Ok (fd, next))
+    header, `Command cmd
+  in
+  match opt_socket with
+  | Some "-" ->
+    let data = Vmm_asn.wire_to_cstruct wire in
+    Logs.app (fun m -> m "out: %a" Cstruct.hexdump_pp data);
+    Lwt.return (Error Albatross_cli.Communication_failed)
+  | _ ->
+    let sockaddr = Lwt_unix.ADDR_UNIX (socket sock opt_socket) in
+    Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
+    | None ->
+      Logs.err (fun m -> m "couldn't connect to %a"
+                   Vmm_lwt.pp_sockaddr sockaddr);
+      Lwt.return (Error Albatross_cli.Connect_failed)
+    | Some fd ->
+      Vmm_lwt.write_wire fd wire >>= function
+      | Error `Exception ->
+        Lwt.return (Error Albatross_cli.Communication_failed)
+      | Ok () ->
+        Lwt.return (Ok (fd, next))
 
 let jump opt_socket name cmd tmpdir =
   Albatross_cli.set_tmpdir tmpdir;
