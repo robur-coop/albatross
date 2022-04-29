@@ -395,9 +395,214 @@ let command_tests = [
   "bistro console subscribe subv5:foo.bar version 5", `Quick, bistro_console_subscribe_v5_3 ;
 ]
 
+let test_trie pp_v eq_v =
+  let pp_trie ppf t =
+    Fmt.(list ~sep:(any "@.") (pair Name.pp pp_v)) ppf
+      (Vmm_trie.all t)
+  and eq_trie a b =
+    List.for_all2 (fun (n, v) (n', v') -> Name.equal n n' && eq_v v v')
+      (Vmm_trie.all a) (Vmm_trie.all b)
+  in
+  Alcotest.testable pp_trie eq_trie
+
+let test_unikernels =
+  let open Unikernel in
+  let eq_pair_list_opt =
+    List.for_all2 (fun (n, dopt) (n', dopt') ->
+        String.equal n n' && (match dopt, dopt' with
+            | None, None -> true
+            | Some a, Some b -> String.equal a b
+            | _ -> false))
+  in
+  let eq_u (a : config) (b : config) =
+    a.typ = b.typ && a.compressed = b.compressed &&
+    Cstruct.equal a.image b.image &&
+    (match a.fail_behaviour, b.fail_behaviour with
+     | `Quit, `Quit
+     | `Restart None, `Restart None -> true
+     | `Restart Some a, `Restart Some b -> IS.equal a b
+     | _ -> false) &&
+    a.cpuid = b.cpuid && a.memory = b.memory &&
+    eq_pair_list_opt a.block_devices b.block_devices &&
+    eq_pair_list_opt a.bridges b.bridges &&
+    (match a.argv, b.argv with
+     | None, None -> true
+     | Some a, Some b -> List.for_all2 String.equal a b
+     | _ -> false)
+  in
+  test_trie pp_config_with_argv eq_u
+
+let dec_b64_unik ~migrate_name data =
+  let data = Base64.decode_exn data in
+  Result.get_ok (Vmm_asn.unikernels_of_cstruct ~migrate_name (Cstruct.of_string data))
+
+
+let u1_3 =
+  Vmm_core.Unikernel.{
+    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
+    block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
+    bridges = [ "service", None ; "other-net", Some "second-bridge" ] ;
+    argv = Some [ "-l *:debug" ] ;
+  }
+
+let u2_3 =
+  Vmm_core.Unikernel.{
+    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
+    block_devices = [] ;
+    bridges = [ "service", Some "bridge-interface" ] ;
+    argv = None ;
+  }
+
+let ins n u t =
+  let name = Result.get_ok (Vmm_core.Name.of_string n) in
+  fst (Vmm_trie.insert name u t)
+
+let unikernels3 =
+  let t = ins "foo.hello" u1_3 Vmm_trie.empty in
+  let t = ins "bar.hello" u2_3 t in
+  let t = ins "foo.my.nice.unikernel" u1_3 t in
+  ins "bar.my.nice.unikernel" u2_3 t
+
+let wire4_unikernel3 () =
+  let data = {|o4IBsDCCAawwgZAMFWZvby5teS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgYQMCWZvby5oZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhci5oZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMR0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels3 trie
+
+let u1_2 =
+  Vmm_core.Unikernel.{ u1_3 with block_devices = [ "block", None ; "second-data", None ] }
+
+let unikernels2 =
+  let t = ins "foo.hello" u1_2 Vmm_trie.empty in
+  let t = ins "bar.hello" u2_3 t in
+  let t = ins "foo.my.nice.unikernel" u1_2 t in
+  ins "bar.my.nice.unikernel" u2_3 t
+
+let wire4_unikernel2 () =
+  let data = {|ooIBjDCCAYgwfwwVZm9vLm15Lm5pY2UudW5pa2VybmVsMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwcwwJZm9vLmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhci5oZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels2 trie
+
+let u1_1 =
+  Vmm_core.Unikernel.{ u1_3 with
+                       block_devices = [ "block", None ; "secondblock", None ];
+                       bridges = [ "service", None ; "other-net", None ] }
+
+let u2_1 =
+  Vmm_core.Unikernel.{ u2_3 with bridges = [ "service", None ] }
+
+let unikernels1 =
+  let t = ins "foo.hello" u1_1 Vmm_trie.empty in
+  let t = ins "bar.hello" u2_1 t in
+  let t = ins "foo.my.nice.unikernel" u1_1 t in
+  ins "bar.my.nice.unikernel" u2_1 t
+
+let wire4_unikernel1 () =
+  let data = {|oIIBPjCCATowbAwVZm9vLm15Lm5pY2UudW5pa2VybmVsMFOgAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZGJsb2NroRYxFAwHc2VydmljZQwJb3RoZXItbmV0og4wDAwKLWwgKjpkZWJ1ZzBgDAlmb28uaGVsbG8wU6ACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kYmxvY2uhFjEUDAdzZXJ2aWNlDAlvdGhlci1uZXSiDjAMDAotbCAqOmRlYnVnMDkMFWJhci5teS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLQwJYmFyLmhlbGxvMCCgAgUAAQEABACgAgUAAgECAgEKoQsxCQwHc2VydmljZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels1 trie
+
+let wire5_unikernel3 () =
+  let data = {|o4IBtDCCAbAwgZEMFjpmb28ubXkubmljZS51bmlrZXJuZWwwd6ACBQABAQAEAKACBQACAQACAQGgJzElMAcMBWJsb2NrMBoMC3NlY29uZGJsb2NrDAtzZWNvbmQtZGF0YaEpMScwCQwHc2VydmljZTAaDAlvdGhlci1uZXQMDXNlY29uZC1icmlkZ2WiDjAMDAotbCAqOmRlYnVnMIGFDAo6Zm9vLmhlbGxvMHegAgUAAQEABACgAgUAAgEAAgEBoCcxJTAHDAVibG9jazAaDAtzZWNvbmRibG9jawwLc2Vjb25kLWRhdGGhKTEnMAkMB3NlcnZpY2UwGgwJb3RoZXItbmV0DA1zZWNvbmQtYnJpZGdlog4wDAwKLWwgKjpkZWJ1ZzBODBY6YmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEIMCjpiYXIuaGVsbG8wNKACBQABAQAEAKACBQACAQICAQqhHzEdMBsMB3NlcnZpY2UMEGJyaWRnZS1pbnRlcmZhY2U=|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels3 trie
+
+let wire5_unikernel2 () =
+  let data = {|ooIBkTCCAY0wgYAMFjpmb28ubXkubmljZS51bmlrZXJuZWwwZqACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kLWRhdGGhKTAnMAkMB3NlcnZpY2UwGgwJb3RoZXItbmV0DA1zZWNvbmQtYnJpZGdlog4wDAwKLWwgKjpkZWJ1ZzB0DAo6Zm9vLmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTgwWOmJhci5teS5uaWNlLnVuaWtlcm5lbDA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZTBCDAo6YmFyLmhlbGxvMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNl|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels2 trie
+
+let wire5_unikernel1 () =
+  let data = {|oIIBQjCCAT4wbQwWOmZvby5teS5uaWNlLnVuaWtlcm5lbDBToAIFAAEBAAQAoAIFAAIBAAIBAaAWMRQMBWJsb2NrDAtzZWNvbmRibG9ja6EWMRQMB3NlcnZpY2UMCW90aGVyLW5ldKIOMAwMCi1sICo6ZGVidWcwYQwKOmZvby5oZWxsbzBToAIFAAEBAAQAoAIFAAIBAAIBAaAWMRQMBWJsb2NrDAtzZWNvbmRibG9ja6EWMRQMB3NlcnZpY2UMCW90aGVyLW5ldKIOMAwMCi1sICo6ZGVidWcwOgwWOmJhci5teS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLgwKOmJhci5oZWxsbzAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2U=|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels1 trie
+
+let unikernels3_path =
+  let t = ins "foo:hello" u1_3 Vmm_trie.empty in
+  let t = ins "bar:hello" u2_3 t in
+  let t = ins "foo:my.nice.unikernel" u1_3 t in
+  ins "bar:my.nice.unikernel" u2_3 t
+
+let unikernels2_path =
+  let t = ins "foo:hello" u1_2 Vmm_trie.empty in
+  let t = ins "bar:hello" u2_3 t in
+  let t = ins "foo:my.nice.unikernel" u1_2 t in
+  ins "bar:my.nice.unikernel" u2_3 t
+
+let unikernels1_path =
+  let t = ins "foo:hello" u1_1 Vmm_trie.empty in
+  let t = ins "bar:hello" u2_1 t in
+  let t = ins "foo:my.nice.unikernel" u1_1 t in
+  ins "bar:my.nice.unikernel" u2_1 t
+
+let wire4_unikernel3_path () =
+  let data = {|o4IBsDCCAawwgZAMFWZvby5teS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgYQMCWZvby5oZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhci5oZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMR0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:true data in
+  Alcotest.check test_unikernels __LOC__ unikernels3_path trie
+
+let wire4_unikernel2_path () =
+  let data = {|ooIBjDCCAYgwfwwVZm9vLm15Lm5pY2UudW5pa2VybmVsMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwcwwJZm9vLmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhci5oZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:true data in
+  Alcotest.check test_unikernels __LOC__ unikernels2_path trie
+
+let wire4_unikernel1_path () =
+  let data = {|oIIBPjCCATowbAwVZm9vLm15Lm5pY2UudW5pa2VybmVsMFOgAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZGJsb2NroRYxFAwHc2VydmljZQwJb3RoZXItbmV0og4wDAwKLWwgKjpkZWJ1ZzBgDAlmb28uaGVsbG8wU6ACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kYmxvY2uhFjEUDAdzZXJ2aWNlDAlvdGhlci1uZXSiDjAMDAotbCAqOmRlYnVnMDkMFWJhci5teS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLQwJYmFyLmhlbGxvMCCgAgUAAQEABACgAgUAAgECAgEKoQsxCQwHc2VydmljZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:true data in
+  Alcotest.check test_unikernels __LOC__ unikernels1_path trie
+
+let wire5_unikernel3_path () =
+  let data = {|o4IBsDCCAawwgZAMFWZvbzpteS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgYQMCWZvbzpoZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhcjpoZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMR0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels3_path trie
+
+let wire5_unikernel2_path () =
+  let data = {|ooIBjDCCAYgwfwwVZm9vOm15Lm5pY2UudW5pa2VybmVsMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwcwwJZm9vOmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhcjpoZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels2_path trie
+
+let wire5_unikernel1_path () =
+  let data = {|oIIBPjCCATowbAwVZm9vOm15Lm5pY2UudW5pa2VybmVsMFOgAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZGJsb2NroRYxFAwHc2VydmljZQwJb3RoZXItbmV0og4wDAwKLWwgKjpkZWJ1ZzBgDAlmb286aGVsbG8wU6ACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kYmxvY2uhFjEUDAdzZXJ2aWNlDAlvdGhlci1uZXSiDjAMDAotbCAqOmRlYnVnMDkMFWJhcjpteS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLQwJYmFyOmhlbGxvMCCgAgUAAQEABACgAgUAAgECAgEKoQsxCQwHc2VydmljZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels1_path trie
+
+let wire5_unikernel3_path_migrate () =
+  let data = {|o4IBsDCCAawwgZAMFWZvbzpteS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgYQMCWZvbzpoZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhcjpoZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMR0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:true data in
+  Alcotest.check test_unikernels __LOC__ unikernels3_path trie
+
+let wire5_unikernel2_path_migrate () =
+  let data = {|ooIBjDCCAYgwfwwVZm9vOm15Lm5pY2UudW5pa2VybmVsMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwcwwJZm9vOmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhcjpoZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:true data in
+  Alcotest.check test_unikernels __LOC__ unikernels2_path trie
+
+let wire5_unikernel1_path_migrate () =
+  let data = {|oIIBPjCCATowbAwVZm9vOm15Lm5pY2UudW5pa2VybmVsMFOgAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZGJsb2NroRYxFAwHc2VydmljZQwJb3RoZXItbmV0og4wDAwKLWwgKjpkZWJ1ZzBgDAlmb286aGVsbG8wU6ACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kYmxvY2uhFjEUDAdzZXJ2aWNlDAlvdGhlci1uZXSiDjAMDAotbCAqOmRlYnVnMDkMFWJhcjpteS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLQwJYmFyOmhlbGxvMCCgAgUAAQEABACgAgUAAgECAgEKoQsxCQwHc2VydmljZQ==|} in
+  let trie = dec_b64_unik ~migrate_name:true data in
+  Alcotest.check test_unikernels __LOC__ unikernels1_path trie
+
+let wire_tests = [
+  "Wire version 4, unikernel version 3", `Quick, wire4_unikernel3 ;
+  "Wire version 4, unikernel version 2", `Quick, wire4_unikernel2 ;
+  "Wire version 4, unikernel version 1", `Quick, wire4_unikernel1 ;
+  "Wire version 5, unikernel version 3", `Quick, wire5_unikernel3 ;
+  "Wire version 5, unikernel version 2", `Quick, wire5_unikernel2 ;
+  "Wire version 5, unikernel version 1", `Quick, wire5_unikernel1 ;
+  "Wire version 4, unikernel version 3, path", `Quick, wire4_unikernel3_path ;
+  "Wire version 4, unikernel version 2, path", `Quick, wire4_unikernel2_path ;
+  "Wire version 4, unikernel version 1, path", `Quick, wire4_unikernel1_path ;
+  "Wire version 5, unikernel version 3, path", `Quick, wire5_unikernel3_path ;
+  "Wire version 5, unikernel version 2, path", `Quick, wire5_unikernel2_path ;
+  "Wire version 5, unikernel version 1, path", `Quick, wire5_unikernel1_path ;
+  "Wire version 5, unikernel version 3, path, migrate", `Quick, wire5_unikernel3_path_migrate ;
+  "Wire version 5, unikernel version 2, path, migrate", `Quick, wire5_unikernel2_path_migrate ;
+  "Wire version 5, unikernel version 1, path, migrate", `Quick, wire5_unikernel1_path_migrate ;
+]
+
 let tests = [
   "Name", name_tests ;
   "Command", command_tests ;
+  "Wire", wire_tests ;
 ]
 
 let () = Alcotest.run "Basic tests" tests
