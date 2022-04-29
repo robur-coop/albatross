@@ -713,7 +713,7 @@ let unikernels =
            (my_explicit 0 ~label:"unikernel-OLD1" version1_unikernels)
            (my_explicit 1 ~label:"unikernel-OLD0" version0_unikernels)
            (my_explicit 2 ~label:"unikernel-OLD2" version2_unikernels)
-           (my_explicit 3 ~label:"unikernel-OLD2" version3_unikernels))
+           (my_explicit 3 ~label:"unikernel" version3_unikernels))
 
 let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
 
