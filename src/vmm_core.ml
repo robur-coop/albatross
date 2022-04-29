@@ -185,7 +185,7 @@ module Name = struct
     if valid_label p then
       Ok (prefix @ [ p ])
     else
-      Error (`Msg "invalid path")
+      Error (`Msg ("invalid path: " ^ p))
 
   let append_path_exn prefix p =
     match append_path prefix p with

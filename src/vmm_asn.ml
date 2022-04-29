@@ -400,7 +400,7 @@ let v2_unikernel_config =
     let bridges = match vm.bridges with [] -> None | xs -> Some xs
     and blocks = match vm.block_devices with
       | [] -> None
-      | xs -> Some (List.map (fun (a, b) -> match b with None -> a | Some b -> b) xs)
+      | xs -> Some (List.map fst xs)
     in
     (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
   in
@@ -777,16 +777,16 @@ let unikernels_of_cstruct, unikernels_to_cstruct =
             let name =
               if Name.is_root_path (Name.path name) then
                 match Name.name name with
+                | None -> name
                 | Some n ->
-                  let first_dot = String.index n '.' in
-                  if first_dot > 0 then
+                  try
+                    let first_dot = String.index n '.' in
                     let first_part = String.sub n 0 first_dot in
                     let name = String.sub n (first_dot + 1) (String.length n - (first_dot + 1)) in
                     let path = Result.get_ok (Name.path_of_list [ first_part ]) in
                     Name.create_exn path name
-                  else
-                    name
-                | None -> name
+                  with
+                    Not_found -> name
               else
                 name
             in

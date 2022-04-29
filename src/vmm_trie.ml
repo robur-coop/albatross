@@ -97,8 +97,15 @@ let all t =
 let fold path t f acc =
   let rec explore (N (es, m)) prefix_path name acc =
     let acc' =
+      let prefix =
+        if name = "" then
+          prefix_path
+        else
+          let pre = Vmm_core.Name.path_to_list prefix_path in
+          Result.get_ok (Vmm_core.Name.path_of_list (pre @ [ name ]))
+      in
       Vmm_core.String_map.fold (fun name node acc ->
-          explore node prefix_path name acc)
+          explore node prefix name acc)
         m acc
     in
     match es with
