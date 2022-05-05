@@ -87,7 +87,8 @@ let report_vms t name =
 
 let find_vm t name = Vmm_trie.find name t.unikernels
 
-let find_policy t name = Vmm_trie.find_path name t.policies
+let find_policy t path =
+  Vmm_trie.find (Vmm_core.Name.create_of_path path) t.policies
 
 let find_block t name = Vmm_trie.find name t.block_devices
 
@@ -123,8 +124,11 @@ let remove_vm t name = match find_vm t name with
 let remove_policy t path = match find_policy t path with
   | None -> Error (`Msg "unknown policy")
   | Some _ ->
-    let policies = Vmm_trie.remove_path path t.policies in
-    Metrics.add policy_metrics (fun x -> x (Name.path_to_string path)) (fun d -> d no_policy);
+    let policies =
+      Vmm_trie.remove (Vmm_core.Name.create_of_path path) t.policies
+    in
+    Metrics.add policy_metrics
+      (fun x -> x (Name.path_to_string path)) (fun d -> d no_policy);
     Ok { t with policies }
 
 let remove_block t name =
@@ -314,6 +318,9 @@ let insert_policy t path p =
   let* () = check_policies_above t path p in
   let* () = check_policies_below t path p in
   let* () = check_vms t path p in
-  let policies = fst (Vmm_trie.insert_path path p t.policies) in
-  Metrics.add policy_metrics (fun x -> x (Name.path_to_string path)) (fun d -> d p);
+  let policies =
+    fst (Vmm_trie.insert (Vmm_core.Name.create_of_path path) p t.policies)
+  in
+  Metrics.add policy_metrics
+    (fun x -> x (Name.path_to_string path)) (fun d -> d p);
   Ok { t with policies }

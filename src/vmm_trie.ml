@@ -4,56 +4,56 @@ type 'a t = N of 'a option * 'a t Vmm_core.String_map.t
 
 let empty = N (None, Vmm_core.String_map.empty)
 
-let rec insert_internal e (N (es, m)) = function
-  | [] ->
-    begin match es with
-      | None -> N (Some e, m), None
-      | Some es' -> N (Some e, m), Some es'
-    end
-  | x::xs ->
-    let n = match Vmm_core.String_map.find_opt x m with
-      | None -> empty
-      | Some n -> n
-    in
-    let entry, ret = insert_internal e n xs in
-    N (es, Vmm_core.String_map.add x entry m), ret
+let insert id e t =
+  let rec go e (N (es, m)) = function
+    | [] ->
+      begin match es with
+        | None -> N (Some e, m), None
+        | Some es' -> N (Some e, m), Some es'
+      end
+    | x::xs ->
+      let n = match Vmm_core.String_map.find_opt x m with
+        | None -> empty
+        | Some n -> n
+      in
+      let entry, ret = go e n xs in
+      N (es, Vmm_core.String_map.add x entry m), ret
+  in
+  go e t (Vmm_core.Name.to_list id)
 
-let insert id e t = insert_internal e t (Vmm_core.Name.to_list id)
-
-let insert_path path e t = insert_internal e t (Vmm_core.Name.path_to_list path)
-
-let rec remove_internal' (N (es, m)) = function
-  | [] -> if Vmm_core.String_map.is_empty m then None else Some (N (None, m))
-  | x::xs ->
-    let n' = match Vmm_core.String_map.find_opt x m with
-      | None -> None
-      | Some n -> remove_internal' n xs
-    in
-    let m' = match n' with
-      | None -> Vmm_core.String_map.remove x m
-      | Some entry -> Vmm_core.String_map.add x entry m
-    in
-    if Vmm_core.String_map.is_empty m' && es = None then None else Some (N (es, m'))
-
-let remove_internal t xs =
-  match remove_internal' t xs with
+let remove id t =
+  let rec go (N (es, m)) = function
+    | [] -> if Vmm_core.String_map.is_empty m then None else Some (N (None, m))
+    | x::xs ->
+      let n' =
+        match Vmm_core.String_map.find_opt x m with
+        | None -> None
+        | Some n -> go n xs
+      in
+      let m' =
+        Option.fold
+          ~none:(Vmm_core.String_map.remove x m)
+          ~some:(fun entry -> Vmm_core.String_map.add x entry m)
+          n'
+      in
+      if Vmm_core.String_map.is_empty m' && es = None then
+        None
+      else
+        Some (N (es, m'))
+  in
+  match go t (Vmm_core.Name.to_list id) with
   | None -> empty
   | Some n -> n
 
-let remove id t = remove_internal t (Vmm_core.Name.to_list id)
-
-let remove_path path t = remove_internal t (Vmm_core.Name.path_to_list path)
-
-let rec find_internal (N (es, m)) = function
-  | [] -> es
-  | x::xs ->
-    match Vmm_core.String_map.find_opt x m with
-    | None -> None
-    | Some n -> find_internal n xs
-
-let find name t = find_internal t (Vmm_core.Name.to_list name)
-
-let find_path path t = find_internal t (Vmm_core.Name.path_to_list path)
+let find id t =
+  let rec go (N (es, m)) = function
+    | [] -> es
+    | x::xs ->
+      match Vmm_core.String_map.find_opt x m with
+      | None -> None
+      | Some n -> go n xs
+  in
+  go t (Vmm_core.Name.to_list id)
 
 let append_name prefix name =
   let path =
