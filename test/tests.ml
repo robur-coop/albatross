@@ -78,6 +78,167 @@ let name_tests = [
   "drop path is ok", `Quick, drop_path_good ;
 ]
 
+let test_trie pp_v eq_v =
+  let pp_trie ppf t =
+    Fmt.(list ~sep:(any "@.") (pair Name.pp pp_v)) ppf
+      (Vmm_trie.all t)
+  and eq_trie a b =
+    List.for_all2 (fun (n, v) (n', v') -> Name.equal n n' && eq_v v v')
+      (Vmm_trie.all a) (Vmm_trie.all b)
+  in
+  Alcotest.testable pp_trie eq_trie
+
+let test_int_trie =
+  test_trie Fmt.int Int.equal
+
+let empty_trie () =
+  Alcotest.check test_int_trie __LOC__ Vmm_trie.empty Vmm_trie.empty
+
+let one_element_trie () =
+  let n = n_o_s "foo" in
+  let t, r = Vmm_trie.insert n 1 Vmm_trie.empty in
+  Alcotest.(check bool __LOC__ true (r = None));
+  Alcotest.(check (option int) __LOC__ (Some 1) (Vmm_trie.find n t));
+  Alcotest.(check (option int) __LOC__ None (Vmm_trie.find n Vmm_trie.empty));
+  let n2 = n_o_s "bar" in
+  let n3 = n_o_s "foo.bar" in
+  let n4 = n_o_s "foo:foo" in
+  Alcotest.(check (option int) __LOC__ None (Vmm_trie.find n2 t));
+  Alcotest.(check (option int) __LOC__ None (Vmm_trie.find n3 t));
+  Alcotest.(check (option int) __LOC__ None (Vmm_trie.find n4 t));
+  Alcotest.(check (list (pair test_name int)) __LOC__ [ n, 1 ]
+              (Vmm_trie.all t));
+  let f name v () =
+    Alcotest.check test_name __LOC__ n name;
+    Alcotest.(check int __LOC__ 1 v)
+  in
+  let () = Vmm_trie.fold Name.root_path t f () in
+  Alcotest.(check (list (pair test_name int)) __LOC__ [ n, 1 ]
+              (Vmm_trie.collect n t))
+
+let flat_trie () =
+  let n = n_o_s "alpha" in
+  let t, r = Vmm_trie.insert n 1 Vmm_trie.empty in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n2 = n_o_s "beta" in
+  let t, r = Vmm_trie.insert n2 2 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n3 = n_o_s "caesar" in
+  let t, r = Vmm_trie.insert n3 3 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  Alcotest.(check (option int) __LOC__ (Some 1) (Vmm_trie.find n t));
+  Alcotest.(check (option int) __LOC__ (Some 2) (Vmm_trie.find n2 t));
+  Alcotest.(check (option int) __LOC__ (Some 3) (Vmm_trie.find n3 t));
+  let all = [ n, 1 ; n2, 2 ; n3, 3 ] in
+  Alcotest.(check (list (pair test_name int)) __LOC__ all (Vmm_trie.all t));
+  let f name v xs =
+    match xs with
+    | (name', v') :: xs ->
+      Alcotest.check test_name __LOC__ name' name;
+      Alcotest.(check int __LOC__ v' v);
+      xs
+    | [] -> Alcotest.fail "missing elements"
+  in
+  let r = Vmm_trie.fold Name.root_path t f all in
+  Alcotest.(check bool __LOC__ true (r = []))
+
+let nested_trie () =
+  let n = n_o_s "alpha:a" in
+  let t, r = Vmm_trie.insert n 1 Vmm_trie.empty in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n2 = n_o_s "alpha:b" in
+  let t, r = Vmm_trie.insert n2 2 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n3 = n_o_s "alpha:c" in
+  let t, r = Vmm_trie.insert n3 3 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n4 = n_o_s "beta:d" in
+  let t, r = Vmm_trie.insert n4 4 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  Alcotest.(check (option int) __LOC__ (Some 1) (Vmm_trie.find n t));
+  Alcotest.(check (option int) __LOC__ (Some 2) (Vmm_trie.find n2 t));
+  Alcotest.(check (option int) __LOC__ (Some 3) (Vmm_trie.find n3 t));
+  Alcotest.(check (option int) __LOC__ (Some 4) (Vmm_trie.find n4 t));
+  let all = [ n, 1 ; n2, 2 ; n3, 3 ; n4, 4 ] in
+  Alcotest.(check (list (pair test_name int)) __LOC__ all (Vmm_trie.all t));
+  let f name v xs =
+    match xs with
+    | (name', v') :: xs ->
+      Alcotest.check test_name __LOC__ name' name;
+      Alcotest.(check int __LOC__ v' v);
+      xs
+    | [] -> Alcotest.fail "missing elements"
+  in
+  let r = Vmm_trie.fold Name.root_path t f all in
+  Alcotest.(check bool __LOC__ true (r = []));
+  let alpha = [ n_o_s "a", 1 ; n_o_s "b", 2 ; n_o_s "c", 3 ] in
+  let r = Vmm_trie.fold (p_o_s "alpha") t f alpha in
+  Alcotest.(check bool __LOC__ true (r = []))
+
+let nested_trie_2 () =
+  let n = n_o_s "alpha:a.b.c" in
+  let t, r = Vmm_trie.insert n 1 Vmm_trie.empty in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n2 = n_o_s "alpha:b.c" in
+  let t, r = Vmm_trie.insert n2 2 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n3 = n_o_s "alpha:c" in
+  let t, r = Vmm_trie.insert n3 3 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n4 = n_o_s "beta:d" in
+  let t, r = Vmm_trie.insert n4 4 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  Alcotest.(check (option int) __LOC__ (Some 1) (Vmm_trie.find n t));
+  Alcotest.(check (option int) __LOC__ (Some 2) (Vmm_trie.find n2 t));
+  Alcotest.(check (option int) __LOC__ (Some 3) (Vmm_trie.find n3 t));
+  Alcotest.(check (option int) __LOC__ (Some 4) (Vmm_trie.find n4 t));
+  let all = [ n, 1 ; n2, 2 ; n3, 3 ; n4, 4 ] in
+  Alcotest.(check (list (pair test_name int)) __LOC__ all (Vmm_trie.all t));
+  let f name v xs =
+    match xs with
+    | (name', v') :: xs ->
+      Alcotest.check test_name __LOC__ name' name;
+      Alcotest.(check int __LOC__ v' v);
+      xs
+    | [] -> Alcotest.fail "missing elements"
+  in
+  let r = Vmm_trie.fold Name.root_path t f all in
+  Alcotest.(check bool __LOC__ true (r = []));
+  let alpha = [ n_o_s "a.b.c", 1 ; n_o_s "b.c", 2 ; n_o_s "c", 3 ] in
+  let r = Vmm_trie.fold (p_o_s "alpha") t f alpha in
+  Alcotest.(check bool __LOC__ true (r = []))
+
+let collect_nested () =
+  let n = n_o_s "alpha:beta:a" in
+  let t, r = Vmm_trie.insert n 1 Vmm_trie.empty in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n2 = n_o_s "alpha:beta:" in
+  let t, r = Vmm_trie.insert n2 2 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n3 = n_o_s "alpha:" in
+  let t, r = Vmm_trie.insert n3 3 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n4 = Name.root in
+  let t, r = Vmm_trie.insert n4 4 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let n5 = n_o_s "beta:" in
+  let t, r = Vmm_trie.insert n5 5 t in
+  Alcotest.(check bool __LOC__ true (r = None));
+  let all = [ n, 1 ; n2, 2 ; n3, 3 ; n4, 4 ; n5, 5 ] in
+  Alcotest.(check (list (pair test_name int)) __LOC__ all (Vmm_trie.all t));
+  Alcotest.(check (list (pair test_name int)) __LOC__
+              [ n, 1 ; n2, 2 ; n3, 3 ; n4, 4 ]
+              (Vmm_trie.collect n t))
+
+let trie_tests = [
+  "empty trie is empty", `Quick, empty_trie ;
+  "trie with one element works", `Quick, one_element_trie ;
+  "flat trie with multiple elements work", `Quick, flat_trie ;
+  "nested trie work", `Quick, nested_trie ;
+  "nested trie work 2", `Quick, nested_trie_2 ;
+  "collect nested", `Quick, collect_nested ;
+]
+
 let test_version =
   let pp_version = Vmm_commands.pp_version
   and eq_version a b = Vmm_commands.eq_version a b
@@ -395,16 +556,6 @@ let command_tests = [
   "bistro console subscribe subv5:foo.bar version 5", `Quick, bistro_console_subscribe_v5_3 ;
 ]
 
-let test_trie pp_v eq_v =
-  let pp_trie ppf t =
-    Fmt.(list ~sep:(any "@.") (pair Name.pp pp_v)) ppf
-      (Vmm_trie.all t)
-  and eq_trie a b =
-    List.for_all2 (fun (n, v) (n', v') -> Name.equal n n' && eq_v v v')
-      (Vmm_trie.all a) (Vmm_trie.all b)
-  in
-  Alcotest.testable pp_trie eq_trie
-
 let test_unikernels =
   let open Unikernel in
   let eq_pair_list_opt =
@@ -601,6 +752,7 @@ let wire_tests = [
 
 let tests = [
   "Name", name_tests ;
+  "Trie", trie_tests ;
   "Command", command_tests ;
   "Wire", wire_tests ;
 ]

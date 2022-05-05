@@ -92,7 +92,7 @@ let all t =
         go acc (append_name prefix name) node)
       acc' (Vmm_core.String_map.bindings m)
   in
-  go [] Vmm_core.Name.root t
+  List.rev (go [] Vmm_core.Name.root t)
 
 let fold path t f acc =
   let rec explore (N (es, m)) prefix_path name acc =
