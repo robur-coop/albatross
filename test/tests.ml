@@ -224,7 +224,7 @@ let collect_nested () =
   let n5 = n_o_s "beta:" in
   let t, r = Vmm_trie.insert n5 5 t in
   Alcotest.(check bool __LOC__ true (r = None));
-  let all = [ n, 1 ; n2, 2 ; n3, 3 ; n4, 4 ; n5, 5 ] in
+  let all = [ n4, 4 ; n3, 3 ; n2, 2 ; n, 1 ; n5, 5 ] in
   Alcotest.(check (list (pair test_name int)) __LOC__ all (Vmm_trie.all t));
   Alcotest.(check (list (pair test_name int)) __LOC__
               [ n, 1 ; n2, 2 ; n3, 3 ; n4, 4 ]
