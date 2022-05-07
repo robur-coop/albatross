@@ -78,15 +78,16 @@ let name_tests = [
   "drop path is ok", `Quick, drop_path_good ;
 ]
 
+let trie_eq eq_v a b =
+  List.for_all2 (fun (n, v) (n', v') -> Name.equal n n' && eq_v v v')
+    (Vmm_trie.all a) (Vmm_trie.all b)
+
 let test_trie pp_v eq_v =
   let pp_trie ppf t =
     Fmt.(list ~sep:(any "@.") (pair Name.pp pp_v)) ppf
       (Vmm_trie.all t)
-  and eq_trie a b =
-    List.for_all2 (fun (n, v) (n', v') -> Name.equal n n' && eq_v v v')
-      (Vmm_trie.all a) (Vmm_trie.all b)
   in
-  Alcotest.testable pp_trie eq_trie
+  Alcotest.testable pp_trie (trie_eq eq_v)
 
 let test_int_trie =
   test_trie Fmt.int Int.equal
@@ -237,6 +238,275 @@ let trie_tests = [
   "nested trie work", `Quick, nested_trie ;
   "nested trie work 2", `Quick, nested_trie_2 ;
   "collect nested", `Quick, collect_nested ;
+]
+
+let unikernel_config_eq =
+  let open Unikernel in
+  let eq_pair_list_opt =
+    List.for_all2 (fun (n, dopt) (n', dopt') ->
+        String.equal n n' && (match dopt, dopt' with
+            | None, None -> true
+            | Some a, Some b -> String.equal a b
+            | _ -> false))
+  in
+  fun (a : config) (b : config) ->
+    a.typ = b.typ && a.compressed = b.compressed &&
+    Cstruct.equal a.image b.image &&
+    (match a.fail_behaviour, b.fail_behaviour with
+     | `Quit, `Quit
+     | `Restart None, `Restart None -> true
+     | `Restart Some a, `Restart Some b -> IS.equal a b
+     | _ -> false) &&
+    a.cpuid = b.cpuid && a.memory = b.memory &&
+    eq_pair_list_opt a.block_devices b.block_devices &&
+    eq_pair_list_opt a.bridges b.bridges &&
+    (match a.argv, b.argv with
+     | None, None -> true
+     | Some a, Some b -> List.for_all2 String.equal a b
+     | _ -> false)
+
+let unikernel_eq (a : Unikernel.t) (b : Unikernel.t) =
+  unikernel_config_eq a.Unikernel.config b.Unikernel.config &&
+  Cstruct.equal a.digest b.digest
+
+let block_eq (s, a) (s', a') = s = s' && a = a'
+
+let test_resources =
+  let module M = struct
+    type t = Vmm_resources.t
+    let pp = Vmm_resources.pp
+    let equal a b =
+      trie_eq Policy.equal a.Vmm_resources.policies b.Vmm_resources.policies &&
+      trie_eq block_eq a.block_devices b.block_devices &&
+      trie_eq unikernel_eq a.unikernels b.unikernels
+  end in
+  (module M: Alcotest.TESTABLE with type t = M.t)
+
+let u =
+  Unikernel.{
+    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    fail_behaviour = `Quit ; cpuid = 0 ; memory = 10 ;
+    block_devices = [] ;
+    bridges = [ "service", None ] ;
+    argv = Some [ "-l *:debug" ] ;
+  }
+
+let ok_msg = Alcotest.(result unit msg)
+
+let empty_resources () =
+  Alcotest.check test_resources __LOC__ Vmm_resources.empty Vmm_resources.empty;
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    Vmm_resources.(check_vm empty (n_o_s "foo") u);
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    Vmm_resources.(check_vm empty (n_o_s "bar") u);
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    Vmm_resources.(check_vm empty (n_o_s "foo:bar") u);
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    Vmm_resources.(check_block empty (n_o_s "foo:bar") 10)
+
+let p1 = Policy.{
+    vms = 1 ;
+    cpuids = IS.singleton 0 ;
+    memory = 10 ;
+    block = Some 5 ;
+    bridges = String_set.singleton "service"
+  }
+
+let r1 =
+  Result.get_ok (Vmm_resources.(insert_policy empty (p_o_s "alpha") p1))
+
+let policy_is_respected_vm () =
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u);
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u);
+  let u' = { u with cpuid = 1 } in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "cpuid not allowed"))
+    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u');
+  let u' = { u with memory = 11 } in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "too much memory"))
+    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u');
+  let u' = { u with bridges = [ "service2", None ] } in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "wrong bridge"))
+    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u')
+
+let policy_is_respected_block () =
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    (Vmm_resources.check_block r1 (n_o_s "alpha:bar") 5);
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "block disallowed"))
+    (Vmm_resources.check_block r1 (n_o_s "alpha:bar") 10);
+  let p' = { p1 with block = None } in
+  let r = Result.get_ok (Vmm_resources.(insert_policy empty (p_o_s "alpha") p')) in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "block disallowed"))
+    (Vmm_resources.check_block r (n_o_s "alpha:bar") 5)
+
+let policy_is_respected_sub () =
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p1 with
+   | Error _ -> Alcotest.fail "expected insertion of sub-policy to succeed"
+   | Ok _ -> ());
+  let p' = { p1 with vms = 2 } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy increasing vms should fail"
+   | Error _ -> ());
+  let p' = { p1 with cpuids = IS.singleton 1 } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy different cpuids should fail"
+   | Error _ -> ());
+  let p' = { p1 with cpuids = IS.(add 0 (singleton 1)) } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy different cpuids should fail"
+   | Error _ -> ());
+  let p' = { p1 with memory = 11 } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy increasing memory should fail"
+   | Error _ -> ());
+  let p' = { p1 with block = Some 10 } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy increasing block should fail"
+   | Error _ -> ());
+  let p' = { p1 with block = None } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "insertion of subpolicy decreasing block should work");
+  let p' = { p1 with bridges = String_set.singleton "service2" } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy different bridges should fail"
+   | Error _ -> ());
+  let p' = { p1 with bridges = String_set.(add "service" (singleton "service2")) } in
+  (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
+   | Ok _ -> Alcotest.fail "insertion of subpolicy different bridges should fail"
+   | Error _ -> ())
+
+let policy_is_respected_super () =
+  let p' = { p1 with vms = 2 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "insertion of superpolicy increasing vms should work");
+  let p' = { p1 with vms = 0 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> Alcotest.fail "insertion of superpolicy decreasing vms should fail"
+   | Error _ -> ());
+  let p' = { p1 with cpuids = IS.(add 1 (singleton 0)) } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "insertion of superpolicy more cpuids should work");
+  let p' = { p1 with cpuids = IS.singleton 1 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> Alcotest.fail "insertion of superpolicy different cpuids should fail"
+   | Error _ -> ());
+  let p' = { p1 with memory = 11 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "insertion of superpolicy more memory should work");
+  let p' = { p1 with memory = 5 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> Alcotest.fail "insertion of superpolicy fewer memory should fail"
+   | Error _ -> ());
+  let p' = { p1 with block = Some 5 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "insertion of superpolicy more block should work");
+  let p' = { p1 with block = Some 3 } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> Alcotest.fail "insertion of superpolicy fewer block should fail"
+   | Error _ -> ());
+  let p' = { p1 with block = None } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> Alcotest.fail "insertion of superpolicy fewer block should fail"
+   | Error _ -> ());
+  let p' = { p1 with bridges = String_set.(add "service" (singleton "foo")) } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "insertion of superpolicy more bridges should work");
+  let p' = { p1 with bridges = String_set.singleton "foo" } in
+  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+   | Ok _ -> Alcotest.fail "insertion of superpolicy other bridges should fail"
+   | Error _ -> ())
+
+let resource_insert_block () =
+  (match Vmm_resources.(insert_block empty (n_o_s "foo") 10) with
+   | Ok _ -> ()
+   | Error _ -> Alcotest.fail "expected insertion of block to succeed");
+  (match Vmm_resources.(insert_block empty (n_o_s "foo") 10) with
+   | Error _ -> Alcotest.fail "expected insertion of block to succeed"
+   | Ok t ->
+     match Vmm_resources.(insert_block t (n_o_s "foo") 10) with
+     | Ok _ -> Alcotest.fail "expected insertion of the same name to fail"
+     | Error _ ->
+       match Vmm_resources.remove_block t (n_o_s "foo") with
+       | Error _ -> Alcotest.fail "expected removal of block to succeed"
+       | Ok t ->
+         match Vmm_resources.insert_block t (n_o_s "foo") 10 with
+         | Error _ -> Alcotest.fail "expected insertion of block to succeed"
+         | Ok _ -> ());
+  match Vmm_resources.(remove_block empty (n_o_s "foo")) with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "expected removal of non-existing block to fail"
+
+let resource_remove_policy () =
+  (match Vmm_resources.(remove_policy empty (p_o_s "foo")) with
+   | Error _ -> ()
+   | Ok _ -> Alcotest.fail "expected removal of non-existing policy to fail");
+  (match Vmm_resources.remove_policy r1 (p_o_s "alpha") with
+   | Error _ -> Alcotest.fail "expected removal of policy to succeed"
+   | Ok _ -> ())
+
+let resource_add_remove_vm () =
+  let u1 =
+    Unikernel.{
+      config = u ;
+      cmd = Bos.Cmd.v "" ;
+      pid = 0 ;
+      taps = [] ;
+      digest = Cstruct.empty
+    }
+  in
+  (match Vmm_resources.remove_vm r1 (n_o_s "alpha:beta") with
+   | Ok _ -> Alcotest.fail "expected non-existing vm removal to fail"
+   | Error _ -> ());
+  let r2 = Vmm_resources.insert_vm r1 (n_o_s "alpha:beta") u1 in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "vm with same name already present"))
+    Vmm_resources.(check_vm r2 (n_o_s "alpha:beta") u);
+  (try
+     ignore (Vmm_resources.insert_vm r2 (n_o_s "alpha:beta") u1);
+     Alcotest.fail "expected exception (second vm with same name)"
+   with
+     Invalid_argument _ -> ());
+  match Vmm_resources.remove_vm r2 (n_o_s "alpha:beta") with
+  | Ok r3 ->
+    ignore (Vmm_resources.insert_vm r3 (n_o_s "alpha:beta") u1)
+  | Error _ -> Alcotest.fail "expected vm removal to succeed"
+
+let resource_vm_with_block () =
+  let uc2 = Unikernel.{ u with block_devices = [ "block", None ] } in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
+    Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc2);
+  let r2 =
+    Result.get_ok (Vmm_resources.insert_block r1 (n_o_s "alpha:block") 5)
+  in
+  Alcotest.check ok_msg __LOC__ (Ok ())
+    Vmm_resources.(check_vm r2 (n_o_s "alpha:bar") uc2);
+  let uc3 = { uc2 with block_devices = [ "block", Some "b" ] } in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
+    Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc3);
+  let u = Unikernel.{ config = uc2; cmd = Bos.Cmd.v "" ; pid = 0 ; taps = [] ; digest = Cstruct.empty } in
+  let r3 = Vmm_resources.insert_vm r2 (n_o_s "alpha:bar") u in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "block device already in use"))
+    Vmm_resources.(check_vm r3 (n_o_s "alpha:bar2") uc2);
+  (match Vmm_resources.remove_block r3 (n_o_s "alpha:block") with
+   | Ok _ -> Alcotest.fail "block device should still be in use"
+   | Error _ -> ())
+
+let resource_tests = [
+  "empty resources is empty, everything accepted", `Quick, empty_resources ;
+  "policy is respected when checking vm", `Quick, policy_is_respected_vm ;
+  "policy is respected when checking block", `Quick, policy_is_respected_block ;
+  "policy is respected when checking sub-policy", `Quick, policy_is_respected_sub ;
+  "policy is respected when checking super-policy", `Quick, policy_is_respected_super ;
+  "block insertion and removal", `Quick, resource_insert_block ;
+  "policy removal", `Quick, resource_remove_policy ;
+  "vm insertion and removal", `Quick, resource_add_remove_vm ;
+  "vm with block", `Quick, resource_vm_with_block ;
 ]
 
 let test_version =
@@ -557,31 +827,7 @@ let command_tests = [
 ]
 
 let test_unikernels =
-  let open Unikernel in
-  let eq_pair_list_opt =
-    List.for_all2 (fun (n, dopt) (n', dopt') ->
-        String.equal n n' && (match dopt, dopt' with
-            | None, None -> true
-            | Some a, Some b -> String.equal a b
-            | _ -> false))
-  in
-  let eq_u (a : config) (b : config) =
-    a.typ = b.typ && a.compressed = b.compressed &&
-    Cstruct.equal a.image b.image &&
-    (match a.fail_behaviour, b.fail_behaviour with
-     | `Quit, `Quit
-     | `Restart None, `Restart None -> true
-     | `Restart Some a, `Restart Some b -> IS.equal a b
-     | _ -> false) &&
-    a.cpuid = b.cpuid && a.memory = b.memory &&
-    eq_pair_list_opt a.block_devices b.block_devices &&
-    eq_pair_list_opt a.bridges b.bridges &&
-    (match a.argv, b.argv with
-     | None, None -> true
-     | Some a, Some b -> List.for_all2 String.equal a b
-     | _ -> false)
-  in
-  test_trie pp_config_with_argv eq_u
+  test_trie Unikernel.pp_config_with_argv unikernel_config_eq
 
 let dec_b64_unik ~migrate_name data =
   let data = Base64.decode_exn data in
@@ -589,7 +835,7 @@ let dec_b64_unik ~migrate_name data =
 
 
 let u1_3 =
-  Vmm_core.Unikernel.{
+  Unikernel.{
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
@@ -598,7 +844,7 @@ let u1_3 =
   }
 
 let u2_3 =
-  Vmm_core.Unikernel.{
+  Unikernel.{
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
@@ -607,7 +853,7 @@ let u2_3 =
   }
 
 let ins n u t =
-  let name = Result.get_ok (Vmm_core.Name.of_string n) in
+  let name = Result.get_ok (Name.of_string n) in
   fst (Vmm_trie.insert name u t)
 
 let unikernels3 =
@@ -622,7 +868,7 @@ let wire4_unikernel3 () =
   Alcotest.check test_unikernels __LOC__ unikernels3 trie
 
 let u1_2 =
-  Vmm_core.Unikernel.{ u1_3 with block_devices = [ "block", None ; "second-data", None ] }
+  Unikernel.{ u1_3 with block_devices = [ "block", None ; "second-data", None ] }
 
 let unikernels2 =
   let t = ins "foo.hello" u1_2 Vmm_trie.empty in
@@ -636,12 +882,12 @@ let wire4_unikernel2 () =
   Alcotest.check test_unikernels __LOC__ unikernels2 trie
 
 let u1_1 =
-  Vmm_core.Unikernel.{ u1_3 with
+  Unikernel.{ u1_3 with
                        block_devices = [ "block", None ; "secondblock", None ];
                        bridges = [ "service", None ; "other-net", None ] }
 
 let u2_1 =
-  Vmm_core.Unikernel.{ u2_3 with bridges = [ "service", None ] }
+  Unikernel.{ u2_3 with bridges = [ "service", None ] }
 
 let unikernels1 =
   let t = ins "foo.hello" u1_1 Vmm_trie.empty in
@@ -753,6 +999,7 @@ let wire_tests = [
 let tests = [
   "Name", name_tests ;
   "Trie", trie_tests ;
+  "Resources", resource_tests ;
   "Command", command_tests ;
   "Wire", wire_tests ;
 ]

@@ -3,8 +3,10 @@
   (public_name albatross.stats)
   (libraries albatross)
   (wrapped false)
-  (c_names albatross_stats_stubs)
-  (c_flags (:include c_flags.sexp))
+  (foreign_stubs
+   (language c)
+   (names albatross_stats_stubs)
+   (flags (:standard) (:include c_flags.sexp)))
   (c_library_flags (:include c_library_flags.sexp))
   (modules albatross_stats_pure))
 

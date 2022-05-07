@@ -8,7 +8,7 @@ license: "ISC"
 
 depends: [
   "ocaml" {>= "4.10.0"}
-  "dune"
+  "dune" {>= "2.7.0"}
   "dune-configurator"
   "conf-pkg-config" {build}
   "conf-libnl3" {os = "linux"}
