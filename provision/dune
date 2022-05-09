@@ -1,21 +1,20 @@
-
 (library
-  (name albatross_provision)
-  (public_name albatross.provision)
-  (wrapped false)
-  (modules albatross_provision)
-  (libraries albatross.cli x509 mirage-crypto-rng.unix))
+ (name albatross_provision)
+ (public_name albatross.provision)
+ (wrapped false)
+ (modules albatross_provision)
+ (libraries albatross.cli x509 mirage-crypto-rng.unix))
 
 (executable
-  (name albatross_provision_ca)
-  (public_name albatross-provision-ca)
-  (package albatross)
-  (modules albatross_provision_ca)
-  (libraries albatross.cli albatross.provision albatross x509))
+ (name albatross_provision_ca)
+ (public_name albatross-provision-ca)
+ (package albatross)
+ (modules albatross_provision_ca)
+ (libraries albatross.cli albatross.provision albatross x509))
 
 (executable
-  (name albatross_provision_request)
-  (public_name albatross-provision-request)
-  (package albatross)
-  (modules albatross_provision_request)
-  (libraries albatross.cli albatross.provision albatross x509))
+ (name albatross_provision_request)
+ (public_name albatross-provision-request)
+ (package albatross)
+ (modules albatross_provision_request)
+ (libraries albatross.cli albatross.provision albatross x509))

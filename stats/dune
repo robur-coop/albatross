@@ -1,29 +1,33 @@
 (library
-  (name albatross_stats)
-  (public_name albatross.stats)
-  (libraries albatross)
-  (wrapped false)
-  (foreign_stubs
-   (language c)
-   (names albatross_stats_stubs)
-   (flags (:standard) (:include c_flags.sexp)))
-  (c_library_flags (:include c_library_flags.sexp))
-  (modules albatross_stats_pure))
+ (name albatross_stats)
+ (public_name albatross.stats)
+ (libraries albatross)
+ (wrapped false)
+ (foreign_stubs
+  (language c)
+  (names albatross_stats_stubs)
+  (flags
+   (:standard)
+   (:include c_flags.sexp)))
+ (c_library_flags
+  (:include c_library_flags.sexp))
+ (modules albatross_stats_pure))
 
 (executable
-  (name albatross_stats)
-  (public_name albatross-stats)
-  (package albatross)
-  (modules albatross_stats)
-  (libraries albatross.cli albatross.stats albatross))
+ (name albatross_stats)
+ (public_name albatross-stats)
+ (package albatross)
+ (modules albatross_stats)
+ (libraries albatross.cli albatross.stats albatross))
 
 (executable
-  (name albatross_stat_client)
-  (public_name albatross-stat-client)
-  (package albatross)
-  (modules albatross_stat_client)
-  (libraries albatross.cli albatross.stats albatross))
+ (name albatross_stat_client)
+ (public_name albatross-stat-client)
+ (package albatross)
+ (modules albatross_stat_client)
+ (libraries albatross.cli albatross.stats albatross))
 
 (rule
-  (targets c_flags.sexp c_library_flags.sexp)
-  (action (run ./config/discover.exe)))
+ (targets c_flags.sexp c_library_flags.sexp)
+ (action
+  (run ./config/discover.exe)))
