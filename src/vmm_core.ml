@@ -73,7 +73,7 @@ module Name = struct
     for_all (function
         | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '.' -> true
         | _ -> false)
-      s (* only LDH (letters, digits, hyphen)! *)
+      s (* only LDH (letters, digits, hyphen, period)! *)
 
   let path_equal (x, _) (y, _) =
     let rec equal x y = match x, y with
@@ -117,12 +117,12 @@ module Name = struct
   let rec drop_prefix_exn (p, name) p' =
     match p, p' with
     | _, [] -> p, name
-    | [], _ -> invalid_arg "p is empty, p' not"
+    | [], _ -> invalid_arg "p is shorter than p'"
     | a::bs, a'::bs' ->
       if String.equal a a' then
         drop_prefix_exn (bs, name) bs'
       else
-        invalid_arg "the first element of p and p' are not equal"
+      invalid_arg "p' is not a prefix of p"
 
   let path_to_list p = p
 
@@ -132,6 +132,7 @@ module Name = struct
     else
       Error (`Msg "invalid path")
 
+(* not to be exposed *)
   let of_path ps = match List.rev ps with
     | name :: rev_path -> Ok (List.rev rev_path, Some name)
     | [] -> Error (`Msg "empty name")

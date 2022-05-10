@@ -219,7 +219,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats migrate_name =
 open Cmdliner
 
 let migrate_name =
-  let doc = "Migrate name to use the first label as path" in
+  let doc = "Migrate name to use the first label as path (WARNING: do not use this if any of the paths are expected to be 2 labels or longer)" in
   Arg.(value & flag & info [ "migrate-name" ] ~doc)
 
 let cmd =
