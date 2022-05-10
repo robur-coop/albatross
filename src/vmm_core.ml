@@ -122,7 +122,7 @@ module Name = struct
       if String.equal a a' then
         drop_prefix_exn (bs, name) bs'
       else
-      invalid_arg "p' is not a prefix of p"
+        invalid_arg "p' is not a prefix of p"
 
   let path_to_list p = p
 
