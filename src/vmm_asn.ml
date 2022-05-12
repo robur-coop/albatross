@@ -37,27 +37,69 @@
    the first element of a sequence only (i.e. treat the second element as
    "any"). This is something missing for PKCS12 from the asn1 library. A
    "quick hack" is to extract length information of the first element, and use
-   that decoder on the sub-buffer. The following implements this.
+   that decoder on the sub-buffer. The following implements this. *)
+
+let guard p err = if p then Ok () else Error err
+
+let ( let* ) = Result.bind
+
+let version =
+  let f data = match data with
+    | 5 -> `AV5
+    | 4 -> `AV4
+    | 3 -> `AV3
+    | x -> Asn.S.parse_error "unknown version number 0x%X" x
+  and g = function
+    | `AV5 -> 5
+    | `AV4 -> 4
+    | `AV3 -> 3
+  in
+  Asn.S.map f g Asn.S.int
+
+let decode_seq_len cs =
+  (* we assume a ASN.1 DER/BER encoded sequence starting in cs:
+     - 0x30
+     - length (definite length field - not 0x80)
+     - <data> (of length length)
+  *)
+  let* () = guard (Cstruct.length cs > 2) (`Msg "buffer too short") in
+  let* () = guard (Cstruct.get_uint8 cs 0 = 0x30) (`Msg "not a sequence") in
+  let l1 = Cstruct.get_uint8 cs 1 in
+  let* (off, l) =
+    if l1 < 0x80 then
+      Ok (2, l1)
+    else if l1 = 0x80 then
+      Error (`Msg "indefinite length")
+    else
+      let octets = l1 land 0x7F in
+      let* () = guard (Cstruct.length cs > octets + 2) (`Msg "data too short") in
+      let rec go off acc =
+        if off = octets then
+          Ok (2 + octets, acc)
+        else
+          go (succ off) (Cstruct.get_uint8 cs (off + 2) + acc lsl 8)
+      in
+      go 0 0
+  in
+  let* () = guard (Cstruct.length cs >= l + off) (`Msg "buffer too small") in
+  Ok (off, l)
 
 let seq_hd cs =
-  decode_seq_len cs >>= fun (l, off) ->
+  let* (off, l) = decode_seq_len cs in
   Ok (Cstruct.sub cs off l)
 
-let decode_version cs =
+let decode_wire_version cs =
+  let* cs = seq_hd cs in (* from wire, sequence2 (header, payload) *)
+  let* cs = seq_hd cs in (* from header, sequence3 (version ,__) *)
   let c = Asn.codec Asn.der version in
   match Asn.decode c cs with
   | Ok (a, _) -> Ok a
   | Error (`Parse msg) -> Error (`Msg msg)
-*)
 
 open Vmm_core
 open Vmm_commands
 
 let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
-
-let guard p err = if p then Ok () else Error err
-
-let ( let* ) = Result.bind
 
 let decode_strict codec cs =
   match Asn.decode codec cs with
@@ -232,14 +274,23 @@ let stats_cmd =
            (my_explicit 1 ~label:"remove" null)
            (my_explicit 2 ~label:"subscribe" null))
 
-let name =
+let old_name =
   let f list =
-    match Name.of_list list with
+    match Name.of_string (String.concat "." list) with
     | Error (`Msg msg) -> Asn.S.error (`Parse msg)
     | Ok name -> name
   and g = Name.to_list
   in
   Asn.S.(map f g (sequence_of utf8_string))
+
+let name =
+  let f str =
+    match Name.of_string str with
+    | Error (`Msg msg) -> Asn.S.error (`Parse msg)
+    | Ok name -> name
+  and g = Name.to_string
+  in
+  Asn.S.(map f g utf8_string)
 
 let typ =
   let f = function
@@ -349,7 +400,7 @@ let v2_unikernel_config =
     let bridges = match vm.bridges with [] -> None | xs -> Some xs
     and blocks = match vm.block_devices with
       | [] -> None
-      | xs -> Some (List.map (fun (a, b) -> match b with None -> a | Some b -> b) xs)
+      | xs -> Some (List.map fst xs)
     in
     (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
   in
@@ -487,17 +538,6 @@ let block_cmd =
                  (required ~label:"data" octet_string)))
            (my_explicit 5 ~label:"dump" int))
 
-let version =
-  let f data = match data with
-    | 4 -> `AV4
-    | 3 -> `AV3
-    | x -> Asn.S.parse_error "unknown version number 0x%X" x
-  and g = function
-    | `AV4 -> 4
-    | `AV3 -> 3
-  in
-  Asn.S.map f g Asn.S.int
-
 let wire_command =
   let f = function
     | `C1 console -> `Console_cmd console
@@ -579,7 +619,7 @@ let unikernel_info =
                                    (optional ~label:"bridge-name" utf8_string)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
-let header =
+let header name =
   let f (version, sequence, name) = { version ; sequence ; name }
   and g { version ; sequence ; name } = version, sequence, name
   in
@@ -589,7 +629,7 @@ let header =
            (required ~label:"sequence" int64)
            (required ~label:"name" name))
 
-let success =
+let success name =
   let f = function
     | `C1 `C1 () -> `Empty
     | `C1 `C2 str -> `String str
@@ -645,7 +685,7 @@ let success =
                    (required ~label:"compressed" bool)
                    (required ~label:"image" octet_string)))))
 
-let payload =
+let payload name =
   let f = function
     | `C1 cmd -> `Command cmd
     | `C2 s -> `Success s
@@ -660,16 +700,28 @@ let payload =
   Asn.S.map f g @@
   Asn.S.(choice4
            (my_explicit 0 ~label:"command" wire_command)
-           (my_explicit 1 ~label:"reply" success)
+           (my_explicit 1 ~label:"reply" (success name))
            (my_explicit 2 ~label:"failure" utf8_string)
            (my_explicit 3 ~label:"data" data))
 
-let wire =
+let wire name =
   Asn.S.(sequence2
-           (required ~label:"header" header)
-           (required ~label:"payload" payload))
+           (required ~label:"header" (header name))
+           (required ~label:"payload" (payload name)))
 
-let wire_of_cstruct, wire_to_cstruct = projections_of wire
+let wire_of_cstruct, wire_to_cstruct =
+  let dec, enc = projections_of (wire name)
+  and dec_old, enc_old = projections_of (wire old_name)
+  in
+  (fun cs ->
+    let* version = decode_wire_version cs in
+    match version with
+    | `AV3 | `AV4 -> dec_old cs
+    | `AV5 -> dec cs),
+  (fun (header, payload) ->
+    match header.version with
+    | `AV3 | `AV4 -> enc_old (header, payload)
+    | `AV5 -> enc (header, payload))
 
 let trie e =
   let f elts =
@@ -715,7 +767,33 @@ let unikernels =
            (my_explicit 2 ~label:"unikernel-OLD2" version2_unikernels)
            (my_explicit 3 ~label:"unikernel" version3_unikernels))
 
-let unikernels_of_cstruct, unikernels_to_cstruct = projections_of unikernels
+let unikernels_of_cstruct, unikernels_to_cstruct =
+  let dec, enc = projections_of unikernels in
+  (fun ~migrate_name cs ->
+    let* trie = dec cs in
+    if migrate_name then
+      Ok (Vmm_trie.fold Name.root_path trie
+          (fun name unikernel acc ->
+            let name =
+              if Name.is_root_path (Name.path name) then
+                match Name.name name with
+                | None -> name
+                | Some n ->
+                  try
+                    let first_dot = String.index n '.' in
+                    let first_part = String.sub n 0 first_dot in
+                    let name = String.sub n (first_dot + 1) (String.length n - (first_dot + 1)) in
+                    let path = Result.get_ok (Name.path_of_list [ first_part ]) in
+                    Name.create_exn path name
+                  with
+                    Not_found -> name
+              else
+                name
+            in
+            fst (Vmm_trie.insert name unikernel acc))
+          Vmm_trie.empty)
+    else
+      Ok trie), enc
 
 let cert_extension =
   (* note that subCAs are deployed out there, thus modifying the encoding of

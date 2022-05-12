@@ -3,12 +3,14 @@
 open Vmm_core
 
 (** The type of versions of the grammar defined below. *)
-type version = [ `AV3 | `AV4 ]
+type version = [ `AV3 | `AV4 | `AV5 ]
 
 (** [current] is the current version. *)
 val current : version
 
 val is_current : version -> bool
+
+val eq_version : version -> version -> bool
 
 (** [pp_version ppf version] pretty prints [version] onto [ppf]. *)
 val pp_version : version Fmt.t

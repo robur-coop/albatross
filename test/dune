@@ -1,3 +1,14 @@
 (test
  (name test_asn)
+ (modules test_asn)
  (libraries albatross))
+
+(test
+ (name tests)
+ (modules tests)
+ (libraries albatross albatross.tls alcotest))
+
+(executable
+ (name albatross_client_gen)
+ (modules albatross_client_gen)
+ (libraries albatross.cli albatross))

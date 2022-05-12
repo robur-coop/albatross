@@ -48,16 +48,14 @@ module IS = Set.Make(I)
 module IM = Map.Make(I)
 
 module Name = struct
-  type t = string list
+  (* A name consists of the path and the unikernel name: foo:bar:unikernel.bla
 
-  let root = []
-
-  let is_root x = x = []
-
-  let rec equal x y = match x, y with
-    | [], [] -> true
-    | x::xs, y::ys -> x = y && equal xs ys
-    | _ -> false
+     The path is a list of intermediate CAs separated by :, the name is a domain
+     name label -- in all these labels, only letters, digits, hyphens, and dot
+     are allowed.
+  *)
+  type path = string list
+  type t = path * string option
 
   (* from OCaml 4.13 bytes.ml *)
   let for_all p s =
@@ -69,51 +67,131 @@ module Name = struct
     loop 0
 
   let [@inline always] valid_label s =
-    String.length s < 20 &&
+    String.length s < 64 &&
     String.length s > 0 &&
     String.get s 0 <> '-' && (* leading may not be '-' *)
     for_all (function
-        | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' -> true
+        | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '.' -> true
         | _ -> false)
-      s (* only LDH (letters, digits, hyphen)! *)
+      s (* only LDH (letters, digits, hyphen, period)! *)
 
-  let to_string = function
-    | [] -> "."
-    | ids -> String.concat "." ids
+  let path_equal (x, _) (y, _) =
+    let rec equal x y = match x, y with
+      | [], [] -> true
+      | x::xs, y::ys -> String.equal x y && equal xs ys
+      | _ -> false
+    in
+    equal x y
 
-  let to_list x = x
+  let opt_eq a b = match a, b with
+    | None, None -> true
+    | Some a, Some b -> String.equal a b
+    | _ -> false
 
-  let drop x = match List.rev x with
+  let equal x y =
+    path_equal x y && opt_eq (snd x) (snd y)
+
+  let pp ppf (p, name) =
+    Fmt.(pf ppf "[vm: %a:%a]" (list ~sep:(any ":") string) p
+           (option ~none:(any "") string) name)
+
+  let path (p, _) = p
+
+  let name (_, name) = name
+
+  let create path name =
+    if valid_label name then
+      Ok (path, Some name)
+    else
+      Error (`Msg "invalid name")
+
+  let create_of_path p = (p, None)
+
+  let create_exn path name =
+    match create path name with
+    | Ok t -> t
+    | Error `Msg m -> invalid_arg m
+
+  let drop_path (_, name) = [], name
+
+  let rec drop_prefix_exn (p, name) p' =
+    match p, p' with
+    | _, [] -> p, name
+    | [], _ -> invalid_arg "p is shorter than p'"
+    | a::bs, a'::bs' ->
+      if String.equal a a' then
+        drop_prefix_exn (bs, name) bs'
+      else
+        invalid_arg "p' is not a prefix of p"
+
+  let path_to_list p = p
+
+  let path_of_list ps =
+    if List.for_all valid_label ps then
+      Ok ps
+    else
+      Error (`Msg "invalid path")
+
+(* not to be exposed *)
+  let of_path ps = match List.rev ps with
+    | name :: rev_path -> Ok (List.rev rev_path, Some name)
+    | [] -> Error (`Msg "empty name")
+
+  let to_list (p, name) =
+    Option.fold ~none:p ~some:(fun n -> p @ [ n ]) name
+
+  let of_list ids =
+    match path_of_list ids with
+    | Error _ -> Error (`Msg "invalid name")
+    | Ok _ -> of_path ids
+
+  let path_to_string x = String.concat ":" x
+
+  let path_of_string str =
+    let ps = String.split_on_char ':' str in
+    let ps = match ps with | ""::tl -> tl | ps -> ps in
+    if List.for_all valid_label ps then
+      Ok ps
+    else
+      Error (`Msg "invalid path")
+
+  let to_string (p, n) =
+    path_to_string p ^ ":" ^ Option.value ~default:"" n
+
+  let of_string str =
+    let ( let* ) = Result.bind in
+    let* () =
+      if String.equal str "" then Error (`Msg "empty name") else Ok ()
+    in
+    let last_idx = String.length str - 1 in
+    if String.get str last_idx = ':' then
+      let* path = path_of_string (String.sub str 0 last_idx) in
+      Ok (path, None)
+    else
+      match path_of_string str with
+      | Error _ -> Error (`Msg "invalid name")
+      | Ok ps -> of_path ps
+
+  let root_path = []
+  let is_root_path = function [] -> true | _ -> false
+
+  let parent_path p = match List.rev p with
     | [] -> []
     | _::tl -> List.rev tl
 
-  let drop_front = function
-    | [] -> []
-    | _::tl -> tl
+  let root = (root_path, None)
+  let is_root (p, n) = is_root_path p && Option.is_none n
 
-  let append_exn lbl x =
-    if valid_label lbl then
-      x @ [ lbl ]
+  let append_path prefix p =
+    if valid_label p then
+      Ok (prefix @ [ p ])
     else
-      invalid_arg "label not valid"
+      Error (`Msg ("invalid path: " ^ p))
 
-  let append lbl x =
-    if valid_label lbl then
-      Ok (x @ [ lbl ])
-    else
-      Error (`Msg "label not valid")
-
-  let prepend lbl x =
-    if valid_label lbl then
-      Ok (lbl :: x)
-    else
-      Error (`Msg "label not valid")
-
-  let concat a b = a @ b
-
-  let domain id = match List.rev id with
-    | _::prefix -> List.rev prefix
-    | [] -> []
+  let append_path_exn prefix p =
+    match append_path prefix p with
+    | Ok p -> p
+    | Error `Msg m -> invalid_arg m
 
   let image_file name =
     let file = to_string name in
@@ -123,41 +201,13 @@ module Name = struct
     let file = to_string name in
     Fpath.(!tmpdir / "fifo" / file)
 
-  let block_name vm_name dev =
-    List.rev (dev :: List.rev (domain vm_name))
-
-  let of_string str =
-    let id = String.split_on_char '.' str in
-    if List.for_all valid_label id then
-      Ok id
-    else
-      Error (`Msg "invalid name")
-
-  let of_list labels =
-    if List.for_all valid_label labels then
-      Ok labels
-    else
-      Error (`Msg "invalid name")
-
-  let drop_super ~super ~sub =
-    let rec go sup sub = match sup, sub with
-      | [], xs -> Some xs
-      | _, [] -> None
-      | x::xs, z::zs -> if String.equal x z then go xs zs else None
-    in
-    go super sub
-
-  let is_sub ~super ~sub =
-    match drop_super ~super ~sub with None -> false | Some _ -> true
-
-  let pp ppf ids =
-    Fmt.(pf ppf "[vm: %a]" (list ~sep:(any ".") string) ids)
+  let block_name vm_name dev = path vm_name, Some dev
 
   let mac name bridge =
     (* deterministic mac address computation: VEB Kombinat Robotron prefix
        vielen dank, liebe genossen! *)
     let prefix = "\x00\x80\x41"
-    and ours = Digest.string (to_string (bridge :: name))
+    and ours = Digest.string (bridge ^ to_string name)
     in
     Macaddr.of_octets_exn (prefix ^ String.sub ours 0 3)
 end

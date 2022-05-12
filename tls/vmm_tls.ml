@@ -29,15 +29,6 @@ let cert_name cert =
         end
       | _ -> Ok None
 
-let name chain =
-  List.fold_left (fun acc cert ->
-      match acc, cert_name cert with
-      | Error e, _ -> Error e
-      | _, Error e -> Error e
-      | Ok acc, Ok None -> Ok acc
-      | Ok acc, Ok (Some data) -> Vmm_core.Name.append data acc)
-    (Ok Vmm_core.Name.root) chain
-
 (* this separates the leaf and top-level certificate from the chain,
    and also reverses the intermediates (to be (leaf, CA -> subCA -> subCA')
    in which subCA' signed leaf *)
@@ -68,13 +59,13 @@ let extract_policies chain =
           let* cn = cert_name cert in
           match cn with
           | None -> Ok prefix
-          | Some x -> Vmm_core.Name.prepend x prefix
+          | Some x -> Vmm_core.Name.append_path prefix x
         in
         Ok (name, (name, p) :: acc)
       | _, Ok wire ->
         Error (`Msg (Fmt.str "unexpected wire %a"
                        (Vmm_commands.pp ~verbose:false) (snd wire))))
-    (Ok (Vmm_core.Name.root, [])) chain
+    (Ok (Vmm_core.Name.root_path, [])) chain
 
 let handle chain =
   let* () =
@@ -85,20 +76,17 @@ let handle chain =
   in
   let* leaf, rest = separate_chain chain in
   (* use subject common names of intermediate certs as prefix *)
-  let* name' = name rest in
-  (* and subject common name of leaf certificate -- allowing dots in CN -- as postfix *)
+  let* path, policies = extract_policies rest in
+  (* and subject common name of leaf certificate -- as name *)
   let* name =
     let* cn = cert_name leaf in
     match cn with
-    | None | Some "." -> Ok name'
-    | Some x ->
-      let* post = Vmm_core.Name.of_string x in
-      Ok (Vmm_core.Name.concat name' post)
+    | None | Some "." | Some ":" -> Ok (Vmm_core.Name.create_of_path path)
+    | Some x -> Vmm_core.Name.create path x
   in
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
                  Vmm_core.Name.pp name Certificate.pp leaf
                  Fmt.(list ~sep:(any " -> ") Certificate.pp) rest);
-  let* _, policies = extract_policies rest in
   (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   match wire_command_of_cert leaf with
   | Error `Msg p -> Error (`Msg p)

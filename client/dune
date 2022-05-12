@@ -1,27 +1,30 @@
 (executable
-  (name albatross_client_bistro)
-  (public_name albatross-client-bistro)
-  (package albatross)
-  (modules albatross_client_bistro)
-  (libraries albatross.cli albatross albatross.tls albatross_tls_cli albatross_client_update happy-eyeballs-lwt))
+ (name albatross_client_bistro)
+ (public_name albatross-client-bistro)
+ (package albatross)
+ (modules albatross_client_bistro)
+ (libraries albatross.cli albatross albatross.tls albatross_tls_cli
+   albatross_client_update happy-eyeballs-lwt))
 
 (executable
-  (name albatross_client_local)
-  (public_name albatross-client-local)
-  (package albatross)
-  (modules albatross_client_local)
-  (libraries albatross.cli albatross albatross_client_update happy-eyeballs-lwt))
+ (name albatross_client_local)
+ (public_name albatross-client-local)
+ (package albatross)
+ (modules albatross_client_local)
+ (libraries albatross.cli albatross albatross_client_update
+   happy-eyeballs-lwt))
 
 (executable
-  (name albatross_client_remote_tls)
-  (public_name albatross-client-remote-tls)
-  (package albatross)
-  (modules albatross_client_remote_tls)
-  (libraries albatross.cli albatross albatross.tls albatross_tls_cli happy-eyeballs-lwt))
+ (name albatross_client_remote_tls)
+ (public_name albatross-client-remote-tls)
+ (package albatross)
+ (modules albatross_client_remote_tls)
+ (libraries albatross.cli albatross albatross.tls albatross_tls_cli
+   happy-eyeballs-lwt))
 
 (executable
-  (name albatross_client_inspect_dump)
-  (public_name albatross-client-inspect-dump)
-  (package albatross)
-  (modules albatross_client_inspect_dump)
-  (libraries albatross.cli albatross))
+ (name albatross_client_inspect_dump)
+ (public_name albatross-client-inspect-dump)
+ (package albatross)
+ (modules albatross_client_inspect_dump)
+ (libraries albatross.cli albatross))

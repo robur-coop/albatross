@@ -59,15 +59,18 @@ let jump opt_socket name cmd tmpdir =
       Albatross_cli.exit_status r
   )
 
-let info_policy _ opt_socket name =
-  jump opt_socket name (`Policy_cmd `Policy_info)
+let info_policy _ opt_socket path =
+  jump opt_socket (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd `Policy_info)
 
-let remove_policy _ opt_socket name =
-  jump opt_socket name (`Policy_cmd `Policy_remove)
+let remove_policy _ opt_socket path =
+  jump opt_socket (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd `Policy_remove)
 
-let add_policy _ opt_socket name vms memory cpus block bridges =
+let add_policy _ opt_socket path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump opt_socket name (`Policy_cmd (`Policy_add p))
+  jump opt_socket (Vmm_core.Name.create_of_path path)
+    (`Policy_cmd (`Policy_add p))
 
 let info_ _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_info)
@@ -148,7 +151,39 @@ let help _ _ man_format cmds = function
     `Ok Albatross_cli.Cli_failed
 
 open Cmdliner
+open Vmm_core
 open Albatross_cli
+
+let path_c =
+  Arg.conv
+    (Name.path_of_string,
+     fun ppf p -> Name.pp ppf (Name.create_of_path p))
+
+let opt_path =
+  let doc = "path to virtual machines." in
+  Arg.(value & opt path_c Name.root_path & info [ "p" ; "path"] ~doc)
+
+let path =
+  let doc = "path to virtual machines." in
+  Arg.(required & pos 0 (some path_c) None & info [] ~doc ~docv:"PATH")
+
+let vm_c = Arg.conv (Name.of_string, Name.pp)
+
+let opt_vm_name =
+  let doc = "name of virtual machine." in
+  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
+
+let vm_name =
+  let doc = "Name virtual machine." in
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
+
+let block_name =
+  let doc = "Name of block device." in
+  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK")
+
+let opt_block_name =
+  let doc = "Name of block device." in
+  Arg.(value & opt vm_c Name.root & info [ "name" ] ~doc)
 
 let socket =
   let doc = "Socket to connect to" in
@@ -173,7 +208,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   let term =
-    Term.(term_result (const remove_policy $ setup_log $ socket $ opt_vm_name $ tmpdir))
+    Term.(term_result (const remove_policy $ setup_log $ socket $ opt_path $ tmpdir))
   and info = Cmd.info "remove_policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -209,7 +244,7 @@ let policy_cmd =
      `P "Shows information about policies."]
   in
   let term =
-    Term.(term_result (const info_policy $ setup_log $ socket $ opt_vm_name $ tmpdir))
+    Term.(term_result (const info_policy $ setup_log $ socket $ opt_path $ tmpdir))
   and info = Cmd.info "policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -221,7 +256,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   let term =
-    Term.(term_result (const add_policy $ setup_log $ socket $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir))
+    Term.(term_result (const add_policy $ setup_log $ socket $ path $ vms $ mem $ cpus $ opt_block_size $ bridge $ tmpdir))
   and info = Cmd.info "add_policy" ~doc ~man ~exits
   in
   Cmd.v info term

@@ -1,8 +1,9 @@
 (library
-  (name albatross)
-  (public_name albatross)
-  (wrapped false)
-  (libraries logs ipaddr bos ptime duration cstruct
-             bigstringaf decompress.de decompress.zl lwt lwt.unix
-             ptime.clock.os asn1-combinators metrics mirage-crypto hex
-             solo5-elftool))
+ (name albatross)
+ (public_name albatross)
+ (instrumentation
+  (backend bisect_ppx))
+ (wrapped false)
+ (libraries logs ipaddr bos ptime duration cstruct bigstringaf decompress.de
+   decompress.zl lwt lwt.unix ptime.clock.os asn1-combinators metrics
+   mirage-crypto hex solo5-elftool))

@@ -255,11 +255,10 @@ let tick t =
               in
               let outs =
                 List.fold_left (fun out (id, (version, socket)) ->
-                    match Vmm_core.Name.drop_super ~super:id ~sub:vmid with
-                    | None -> Logs.err (fun m -> m "couldn't drop super %a from sub %a" Vmm_core.Name.pp id Vmm_core.Name.pp vmid) ; out
-                    | Some real_id ->
-                      let header = Vmm_commands.header ~version real_id in
-                      ((socket, id, (header, `Data (`Stats_data stats))) :: out))
+                    let listening_path = Vmm_core.Name.path id in
+                    let real_id = Vmm_core.Name.drop_prefix_exn vmid listening_path in
+                    let header = Vmm_commands.header ~version real_id in
+                    ((socket, id, (header, `Data (`Stats_data stats))) :: out))
                   out xs
               in
               outs, to_remove)

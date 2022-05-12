@@ -185,7 +185,19 @@ let host_port =
   in
   Arg.conv (parse, fun ppf (h, p) -> Format.fprintf ppf "%s:%d" h p)
 
-let vm_c = Arg.conv (Name.of_string, Name.pp)
+let label_c =
+  Arg.conv
+    ((fun s ->
+        if Name.valid_label s then Ok s else Error (`Msg "invalid label")),
+     Fmt.string)
+
+let opt_path =
+  let doc = "path to virtual machines." in
+  Arg.(value & opt label_c "." & info [ "p" ; "path"] ~doc)
+
+let path =
+  let doc = "path to virtual machines." in
+  Arg.(required & pos 0 (some label_c) None & info [] ~doc ~docv:"PATH")
 
 let bridge_tap_c =
   let parse s = match String.split_on_char ':' s with
@@ -210,7 +222,7 @@ let vmm_dev_req0 =
 
 let opt_vm_name =
   let doc = "name of virtual machine." in
-  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
+  Arg.(value & opt label_c "." & info [ "n" ; "name"] ~doc)
 
 let uri_c =
   let parse s =
@@ -253,11 +265,11 @@ let image =
 
 let vm_name =
   let doc = "Name virtual machine." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
+  Arg.(required & pos 0 (some label_c) None & info [] ~doc ~docv:"VM")
 
 let block_name =
   let doc = "Name of block device." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK")
+  Arg.(required & pos 0 (some label_c) None & info [] ~doc ~docv:"BLOCK")
 
 let block_size =
   let doc = "Block size in MB." in
@@ -281,7 +293,7 @@ let opt_block_data =
 
 let opt_block_name =
   let doc = "Name of block device." in
-  Arg.(value & opt vm_c Name.root & info [ "name" ] ~doc)
+  Arg.(value & opt label_c "." & info [ "name" ] ~doc)
 
 let opt_block_size =
   let doc = "Block storage to allow in MB" in

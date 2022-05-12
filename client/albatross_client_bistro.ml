@@ -34,7 +34,7 @@ let timestamps validity =
   | None, _ | _, None -> invalid_arg "span too big - reached end of ptime"
   | Some now, Some exp -> (now, exp)
 
-let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca key_type bits id (cmd : Vmm_commands.t) =
+let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca key_type bits name (cmd : Vmm_commands.t) =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
@@ -48,7 +48,6 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
     Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
   | Ok cert, Ok key ->
     let tmpkey = X509.Private_key.generate ~bits key_type in
-    let name = Vmm_core.Name.to_string id in
     let extensions =
       let v = Vmm_asn.to_cert_extension cmd in
       Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
@@ -108,15 +107,15 @@ let jump endp cert key ca key_type bits name cmd =
       Albatross_cli.exit_status r
   )
 
-let info_policy _ endp cert key ca key_type bits name =
-  jump endp cert key ca key_type bits name (`Policy_cmd `Policy_info)
+let info_policy _ endp cert key ca key_type bits path =
+  jump endp cert key ca key_type bits path (`Policy_cmd `Policy_info)
 
-let remove_policy _ endp cert key ca key_type bits name =
-  jump endp cert key ca key_type bits name (`Policy_cmd `Policy_remove)
+let remove_policy _ endp cert key ca key_type bits path =
+  jump endp cert key ca key_type bits path (`Policy_cmd `Policy_remove)
 
-let add_policy _ endp cert key ca key_type bits name vms memory cpus block bridges =
+let add_policy _ endp cert key ca key_type bits path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump endp cert key ca key_type bits name (`Policy_cmd (`Policy_add p))
+  jump endp cert key ca key_type bits path (`Policy_cmd (`Policy_add p))
 
 let info_ _ endp cert key ca key_type bits name =
   jump endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_info)
@@ -229,7 +228,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   let term =
-    Term.(term_result (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name))
+    Term.(term_result (const remove_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_path))
   and info = Cmd.info "remove_policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -265,7 +264,7 @@ let policy_cmd =
      `P "Shows information about policies."]
   in
   let term =
-    Term.(term_result (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name))
+    Term.(term_result (const info_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_path))
   and info = Cmd.info "policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -277,7 +276,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   let term =
-    Term.(term_result (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name $ vms $ mem $ cpus $ opt_block_size $ bridge))
+    Term.(term_result (const add_policy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ path $ vms $ mem $ cpus $ opt_block_size $ bridge))
   and info = Cmd.info "add_policy" ~doc ~man ~exits
   in
   Cmd.v info term

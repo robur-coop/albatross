@@ -16,4 +16,4 @@ val collect : Name.t -> 'a t -> (Name.t * 'a) list
 
 val all : 'a t -> (Name.t * 'a) list
 
-val fold : Name.t -> 'a t -> (Name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
+val fold : Name.path -> 'a t -> (Name.t -> 'a -> 'b -> 'b) -> 'b -> 'b

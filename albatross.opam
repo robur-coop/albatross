@@ -7,8 +7,8 @@ bug-reports: "https://github.com/roburio/albatross/issues"
 license: "ISC"
 
 depends: [
-  "ocaml" {>= "4.10.0"}
-  "dune"
+  "ocaml" {>= "4.12.0"}
+  "dune" {>= "2.7.0"}
   "dune-configurator"
   "conf-pkg-config" {build}
   "conf-libnl3" {os = "linux"}
@@ -38,6 +38,7 @@ depends: [
   "happy-eyeballs-lwt"
   "solo5-elftool" {>= "0.3"}
   "owee" {>= "0.4"}
+  "alcotest" {with-test}
 ]
 build: [
   ["dune" "subst"] {dev}
