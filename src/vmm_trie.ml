@@ -1,5 +1,7 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
+(* each node may have a value (of type 'a), the boolean represents whether it
+   is a path or a name (i.e. foo:bar: <value> or foo:bar <value>). *)
 type 'a t = N of ('a * bool) option * 'a t Vmm_core.String_map.t
 
 let empty = N (None, Vmm_core.String_map.empty)
