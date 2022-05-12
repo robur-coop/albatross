@@ -19,8 +19,8 @@ let insert id e t =
       let entry, ret = go e n xs in
       N (es, Vmm_core.String_map.add x entry m), ret
   in
-  let path = Option.is_none (Vmm_core.Name.name id) in
-  go (e, path) t (Vmm_core.Name.to_list id)
+  let is_path = Option.is_none (Vmm_core.Name.name id) in
+  go (e, is_path) t (Vmm_core.Name.to_list id)
 
 let remove id t =
   let rec go (N (es, m)) = function
@@ -61,7 +61,7 @@ let append_name prefix name =
     let pre_path = Vmm_core.Name.path prefix in
     Option.fold
       ~none:pre_path
-      ~some:(fun name -> Vmm_core.Name.append_path_exn pre_path name)
+      ~some:(fun prefix_name -> Vmm_core.Name.append_path_exn pre_path prefix_name)
       (Vmm_core.Name.name prefix)
   in
   Option.fold
@@ -74,8 +74,8 @@ let collect id t =
     let acc' =
       match es with
       | None -> acc
-      | Some (e, path) ->
-        let name = if path then append_name prefix None else prefix in
+      | Some (e, is_path) ->
+        let name = if is_path then append_name prefix None else prefix in
         (name, e) :: acc
     in
     function
@@ -92,8 +92,8 @@ let all t =
     let acc' =
       match es with
       | None -> acc
-      | Some (e, path) ->
-        let name = if path then append_name prefix None else prefix in
+      | Some (e, is_path) ->
+        let name = if is_path then append_name prefix None else prefix in
         (name, e) :: acc
     in
     List.fold_left (fun acc (name, node) ->
@@ -109,8 +109,7 @@ let fold path t f acc =
         if name = "" then
           prefix_path
         else
-          let pre = Vmm_core.Name.path_to_list prefix_path in
-          Result.get_ok (Vmm_core.Name.path_of_list (pre @ [ name ]))
+          Vmm_core.Name.append_path_exn prefix_path name
       in
       Vmm_core.String_map.fold (fun name node acc ->
           explore node prefix name acc)
@@ -118,11 +117,12 @@ let fold path t f acc =
     in
     match es with
     | None -> acc'
-    | Some (e, path) ->
+    | Some (e, is_path) ->
       let name = Vmm_core.Name.create_exn prefix_path name in
-      let name = if path then append_name name None else name in
+      let name = if is_path then append_name name None else name in
       f name e acc'
-  and down prefix (N (es, m)) =
+  in
+  let rec down prefix (N (es, m)) =
     match prefix with
     | [] -> explore (N (es, m)) Vmm_core.Name.root_path "" acc
     | x :: xs -> match Vmm_core.String_map.find_opt x m with
