@@ -1,3 +1,32 @@
+# v1.5.0 (2022-05-16)
+
+- Revise Name.t to use ':' as path separation, and allow '.' in labels.
+  Previously the path was built by the common name in the X.509 certificate
+  chain and the leaf certificate was appended (i.e. chain certificate "foo",
+  chain certificate "bar", leaf certificate "my.unikernel" lead to the name
+  "foo.bar.my.unikernel" -- and chain certificate "foo", leaf "bar.my.unikernel"
+  lead to the identical name). Since the holder of the certificate and private
+  key "foo" could issue at any point another intermediate certificate for "bar",
+  this is not security critical -- but for resource management this was
+  confusing and lead to some issues (policy could be violated).
+  Now, the path separator is ':' (i.e. "foo:bar:my.unikernel" and
+  "foo:bar.my.unikernel").
+  In addition, various test cases have been added, for vmm_trie, vmm_resources
+  and also for old and new wire versions (albatross daemon state, command
+  execution) to ensure that old clients continue to work with new server
+  components. The wire version has been bumped to WV5, since the Name.t encoding
+  was changed. (#111, @hannesm @reynir)
+- systemd: fifo are created by albatross_daemon (not albatross_console) (#106,
+  @reynir)
+- systemd: cleanup, use group albatross, (#108, fixes #105, @reynir)
+- documentation: remove solo5-elftool requirement -- since 1.4.0
+  ocaml-solo5-elftool is used (#109 @hannesm)
+- CI execute tests (#112, @hannesm)
+- fix URL to builder-web (https://builds.robur.coop) which dropped the
+  opam-switch postfix in the URL (#113 @hannesm)
+- albatross-client-local, albatross-client-bistro: support remote (socket/host)
+  '-' to output the command as hexdump (PEM file) on standard output (@hannesm)
+
 # v1.4.3 (2022-03-15)
 
 - Debian packaging: set architecture to DEB_TARGET_ARCH (@reynir)
