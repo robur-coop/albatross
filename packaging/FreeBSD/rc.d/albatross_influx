@@ -3,7 +3,7 @@
 # $FreeBSD$
 #
 # PROVIDE: albatross_influx
-# REQUIRE: LOGIN albatross_stat
+# REQUIRE: LOGIN albatross_stats
 # KEYWORD: shutdown
 #
 # Define these albatross_influx_* variables in one of these files
@@ -60,7 +60,7 @@ my_force_depend()
 }
 
 albatross_influx_precmd() {
-    my_force_depend albatross_stat || err 1 "Cannot run albatross_stat"
+    my_force_depend albatross_stats || err 1 "Cannot run albatross_stats"
 }
 
 albatross_influx_start () {

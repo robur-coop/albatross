@@ -201,12 +201,13 @@ let rec read_sock_write_tcp drop c ?fd fam addr =
       true
     | Ok (hdr, `Data (`Stats_data (ru, mem, vmm, ifs))) ->
       let name =
-        let orig = hdr.Vmm_commands.name
-        and f = if drop then Name.drop_path else (fun a -> a)
-        in
-        let n = f orig in
-        let safe = if Name.is_root n then orig else n in
-        Name.to_string safe
+        let orig = hdr.Vmm_commands.name in
+        if drop then
+          match Name.name orig with
+          | None -> Name.to_string orig
+          | Some x -> x
+        else
+          Name.to_string orig
       in
       let ru = P.encode_ru name ru in
       let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
