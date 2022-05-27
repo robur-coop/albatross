@@ -22,7 +22,7 @@ trap 'rm -rf $tmpd' 0 INT EXIT
 mkdir -p "$sbindir" "$libexecdir" "$rcdir"
 
 # stage service scripts
-for f in albatross_stat \
+for f in albatross_stats \
 	 albatross_console \
 	 albatross_daemon \
 	 albatross_influx \
