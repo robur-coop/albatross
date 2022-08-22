@@ -213,8 +213,8 @@ let gather pid vmctx nics =
       | Some data -> { data with Stats.bridge }::ifd)
     [] nics
 
-let tick t =
-  let pid_nic = try_open_vmmapi t.pid_nic in
+let tick gather_bhyve t =
+  let pid_nic = if gather_bhyve then try_open_vmmapi t.pid_nic else t.pid_nic in
   let t' = { t with pid_nic } in
   let outs, to_remove =
     List.fold_left (fun (out, to_remove) (vmid, pid) ->
