@@ -15,10 +15,7 @@ type vmctx
 
 external vmmapi_open : string -> vmctx = "vmmanage_vmmapi_open"
 external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
-external vmmapi_statnames : vmctx -> string list = "vmmanage_vmmapi_statnames"
-external vmmapi_stats : vmctx -> int64 list = "vmmanage_vmmapi_stats"
-
-let descr = ref []
+external vmmapi_stats : vmctx -> (string * int64) list = "vmmanage_vmmapi_stats"
 
 type 'a t = {
   pid_nic : ((vmctx, int) result * string * (string * int * string) list) IM.t ;
@@ -61,19 +58,6 @@ let remove_vmid t vmid =
     in
     { t with pid_nic ; vmid_pid }
 
-let fill_descr ctx =
-  match !descr with
-  | [] ->
-    begin match wrap vmmapi_statnames ctx with
-      | None ->
-        Logs.err (fun m -> m "vmmapi_statnames failed, shouldn't happen") ;
-        ()
-      | Some d ->
-        Logs.debug (fun m -> m "descr are %a" pp_strings d) ;
-        descr := d
-    end
-  | ds -> Logs.debug (fun m -> m "%d descr are already present" (List.length ds))
-
 let open_vmmapi ~retries name =
   if retries = 0 then begin
     Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %s" name) ;
@@ -87,7 +71,6 @@ let open_vmmapi ~retries name =
     | Some vmctx ->
       vmmapi `Open;
       Logs.info (fun m -> m "vmmapi_open succeeded for %s" name) ;
-      fill_descr vmctx ;
       Ok vmctx
 
 let try_open_vmmapi pid_nic =
@@ -230,8 +213,8 @@ let gather pid vmctx nics =
       | Some data -> { data with Stats.bridge }::ifd)
     [] nics
 
-let tick t =
-  let pid_nic = try_open_vmmapi t.pid_nic in
+let tick gather_bhyve t =
+  let pid_nic = if gather_bhyve then try_open_vmmapi t.pid_nic else t.pid_nic in
   let t' = { t with pid_nic } in
   let outs, to_remove =
     List.fold_left (fun (out, to_remove) (vmid, pid) ->
@@ -250,8 +233,7 @@ let tick t =
               out, vmid :: to_remove
             | Some ru' ->
               let stats =
-                let vmm' = match vmm with None -> None | Some xs -> Some (List.combine !descr xs) in
-                ru', mem, vmm', ifd
+                ru', mem, vmm, ifd
               in
               let outs =
                 List.fold_left (fun out (id, (version, socket)) ->

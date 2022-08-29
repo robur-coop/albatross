@@ -26,8 +26,7 @@ let timer pid vmmapi interval =
   | None -> ()
   | Some vmctx -> match wrap vmmapi_stats vmctx with
     | None -> Logs.app (fun m -> m "no vmctx stats")
-    | Some st ->
-      let all = List.combine !descr st in
+    | Some all ->
       Logs.app (fun m -> m "bhyve stats %a" Stats.pp_vmm_mem all)
 
 let jump _ pid name interval tmpdir =
@@ -45,7 +44,6 @@ let jump _ pid name interval tmpdir =
           None
         | Some vmctx ->
           Logs.info (fun m -> m "vmmapi_open succeeded for %s" name) ;
-          fill_descr vmctx ;
           Some vmctx
     in
     let _ev = Lwt_engine.on_timer interval true (fun _e -> timer pid vmmapi interval) in
