@@ -59,11 +59,11 @@ let prepare_update ~happy_eyeballs level host dryrun = function
         Logs.app (fun m -> m "already up to date");
         Lwt.return (Error Albatross_cli.Success)
       | Ok (_, old_uuid, new_uuid) when dryrun ->
-        Logs.app (fun m -> m "compare at %s/compare/%s/%s/"
+        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
         Lwt.return (Error Albatross_cli.Success)
       | Ok (job, old_uuid, new_uuid) ->
-        Logs.app (fun m -> m "compare at %s/compare/%s/%s/"
+        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
         http_get_binary ~happy_eyeballs host job new_uuid >>= function
         | Error `Msg msg ->
