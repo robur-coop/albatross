@@ -431,41 +431,6 @@ let v2_unikernel_config =
                                 (optional ~label:"bridge" utf8_string)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
-let v3_unikernel_config =
-  let open Unikernel in
-  let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
-    let bridges = match bridges with None -> [] | Some xs -> List.map (fun (a,b) -> a,b,None) xs
-    and block_devices = match blocks with None -> [] | Some xs -> xs
-    in
-    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g (vm : config) =
-    let bridges =
-      match vm.bridges with
-      | [] -> None
-      | xs -> Some (List.map (fun (a, b, _) -> a, b) xs)
-    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
-    in
-    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
-  in
-  Asn.S.(map f g @@ sequence @@
-           (required ~label:"typ" typ)
-         @ (required ~label:"compressed" bool)
-         @ (required ~label:"image" octet_string)
-         @ (required ~label:"fail-behaviour" fail_behaviour)
-         @ (required ~label:"cpuid" int)
-         @ (required ~label:"memory" int)
-         @ (optional ~label:"blocks"
-              (my_explicit 0 (set_of
-                                (sequence2
-                                   (required ~label:"block-name" utf8_string)
-                                   (optional ~label:"block-device-name" utf8_string)))))
-         @ (optional ~label:"bridges"
-              (my_explicit 1 (set_of
-                             (sequence2
-                                (required ~label:"netif" utf8_string)
-                                (optional ~label:"bridge" utf8_string)))))
-        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
-
 let unikernel_config =
   let open Unikernel in
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
@@ -513,19 +478,17 @@ let unikernel_cmd =
     | `C2 `C4 vm -> `Unikernel_create vm
     | `C2 `C5 vm -> `Unikernel_force_create vm
     | `C2 `C6 level -> `Unikernel_get level
-    | `C3 `C1 vm -> `Unikernel_create vm
-    | `C3 `C2 vm -> `Unikernel_force_create vm
   and g = function
     | `Old_unikernel_info -> `C1 (`C1 ())
-    | `Unikernel_create vm -> `C3 (`C1 vm)
-    | `Unikernel_force_create vm -> `C3 (`C2 vm)
+    | `Unikernel_create vm -> `C2 (`C4 vm)
+    | `Unikernel_force_create vm -> `C2 (`C5 vm)
     | `Unikernel_destroy -> `C1 (`C4 ())
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Unikernel_info -> `C2 (`C2 ())
     | `Unikernel_get level -> `C2 (`C6 level)
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice2
           (choice6
              (my_explicit 0 ~label:"info-OLD" null)
              (my_explicit 1 ~label:"create-OLD1" v1_unikernel_config)
@@ -537,12 +500,9 @@ let unikernel_cmd =
              (my_explicit 6 ~label:"get-OLD" null)
              (my_explicit 7 ~label:"info" null)
              (my_explicit 8 ~label:"get-OLD2" null)
-             (my_explicit 9 ~label:"create-OLD3" v3_unikernel_config)
-             (my_explicit 10 ~label:"force-create-OLD3" v3_unikernel_config)
-             (my_explicit 11 ~label:"get" int))
-          (choice2
-            (my_explicit 12 ~label:"create" unikernel_config)
-            (my_explicit 13 ~label:"force-create" unikernel_config)))
+             (my_explicit 9 ~label:"create" unikernel_config)
+             (my_explicit 10 ~label:"force-create" unikernel_config)
+             (my_explicit 11 ~label:"get" int)))
 
 let policy_cmd =
   let f = function
