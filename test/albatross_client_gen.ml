@@ -14,7 +14,7 @@ let u2 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
-    bridges = [ "service", Some "bridge-interface", None ] ;
+    bridges = [ "service", Some "bridge-interface", Some (Macaddr.of_string_exn "00:de:ad:be:ef:00") ] ;
     argv = None ;
   }
 

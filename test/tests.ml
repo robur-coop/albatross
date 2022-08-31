@@ -955,6 +955,16 @@ let unikernels1_path =
   let t = ins "foo:my.nice.unikernel" u1_1 t in
   ins "bar:my.nice.unikernel" u2_1 t
 
+let unikernels_with_mac =
+  let u2 =
+    let bridges = [ "service", Some "bridge-interface", Some (Macaddr.of_string_exn "00:de:ad:be:ef:00") ] in
+    { u2_3 with bridges }
+  in
+  let t = ins "foo:hello" u1_3 Vmm_trie.empty in
+  let t = ins "bar:hello" u2 t in
+  let t = ins "foo:my.nice.unikernel" u1_3 t in
+  ins "bar:my.nice.unikernel" u2 t
+
 let wire4_unikernel3_path () =
   let trie = dec_b64_unik ~migrate_name:true wire4_unikernel3_data in
   Alcotest.check test_unikernels __LOC__ unikernels3_path trie
@@ -1015,6 +1025,13 @@ let wire5_unikernel1_path_migrate () =
   let trie = dec_b64_unik ~migrate_name:true wire5_unikernel1_path_data in
   Alcotest.check test_unikernels __LOC__ unikernels1_path trie
 
+let wire5_unikernel3_with_mac () =
+  let data =
+    {|o4IBwDCCAbwwSQwJYmFyOmhlbGxvMDygAgUAAQEABACgAgUAAgECAgEKoScxJTAjDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlBAYA3q2+7wAwVQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDygAgUAAQEABACgAgUAAgECAgEKoScxJTAjDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlBAYA3q2+7wAwgYQMCWZvbzpoZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgZAMFWZvbzpteS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWc=|}
+  in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels_with_mac trie
+
 let wire_tests = [
   "Wire version 4, unikernel version 3", `Quick, wire4_unikernel3 ;
   "Wire version 4, unikernel version 2", `Quick, wire4_unikernel2 ;
@@ -1034,6 +1051,7 @@ let wire_tests = [
   "Wire version 5, unikernel version 3, path, migrate", `Quick, wire5_unikernel3_path_migrate ;
   "Wire version 5, unikernel version 2, path, migrate", `Quick, wire5_unikernel2_path_migrate ;
   "Wire version 5, unikernel version 1, path, migrate", `Quick, wire5_unikernel1_path_migrate ;
+  "Wire version 5, unikernel version 3, with mac", `Quick, wire5_unikernel3_with_mac ;
 ]
 
 let tests = [
