@@ -2,7 +2,7 @@ open Lwt.Infix
 
 let job_and_build loc =
   match String.split_on_char '/' loc with
-  | "" :: "job" :: jobname :: "build" :: uuid :: "" :: [] -> Ok (jobname, uuid)
+  | "" :: "job" :: jobname :: "build" :: uuid :: [] -> Ok (jobname, uuid)
   | _ -> Error (`Msg ("expected '/job/<jobname>/build/<uuid>', got: " ^ loc))
 
 let http_get_redirect ~happy_eyeballs uri =
@@ -23,7 +23,7 @@ let retrieve_build ~happy_eyeballs host hash =
    Lwt_result.bind_result (http_get_redirect ~happy_eyeballs uri) job_and_build
 
 let retrieve_latest_build ~happy_eyeballs host jobname =
-  let uri = host ^ "/job/" ^ jobname ^ "/build/latest/" in
+  let uri = host ^ "/job/" ^ jobname ^ "/build/latest" in
   Lwt_result.bind_result (http_get_redirect ~happy_eyeballs uri) job_and_build
 
 let can_update ~happy_eyeballs host hash =
@@ -59,11 +59,11 @@ let prepare_update ~happy_eyeballs level host dryrun = function
         Logs.app (fun m -> m "already up to date");
         Lwt.return (Error Albatross_cli.Success)
       | Ok (_, old_uuid, new_uuid) when dryrun ->
-        Logs.app (fun m -> m "compare at %s/compare/%s/%s/"
+        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
         Lwt.return (Error Albatross_cli.Success)
       | Ok (job, old_uuid, new_uuid) ->
-        Logs.app (fun m -> m "compare at %s/compare/%s/%s/"
+        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
         http_get_binary ~happy_eyeballs host job new_uuid >>= function
         | Error `Msg msg ->
