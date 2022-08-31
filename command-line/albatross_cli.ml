@@ -320,7 +320,8 @@ let args =
   Arg.(value & opt_all string [] & info [ "arg" ] ~doc)
 
 let colon_separated_c =
-  let parse s = match String.split_on_char ':' s with
+  let parse s =
+    match String.split_on_char ':' s with
     | [ a ; b ] -> Ok (a, Some b)
     | [ _ ] -> Ok (s, None)
     | _ -> Error (`Msg "format is 'name' or 'name:device-name'")
@@ -333,9 +334,28 @@ let block =
   let doc = "Block device name (block or name:block-device-name)" in
   Arg.(value & opt_all colon_separated_c [] & info [ "block" ] ~doc)
 
+let net_with_mac =
+  let parse_net = Arg.conv_parser colon_separated_c in
+  let pp_net = Arg.conv_printer colon_separated_c in
+  let parse s =
+    let ( let* ) = Result.bind in
+    match String.split_on_char '@' s with
+    | [ net ] ->
+      let* (name, device_name) = parse_net net in
+      Ok (name, device_name, None)
+    | [ net; mac ] ->
+      let* mac = Macaddr.of_string mac in
+      let* (name, device_name) = parse_net net in
+      Ok (name, device_name, Some mac)
+    | _ -> Error (`Msg "format is [name:]bridge[@mac]")
+  and pp ppf (a, b, c) =
+    Fmt.pf ppf "%a%a" pp_net (a, b) Fmt.(option ((any "@") ++ Macaddr.pp)) c
+  in
+  Arg.conv (parse, pp)
+
 let net =
-  let doc = "Network device names (bridge or name:bridge)" in
-  Arg.(value & opt_all colon_separated_c [] & info [ "net" ] ~doc)
+  let doc = "Network device names ([name:]bridge[@mac])" in
+  Arg.(value & opt_all net_with_mac [] & info [ "net" ] ~doc)
 
 let restart_on_fail =
   let doc = "Restart on fail" in

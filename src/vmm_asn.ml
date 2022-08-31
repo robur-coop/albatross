@@ -164,6 +164,15 @@ let int64 =
   in
   Asn.S.map f g Asn.S.octet_string
 
+let mac_addr =
+  let f cs =
+    Result.fold (Macaddr.of_octets (Cstruct.to_string cs))
+      ~ok:Fun.id
+      ~error:(function `Msg e -> Asn.S.parse_error "bad mac address: %s" e)
+  and g mac = Cstruct.of_string (Macaddr.to_octets mac)
+  in
+  Asn.S.map f g Asn.S.octet_string
+
 let timeval =
   Asn.S.(sequence2
            (required ~label:"seconds" int64)
@@ -347,7 +356,7 @@ let v0_unikernel_config =
   in
   let open Unikernel in
   let f (cpuid, memory, block_device, network_interfaces, image, argv) =
-    let bridges = match network_interfaces with None -> [] | Some xs -> List.map (fun n -> n, None) xs
+    let bridges = match network_interfaces with None -> [] | Some xs -> List.map (fun n -> n, None, None) xs
     and block_devices = match block_device with None -> [] | Some b -> [ (b, None) ]
     in
     let typ = `Solo5
@@ -372,7 +381,7 @@ let v0_unikernel_config =
 let v1_unikernel_config =
   let open Unikernel in
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
-    let bridges = match bridges with None -> [] | Some xs -> List.map (fun b -> b, None) xs
+    let bridges = match bridges with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None) xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
@@ -392,12 +401,15 @@ let v1_unikernel_config =
 let v2_unikernel_config =
   let open Unikernel in
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
-    let bridges = match bridges with None -> [] | Some xs -> xs
+    let bridges = match bridges with None -> [] | Some xs -> List.map (fun (a, b) -> (a, b, None)) xs
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None) xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (vm : config) =
-    let bridges = match vm.bridges with [] -> None | xs -> Some xs
+    let bridges =
+      match vm.bridges with
+      | [] -> None
+      | xs -> Some (List.map (fun (a, b, _) -> a, b) xs)
     and blocks = match vm.block_devices with
       | [] -> None
       | xs -> Some (List.map fst xs)
@@ -446,9 +458,10 @@ let unikernel_config =
                                    (optional ~label:"block-device-name" utf8_string)))))
          @ (optional ~label:"bridges"
               (my_explicit 1 (set_of
-                             (sequence2
+                             (sequence3
                                 (required ~label:"netif" utf8_string)
-                                (optional ~label:"bridge" utf8_string)))))
+                                (optional ~label:"bridge" utf8_string)
+                                (optional ~label:"mac" mac_addr)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
 let unikernel_cmd =
@@ -614,9 +627,10 @@ let unikernel_info =
                                    (optional ~label:"block-device-name" utf8_string)))))
          @ (optional ~label:"bridges"
               (my_explicit 1 (set_of
-                                (sequence2
+                                (sequence3
                                    (required ~label:"net-name" utf8_string)
-                                   (optional ~label:"bridge-name" utf8_string)))))
+                                   (optional ~label:"bridge-name" utf8_string)
+                                   (optional ~label:"mac" mac_addr)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
 let header name =

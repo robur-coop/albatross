@@ -238,12 +238,12 @@ let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
 
 let manifest_devices_match ~bridges ~block_devices image =
   let* things = solo5_image_devices image in
-  let bridges = List.map fst bridges
+  let bridges = List.map (fun (b,_,_) -> b) bridges
   and block_devices = List.map fst block_devices
   in
   devices_match ~bridges ~block_devices things
 
-let bridge_name (service, b) = match b with None -> service | Some b -> b
+let bridge_name (service, b, _mac) = match b with None -> service | Some b -> b
 
 let bridge_exists bridge_name =
   let cmd =
@@ -302,7 +302,8 @@ let prepare name (vm : Unikernel.config) =
         let* acc = acc in
         let bridge = bridge_name arg in
         let* tap = create_tap bridge in
-        Ok ((fst arg, tap) :: acc))
+        let (service, _, mac) = arg in
+        Ok ((service, tap, mac) :: acc))
       (Ok []) vm.Unikernel.bridges
   in
   Ok (List.rev taps, digest)
@@ -330,8 +331,8 @@ let cpuset cpu =
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let net, macs =
     List.split
-      (List.map (fun (bridge, tap) ->
-           let mac = Name.mac name bridge in
+      (List.map (fun (bridge, tap, mac) ->
+           let mac = Option.value mac ~default:(Name.mac name bridge) in
            "--net:" ^ bridge ^ "=" ^ tap,
            "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
           bridge_taps)
@@ -374,7 +375,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     (* we gave a copy (well, two copies) of that file descriptor to the solo5
        process and don't really need it here anymore... *)
     close_no_err stdout ;
-    let taps = snd (List.split bridge_taps) in
+    let taps = List.map (fun (_,tap,_) -> tap) bridge_taps in
     Ok Unikernel.{ config ; cmd ; pid ; taps ; digest }
   with
     Unix.Unix_error (e, _, _) ->

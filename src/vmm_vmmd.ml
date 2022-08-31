@@ -152,7 +152,7 @@ let setup_stats t name vm =
     let name = match Vmm_unix.vm_device vm with
       | Error _ -> ""
       | Ok name -> name
-    and ifs = Unikernel.(List.combine (List.map fst vm.config.bridges) vm.taps)
+    and ifs = Unikernel.(List.combine (List.map (fun (x,_,_) -> x) vm.config.bridges) vm.taps)
     in
     `Stats_add (name, vm.Unikernel.pid, ifs)
   in
@@ -175,9 +175,11 @@ let handle_create t name vm_config =
   let* () = Vmm_resources.check_vm t.resources name vm_config in
   (* prepare VM: save VM image to disk, create fifo, ... *)
   let* taps, digest = Vmm_unix.prepare name vm_config in
+  let pp_tap ppf (a, b, mac) =
+    Fmt.pf ppf "%s -> %s%a" a b Fmt.(option ((any "@") ++ Macaddr.pp)) mac
+  in
   Logs.debug (fun m -> m "prepared vm with taps %a"
-                 Fmt.(list ~sep:(any ",@ ") (pair ~sep:(any " -> ") string string))
-                 taps) ;
+                 Fmt.(list ~sep:(any ",@ ") pp_tap) taps) ;
   let cons_out =
     let header = Vmm_commands.header ~sequence:t.console_counter name in
     (header, `Command (`Console_cmd `Console_add))
@@ -204,7 +206,7 @@ let handle_create t name vm_config =
     let t, stat_out = setup_stats t name vm in
     Ok (t, stat_out, `Success (`String "created VM"), name, vm)
   and fail () =
-    match Vmm_unix.free_system_resources name (List.map snd taps) with
+    match Vmm_unix.free_system_resources name (List.map (fun (_,tap,_) -> tap) taps) with
     | Ok () -> `Failure "could not create VM: console failed"
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in

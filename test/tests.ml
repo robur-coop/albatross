@@ -245,6 +245,11 @@ let unikernel_config_eq =
   let eq_pair_list_opt =
     List.equal (fun (n, dopt) (n', dopt') ->
         String.equal n n' && Option.equal String.equal dopt dopt')
+  and eq_triple_list_opt =
+    List.equal (fun (n, dopt, mopt) (n', dopt', mopt') ->
+        String.equal n n' &&
+        Option.equal String.equal dopt dopt' &&
+        Option.equal (fun a b -> Macaddr.compare a b = 0) mopt mopt')
   in
   fun (a : config) (b : config) ->
     a.typ = b.typ && a.compressed = b.compressed &&
@@ -256,7 +261,7 @@ let unikernel_config_eq =
      | _ -> false) &&
     a.cpuid = b.cpuid && a.memory = b.memory &&
     eq_pair_list_opt a.block_devices b.block_devices &&
-    eq_pair_list_opt a.bridges b.bridges &&
+    eq_triple_list_opt a.bridges b.bridges &&
     Option.equal (List.equal String.equal) a.argv b.argv
 
 let unikernel_eq (a : Unikernel.t) (b : Unikernel.t) =
@@ -281,7 +286,7 @@ let u =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 10 ;
     block_devices = [] ;
-    bridges = [ "service", None ] ;
+    bridges = [ "service", None, None ] ;
     argv = Some [ "-l *:debug" ] ;
   }
 
@@ -320,7 +325,7 @@ let policy_is_respected_vm () =
   let u' = { u with memory = 11 } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "too much memory"))
     (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u');
-  let u' = { u with bridges = [ "service2", None ] } in
+  let u' = { u with bridges = [ "service2", None, None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "wrong bridge"))
     (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u')
 
@@ -832,7 +837,7 @@ let u1_3 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
-    bridges = [ "service", None ; "other-net", Some "second-bridge" ] ;
+    bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
   }
 
@@ -841,7 +846,7 @@ let u2_3 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
-    bridges = [ "service", Some "bridge-interface" ] ;
+    bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;
   }
 
@@ -885,10 +890,10 @@ let wire4_unikernel2 () =
 let u1_1 =
   Unikernel.{ u1_3 with
                        block_devices = [ "block", None ; "secondblock", None ];
-                       bridges = [ "service", None ; "other-net", None ] }
+                       bridges = [ "service", None, None ; "other-net", None, None ] }
 
 let u2_1 =
-  Unikernel.{ u2_3 with bridges = [ "service", None ] }
+  Unikernel.{ u2_3 with bridges = [ "service", None, None ] }
 
 let unikernels1 =
   let t = ins "foo.hello" u1_1 Vmm_trie.empty in
@@ -950,6 +955,16 @@ let unikernels1_path =
   let t = ins "foo:my.nice.unikernel" u1_1 t in
   ins "bar:my.nice.unikernel" u2_1 t
 
+let unikernels_with_mac =
+  let u2 =
+    let bridges = [ "service", Some "bridge-interface", Some (Macaddr.of_string_exn "00:de:ad:be:ef:00") ] in
+    { u2_3 with bridges }
+  in
+  let t = ins "foo:hello" u1_3 Vmm_trie.empty in
+  let t = ins "bar:hello" u2 t in
+  let t = ins "foo:my.nice.unikernel" u1_3 t in
+  ins "bar:my.nice.unikernel" u2 t
+
 let wire4_unikernel3_path () =
   let trie = dec_b64_unik ~migrate_name:true wire4_unikernel3_data in
   Alcotest.check test_unikernels __LOC__ unikernels3_path trie
@@ -1010,6 +1025,13 @@ let wire5_unikernel1_path_migrate () =
   let trie = dec_b64_unik ~migrate_name:true wire5_unikernel1_path_data in
   Alcotest.check test_unikernels __LOC__ unikernels1_path trie
 
+let wire5_unikernel3_with_mac () =
+  let data =
+    {|o4IBwDCCAbwwSQwJYmFyOmhlbGxvMDygAgUAAQEABACgAgUAAgECAgEKoScxJTAjDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlBAYA3q2+7wAwVQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDygAgUAAQEABACgAgUAAgECAgEKoScxJTAjDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlBAYA3q2+7wAwgYQMCWZvbzpoZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgZAMFWZvbzpteS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWc=|}
+  in
+  let trie = dec_b64_unik ~migrate_name:false data in
+  Alcotest.check test_unikernels __LOC__ unikernels_with_mac trie
+
 let wire_tests = [
   "Wire version 4, unikernel version 3", `Quick, wire4_unikernel3 ;
   "Wire version 4, unikernel version 2", `Quick, wire4_unikernel2 ;
@@ -1029,6 +1051,7 @@ let wire_tests = [
   "Wire version 5, unikernel version 3, path, migrate", `Quick, wire5_unikernel3_path_migrate ;
   "Wire version 5, unikernel version 2, path, migrate", `Quick, wire5_unikernel2_path_migrate ;
   "Wire version 5, unikernel version 1, path, migrate", `Quick, wire5_unikernel1_path_migrate ;
+  "Wire version 5, unikernel version 3, with mac", `Quick, wire5_unikernel3_with_mac ;
 ]
 
 let tests = [
