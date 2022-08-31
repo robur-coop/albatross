@@ -175,9 +175,11 @@ let handle_create t name vm_config =
   let* () = Vmm_resources.check_vm t.resources name vm_config in
   (* prepare VM: save VM image to disk, create fifo, ... *)
   let* taps, digest = Vmm_unix.prepare name vm_config in
+  let pp_tap ppf (a, b, mac) =
+    Fmt.pf ppf "%s -> %s%a" a b Fmt.(option ((any "@") ++ Macaddr.pp)) mac
+  in
   Logs.debug (fun m -> m "prepared vm with taps %a"
-                 Fmt.(list ~sep:(any ",@ ") (pair ~sep:(any " -> ") string string))
-                 (List.map (fun (a,b,_) -> a,b) taps (* FIXME *))) ;
+                 Fmt.(list ~sep:(any ",@ ") pp_tap) taps) ;
   let cons_out =
     let header = Vmm_commands.header ~sequence:t.console_counter name in
     (header, `Command (`Console_cmd `Console_add))

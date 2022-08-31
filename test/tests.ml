@@ -245,6 +245,11 @@ let unikernel_config_eq =
   let eq_pair_list_opt =
     List.equal (fun (n, dopt) (n', dopt') ->
         String.equal n n' && Option.equal String.equal dopt dopt')
+  and eq_triple_list_opt =
+    List.equal (fun (n, dopt, mopt) (n', dopt', mopt') ->
+        String.equal n n' &&
+        Option.equal String.equal dopt dopt' &&
+        Option.equal (fun a b -> Macaddr.compare a b = 0) mopt mopt')
   in
   fun (a : config) (b : config) ->
     a.typ = b.typ && a.compressed = b.compressed &&
@@ -256,7 +261,7 @@ let unikernel_config_eq =
      | _ -> false) &&
     a.cpuid = b.cpuid && a.memory = b.memory &&
     eq_pair_list_opt a.block_devices b.block_devices &&
-    eq_pair_list_opt a.bridges b.bridges &&
+    eq_triple_list_opt a.bridges b.bridges &&
     Option.equal (List.equal String.equal) a.argv b.argv
 
 let unikernel_eq (a : Unikernel.t) (b : Unikernel.t) =
@@ -281,7 +286,7 @@ let u =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 10 ;
     block_devices = [] ;
-    bridges = [ "service", None ] ;
+    bridges = [ "service", None, None ] ;
     argv = Some [ "-l *:debug" ] ;
   }
 
@@ -320,7 +325,7 @@ let policy_is_respected_vm () =
   let u' = { u with memory = 11 } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "too much memory"))
     (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u');
-  let u' = { u with bridges = [ "service2", None ] } in
+  let u' = { u with bridges = [ "service2", None, None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "wrong bridge"))
     (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u')
 
@@ -832,7 +837,7 @@ let u1_3 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
-    bridges = [ "service", None ; "other-net", Some "second-bridge" ] ;
+    bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
   }
 
@@ -841,7 +846,7 @@ let u2_3 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
-    bridges = [ "service", Some "bridge-interface" ] ;
+    bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;
   }
 
@@ -885,10 +890,10 @@ let wire4_unikernel2 () =
 let u1_1 =
   Unikernel.{ u1_3 with
                        block_devices = [ "block", None ; "secondblock", None ];
-                       bridges = [ "service", None ; "other-net", None ] }
+                       bridges = [ "service", None, None ; "other-net", None, None ] }
 
 let u2_1 =
-  Unikernel.{ u2_3 with bridges = [ "service", None ] }
+  Unikernel.{ u2_3 with bridges = [ "service", None, None ] }
 
 let unikernels1 =
   let t = ins "foo.hello" u1_1 Vmm_trie.empty in

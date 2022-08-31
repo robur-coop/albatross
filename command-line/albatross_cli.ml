@@ -347,14 +347,14 @@ let net_with_mac =
       let* mac = Macaddr.of_string mac in
       let* (name, device_name) = parse_net net in
       Ok (name, device_name, Some mac)
-    | _ -> Error (`Msg "format is FIXME") (* FIXME *)
-  and pp ppf (a, b, c) = (* FIXME *)
-    Fmt.pf ppf "%a%a" pp_net (a, b) Fmt.(option (append (any "@") Macaddr.pp)) c
+    | _ -> Error (`Msg "format is [name:]bridge[@mac]")
+  and pp ppf (a, b, c) =
+    Fmt.pf ppf "%a%a" pp_net (a, b) Fmt.(option ((any "@") ++ Macaddr.pp)) c
   in
   Arg.conv (parse, pp)
 
 let net =
-  let doc = "Network device names (bridge or name:bridge)" in
+  let doc = "Network device names ([name:]bridge[@mac])" in
   Arg.(value & opt_all net_with_mac [] & info [ "net" ] ~doc)
 
 let restart_on_fail =

@@ -406,7 +406,10 @@ let v2_unikernel_config =
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (vm : config) =
-    let bridges = match vm.bridges with [] -> None | xs -> Some (List.map (fun (a,b,_) -> a, b) xs) (* FIXME *)
+    let bridges =
+      match vm.bridges with
+      | [] -> None
+      | xs -> Some (List.map (fun (a, b, _) -> a, b) xs)
     and blocks = match vm.block_devices with
       | [] -> None
       | xs -> Some (List.map fst xs)
@@ -436,7 +439,10 @@ let v3_unikernel_config =
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (vm : config) =
-    let bridges = match vm.bridges with [] -> None | xs -> Some (List.map (fun (a,b,_) -> a,b) xs) (* FIXME *)
+    let bridges =
+      match vm.bridges with
+      | [] -> None
+      | xs -> Some (List.map (fun (a, b, _) -> a, b) xs)
     and blocks = match vm.block_devices with [] -> None | xs -> Some xs
     in
     (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))

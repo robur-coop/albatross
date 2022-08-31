@@ -5,7 +5,7 @@ let u1 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
-    bridges = [ "service", None ; "other-net", Some "second-bridge" ] ;
+    bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
   }
 
@@ -14,7 +14,7 @@ let u2 =
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
-    bridges = [ "service", Some "bridge-interface" ] ;
+    bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;
   }
 

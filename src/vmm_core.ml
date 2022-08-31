@@ -280,7 +280,11 @@ module Unikernel = struct
     Fmt.(list ~sep:(any ", ")
            (pair ~sep:(any " -> ") string string))
       ppf
-      (List.map (fun (a, b) -> a, (match b with None -> a | Some b -> b)) xs)
+      (List.map (fun (a, b) -> a, Option.value ~default:a b) xs)
+
+  let pp_bridge ppf (name, bridge, mac) =
+    Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name bridge)
+      Fmt.(option ((any "@") ++ Macaddr.pp)) mac
 
   let pp_config ppf (vm : config) =
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
@@ -290,7 +294,7 @@ module Unikernel = struct
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       pp_opt_list vm.block_devices
-      pp_opt_list (List.map (fun (x,y,_z) -> (x, y)) vm.bridges) (* FIXME *)
+      Fmt.(list ~sep:(any ", ") pp_bridge) vm.bridges
 
   let pp_config_with_argv ppf (vm : config) =
     Fmt.pf ppf "%a@ argv %a" pp_config vm
@@ -340,7 +344,7 @@ module Unikernel = struct
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
       pp_opt_list info.block_devices
-      pp_opt_list (List.map (fun (x,y,_z) -> (x,y)) info.bridges) (* FIXME *)
+      Fmt.(list ~sep:(any ", ") pp_bridge) info.bridges
       hex_digest
 
   let pp_info_with_argv ppf (info : info) =
