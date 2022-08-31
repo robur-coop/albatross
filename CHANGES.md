@@ -1,3 +1,14 @@
+# v1.5.1 (2022-08-31)
+
+- Albatross_influx: drop leading ':' if path should be dropped (#114 @hannesm)
+- FreeBSD packaging: rename albatross_stat to albatross_stats (#113 @hannesm)
+- Refactor albatross BHyve stat collection (to avoid exception in List.combine)
+  (#116 @reynir @hannesm)
+- Albatross-client-update: adapt URLs to current builder-web deployment (#117
+  @hannesm)
+- Albatross-client: allow passing a mac address explicitly to create for each
+  network interface (#107 @reynir)
+
 # v1.5.0 (2022-05-16)
 
 - Revise Name.t to use ':' as path separation, and allow '.' in labels.
