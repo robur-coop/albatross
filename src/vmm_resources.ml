@@ -270,7 +270,7 @@ let check_policies_above t path sub =
       in
       go (Name.parent_path prefix)
   in
-  go path
+  go (Name.parent_path path)
 
 let check_policies_below t path super =
   Vmm_trie.fold path t.policies (fun name policy res ->

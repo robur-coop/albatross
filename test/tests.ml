@@ -422,6 +422,12 @@ let policy_is_respected_super () =
    | Ok _ -> Alcotest.fail "insertion of superpolicy other bridges should fail"
    | Error _ -> ())
 
+let policy_can_be_overwritten () =
+  let p' = { p1 with vms = 2 } in
+  match Vmm_resources.insert_policy r1 (p_o_s "alpha") p' with
+  | Ok _ -> ()
+  | Error _ -> Alcotest.fail "overwriting of policy should work"
+
 let resource_insert_block () =
   (match Vmm_resources.(insert_block empty (n_o_s "foo") 10) with
    | Ok _ -> ()
@@ -502,6 +508,7 @@ let resource_tests = [
   "policy is respected when checking block", `Quick, policy_is_respected_block ;
   "policy is respected when checking sub-policy", `Quick, policy_is_respected_sub ;
   "policy is respected when checking super-policy", `Quick, policy_is_respected_super ;
+  "policy can be overwritten", `Quick, policy_can_be_overwritten ;
   "block insertion and removal", `Quick, resource_insert_block ;
   "policy removal", `Quick, resource_remove_policy ;
   "vm insertion and removal", `Quick, resource_add_remove_vm ;

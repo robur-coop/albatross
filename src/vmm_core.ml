@@ -103,7 +103,7 @@ module Name = struct
     if valid_label name then
       Ok (path, Some name)
     else
-      Error (`Msg "invalid name")
+      Error (`Msg ("invalid name: " ^ name))
 
   let create_of_path p = (p, None)
 

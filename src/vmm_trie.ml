@@ -120,7 +120,12 @@ let fold path t f acc =
     match es with
     | None -> acc'
     | Some (e, is_path) ->
-      let name = Vmm_core.Name.create_exn prefix_path name in
+      let name =
+        if name = "" then
+          Vmm_core.Name.create_of_path prefix_path
+        else
+          Vmm_core.Name.create_exn prefix_path name
+      in
       let name = if is_path then append_name name None else name in
       f name e acc'
   in
