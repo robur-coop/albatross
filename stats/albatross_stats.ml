@@ -70,9 +70,13 @@ let jump _ systemd interval gather_bhyve influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   let interval = Duration.(to_f (of_sec interval)) in
+  let socket () =
+    if systemd then Vmm_lwt.systemd_socket ()
+    else Vmm_lwt.service_socket `Stats
+  in
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_stats" influx;
-     Vmm_lwt.server_socket ~systemd `Stats >>= fun s ->
+     socket () >>= fun s ->
      let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async (timer gather_bhyve)) in
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->

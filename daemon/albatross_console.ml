@@ -160,9 +160,13 @@ let m = Vmm_core.conn_metrics "unix"
 let jump _ systemd influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
+  let socket () =
+    if systemd then Vmm_lwt.systemd_socket ()
+    else Vmm_lwt.service_socket `Console
+  in
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_console" influx;
-     Vmm_lwt.server_socket ~systemd `Console >>= fun s ->
+     socket () >>= fun s ->
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        m `Open;

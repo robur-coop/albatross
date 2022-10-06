@@ -435,6 +435,25 @@ let systemd_socket_activation =
     let doc = "Pass this flag when systemd socket activation is being used" in
     Arg.(value & flag & info [ "systemd-socket-activation" ] ~doc)
 
+let port_or_socket ~default_port =
+  let open Term in
+  let port =
+    let doc = "TCP listen port." and absent = string_of_int default_port in
+    Arg.(value & opt (some int) None & info [ "port" ] ~doc ~absent)
+  in
+  term_result
+    (const (fun port socket ->
+         match (port, socket) with
+         | Some _, true ->
+             Error
+               (`Msg
+                 "Options --port and --systemd-socket-activation are not \
+                  compatible")
+         | None, true -> Ok `Systemd_socket
+         | Some p, false -> Ok (`Port p)
+         | None, false -> Ok (`Port default_port))
+    $ port $ systemd_socket_activation)
+
 let pub_key_type =
   let doc = "Asymmetric key type to use" in
   Arg.(value & opt (Arg.enum X509.Key_type.strings) `ED25519 & info [ "key-type" ] ~doc)
