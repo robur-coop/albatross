@@ -11,20 +11,27 @@
   };
 
   outputs = { self, nixpkgs, opam-nix, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system: {
-      legacyPackages = let
+    flake-utils.lib.eachDefaultSystem (system:
+      let
         inherit (opam-nix.lib.${system}) buildOpamProject;
         scope = buildOpamProject { } "albatross" ./. { ocaml-system = "*"; };
 
-      in scope.overrideScope' (self: super: {
         # Prevent unnecessary dependencies on the resulting derivation
-        albatross = super.albatross.overrideAttrs (_: {
+        albatross = scope.albatross.overrideAttrs (_: {
           removeOcamlReferences = true;
           doNixSupport = false;
         });
-      });
+      in {
+        packages = { inherit albatross; };
+        defaultPackage = albatross;
 
-      defaultPackage = self.legacyPackages.${system}.albatross;
+      }) // {
+        nixosModules.albatross = { pkgs, ... }:
+          let albatross = self.packages.${pkgs.system}.albatross;
+          in {
+            imports =
+              [ (import packaging/nixos/albatross_service.nix albatross) ];
 
-    });
+          };
+      };
 }
