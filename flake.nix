@@ -29,8 +29,10 @@
         nixosModules.albatross = { pkgs, ... }:
           let albatross = self.packages.${pkgs.system}.albatross;
           in {
-            imports =
-              [ (import packaging/nixos/albatross_service.nix albatross) ];
+            imports = [
+              (import packaging/nixos/albatross_service.nix albatross)
+              packaging/nixos/albatross_tls_endpoint.nix
+            ];
 
           };
       };

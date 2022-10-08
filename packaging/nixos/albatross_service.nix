@@ -23,6 +23,11 @@ in {
       services.albatross = {
         enable = mkEnableOption "albatross";
 
+        cacert = mkOption {
+          description = "Signing certificate.";
+          type = path;
+        };
+
         forwardPorts = mkOption {
           description =
             "Forward ports to the NAT the unikernels are configured to use. Accept the same input as 'networking.nat.forwardPorts'.";
