@@ -31,3 +31,49 @@ jobs:
 
       - name: Test
         run: opam exec -- dune runtest
+
+  nix:
+    name: Test the Nix package
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Cache the Nix store
+        uses: actions/cache@v3
+        with:
+          key: nix-store-${{runner.arch}}-${{runner.os}}
+          path: |
+            /tmp/nix_store
+            /tmp/nix_store_db
+
+      # Inspired from https://github.com/tpwrules/nixos-m1/blob/22f39d12f022deddf0a4f8e5139b8b88f12e95ed/.github/workflows/installer.yml
+      - name: Restore the Nix store from cache
+        run: |
+          if [[ -e /tmp/nix_store ]]; then
+            sudo rm -rf /nix
+            sudo mkdir -p /nix /nix/var/nix/db
+            sudo mv /tmp/nix_store /nix/store
+            sudo mv /tmp/nix_store_db /nix/var/nix/db/db.sqlite
+            sudo chown -R root:root /nix
+          fi
+
+      - name: Setup Nix
+        uses: cachix/install-nix-action@v15
+        with:
+          extra_nix_config: |
+            keep-outputs = true
+
+      - run: nix build
+
+      - name: Check that flake.lock is uptodate
+        run: if ! git diff --exit-code -- flake.lock; then exit 1; fi
+
+      - name: Prepare the Nix store for caching
+        run: |
+          nix store gc
+          sudo systemctl stop nix-daemon
+          sudo mv /nix/store /tmp/nix_store
+          sudo mv /nix/var/nix/db/db.sqlite /tmp/nix_store_db
