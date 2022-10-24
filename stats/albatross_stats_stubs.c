@@ -14,6 +14,7 @@
 #include <net/if.h>
 
 #include <string.h>
+#include <errno.h>
 
 #define Val32 caml_copy_int32
 #define Val64 caml_copy_int64
@@ -175,7 +176,7 @@ CAMLprim value vmmanage_get_ifindex_by_name (value name) {
   if (sysctl(name_ifcount, nitems(name_ifcount), &ifcount, &dlen, NULL, 0) != 0)
     uerror("sysctl", Nothing);
 
-  for (int idx = 1; idx <= ifcount; idx++) {
+  for (int idx = ifcount; idx > 0; idx--) {
     name_ifdata[0] = CTL_NET;
     name_ifdata[1] = PF_LINK;
     name_ifdata[2] = NETLINK_GENERIC;
@@ -184,8 +185,10 @@ CAMLprim value vmmanage_get_ifindex_by_name (value name) {
     name_ifdata[5] = IFDATA_GENERAL;
     dlen = sizeof(data);
 
-    if (sysctl(name_ifdata, nitems(name_ifdata), &data, &dlen, NULL, 0) != 0)
+    if (sysctl(name_ifdata, nitems(name_ifdata), &data, &dlen, NULL, 0) != 0) {
+      if (errno == ENOENT) continue;
       uerror("sysctl", Nothing);
+    }
 
     if (strlen(devname) == strlen(data.ifmd_name) &&
         strncmp(data.ifmd_name, devname, strlen(devname)) == 0) {
