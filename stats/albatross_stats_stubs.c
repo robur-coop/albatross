@@ -13,6 +13,8 @@
 #include <sys/user.h>
 #include <net/if.h>
 
+#include <string.h>
+
 #define Val32 caml_copy_int32
 #define Val64 caml_copy_int64
 
@@ -170,7 +172,7 @@ CAMLprim value vmmanage_get_ifindex_by_name (value name) {
   name_ifcount[4] = IFMIB_IFCOUNT;
   dlen = sizeof(ifcount);
 
-  if (sysctl(name, nitems(name_ifcount), &ifcount, &dlen, NULL, 0) != 0)
+  if (sysctl(name_ifcount, nitems(name_ifcount), &ifcount, &dlen, NULL, 0) != 0)
     uerror("sysctl", Nothing);
 
   for (int idx = 1; idx <= ifcount; idx++) {
@@ -178,14 +180,15 @@ CAMLprim value vmmanage_get_ifindex_by_name (value name) {
     name_ifdata[1] = PF_LINK;
     name_ifdata[2] = NETLINK_GENERIC;
     name_ifdata[3] = IFMIB_IFDATA;
-    name_ifdata[4] = idx
+    name_ifdata[4] = idx;
     name_ifdata[5] = IFDATA_GENERAL;
     dlen = sizeof(data);
 
     if (sysctl(name_ifdata, nitems(name_ifdata), &data, &dlen, NULL, 0) != 0)
       uerror("sysctl", Nothing);
 
-    if (strcmp(data.ifmd_name, devname) = 0) {
+    if (strlen(devname) == strlen(data.ifmd_name) &&
+        strncmp(data.ifmd_name, devname, strlen(devname)) == 0) {
       CAMLreturn(Val_long(idx));
     }
   }
