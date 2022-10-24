@@ -229,10 +229,14 @@ CAMLprim value vmmanage_sysctl_ifcount(value unit) {
   if (err < 0)
     uerror("nl_connect", Nothing);
   err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  if (err < 0)
+  if (err < 0) {
+    nl_close(nl_sock);
     uerror("rtnl_link_alloc_cache", Nothing);
+  }
+  long items = nl_cache_nitems(link_cache);
+  nl_close(nl_sock);
 
-  CAMLreturn(Val_long(nl_cache_nitems(link_cache)));
+  CAMLreturn(Val_long(items));
 }
 
 CAMLprim value vmmanage_sysctl_ifdata(value num) {
@@ -250,11 +254,15 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   if (err < 0)
     uerror("nl_connect", Nothing);
   err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  if (err < 0)
+  if (err < 0) {
+    nl_close(nl_sock);
     uerror("rtnl_link_alloc_cache", Nothing);
+  }
   link = rtnl_link_get(link_cache, Int_val(num));
-  if (link == NULL)
+  if (link == NULL) {
+    nl_close(nl_sock);
     uerror("rtnl_link_get", Nothing);
+  }
   res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(rtnl_link_get_name(link)));
   Store_field(res, 1, Val32(rtnl_link_get_flags(link)));
@@ -274,6 +282,7 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   Store_field(res, 15, Val64(0));
   Store_field(res, 16, Val64(get_stat(link, RX_DROPPED)));
   Store_field(res, 17, Val64(get_stat(link, TX_DROPPED)));
+  nl_close(nl_sock);
   CAMLreturn(res);
 }
 

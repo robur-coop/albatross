@@ -255,18 +255,22 @@ let add_pid t vmid vmmdev pid nics =
     Logs.err (fun m -> m "sysctl ifcount failed for %d %a" pid pp_nics nics) ;
     Error (`Msg "sysctl ifcount failed")
   | Some max_nic ->
-    let rec go cnt acc id =
-      if id > 0 && cnt > 0 then
-        match wrap sysctl_ifdata id with
-        | None -> go cnt acc (pred id)
+    let rec go cnt acc max_nic id =
+      if max_nic > 0 && cnt > 0 then
+        ( Logs.debug (fun m -> m "Try to ifdata on %d" id) ;
+          match wrap sysctl_ifdata id with
+        | None ->
+          Logs.debug (fun m -> m "%d does not exists" id) ;
+          go cnt acc max_nic (succ id)
         | Some ifd ->
+          Logs.debug (fun m -> m "Got ifdata from: %S" ifd.Stats.bridge) ;
           match List.find_opt (fun (_, tap) -> String.equal tap ifd.Stats.bridge) nics with
-          | Some (bridge, tap) -> go (pred cnt) ((bridge, id, tap) :: acc) (pred id)
-          | None -> go cnt acc (pred id)
+          | Some (bridge, tap) -> go (pred cnt) ((bridge, id, tap) :: acc) (pred max_nic) (succ id)
+          | None -> go cnt acc (pred max_nic) (succ id) )
       else
         List.rev acc
     in
-    let nic_ids = go (List.length nics) [] max_nic in
+    let nic_ids = go (List.length nics) [] max_nic 1 in
     Logs.info (fun m -> m "adding %a %d %a" Name.pp vmid pid pp_nics nics) ;
     let pid_nic = IM.add pid (Error 4, vmmdev, nic_ids) t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
