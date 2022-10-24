@@ -14,7 +14,7 @@ ExecStart=/usr/libexec/albatross/albatross-stats --systemd-socket-activation --t
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross albatross/util
 PIDFile=%t/albatross/stat.pid
-RestrictAddressFamilies=AF_UNIX
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
 
 [Install]
 Also=albatross_stats.socket
