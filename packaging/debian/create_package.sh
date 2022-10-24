@@ -14,11 +14,12 @@ rootdir=$tmpd/rootdir
 libexecdir=$rootdir/usr/libexec/albatross
 bindir=$rootdir/usr/bin
 systemddir=$rootdir/usr/lib/systemd/system
+examplesdir=$rootdir/usr/share/doc/albatross/examples
 debiandir=$rootdir/DEBIAN
 
 trap 'rm -rf $tmpd' 0 INT EXIT
 
-mkdir -p "$libexecdir" "$bindir" "$debiandir" "$systemddir"
+mkdir -p "$libexecdir" "$bindir" "$debiandir" "$systemddir" "$examplesdir"
 
 # stage daemon binaries
 for f in albatrossd \
@@ -49,6 +50,10 @@ do
 done
 install -m 0644 $basedir/packaging/Linux/albatross_influx.service \
         $systemddir/albatross_influx.service
+install -m 0644 $basedir/packaging/Linux/albatross_tls_endpoint.service \
+	$examplesdir/albatross_tls_endpoint.service
+install -m 0644 $basedir/packaging/Linux/albatross_tls_endpoint.socket \
+	$examplesdir/albatross_tls_endpoint.socket
 
 # install debian metadata
 install -m 0644 $basedir/packaging/debian/control $debiandir/control

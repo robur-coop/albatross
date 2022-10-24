@@ -1,0 +1,11 @@
+[Unit]
+Description=Albatross tls endpoint listening for requests
+PartOf=albatross_tls_endpoint.service
+
+[Socket]
+# Modify address as needed. Default is to listen on port 1025 on all interfaces.
+ListenStream=1025
+SocketUser=albatross
+
+[Install]
+WantedBy=sockets.target

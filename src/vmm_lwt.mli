@@ -2,7 +2,14 @@
 
 val pp_sockaddr : Format.formatter -> Lwt_unix.sockaddr -> unit
 
-val server_socket : systemd:bool -> Vmm_core.service -> Lwt_unix.file_descr Lwt.t
+(** Listen on a port. *)
+val port_socket : int -> Lwt_unix.file_descr Lwt.t
+
+(** Listen on a socket passed by systemd through a variable. *)
+val systemd_socket : unit -> Lwt_unix.file_descr Lwt.t
+
+(** Listen on a socket bound to a service. *)
+val service_socket : Vmm_core.service -> Lwt_unix.file_descr Lwt.t
 
 val connect : Lwt_unix.socket_domain -> Lwt_unix.sockaddr -> Lwt_unix.file_descr option Lwt.t
 

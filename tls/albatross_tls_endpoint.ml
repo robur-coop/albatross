@@ -4,21 +4,16 @@ open Lwt.Infix
 
 open Albatross_tls_common
 
-let server_socket port =
-  let open Lwt_unix in
-  let s = socket PF_INET6 SOCK_STREAM 0 in
-  set_close_on_exec s ;
-  setsockopt s SO_REUSEADDR true ;
-  setsockopt s IPV6_ONLY false ;
-  bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
-  listen s 10 ;
-  Lwt.return s
-
-let jump _ cacert cert priv_key port tmpdir =
+let jump _ cacert cert priv_key port_or_socket tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
+  let socket () =
+    match port_or_socket with
+    | `Port p -> Vmm_lwt.port_socket p
+    | `Systemd_socket -> Vmm_lwt.systemd_socket ()
+  in
   Lwt_main.run
-    (server_socket port >>= fun socket ->
+    (socket () >>= fun socket ->
      tls_config cacert cert priv_key >>= fun config ->
      let rec loop () =
        Lwt.catch (fun () ->
@@ -53,15 +48,13 @@ let jump _ cacert cert priv_key port tmpdir =
 open Cmdliner
 open Albatross_cli
 
-let port =
-  let doc = "TCP listen port" in
-  Arg.(value & opt int 1025 & info [ "port" ] ~doc)
-
 let cmd =
   let term =
-    Term.(const jump $ setup_log $ cacert $ cert $ key $ port $ tmpdir)
-  and info = Cmd.info "albatross-tls-endpoint" ~version
-  in
+    Term.(
+      const jump $ setup_log $ cacert $ cert $ key
+      $ port_or_socket ~default_port:1025
+      $ tmpdir)
+  and info = Cmd.info "albatross-tls-endpoint" ~version in
   Cmd.v info term
 
 let () = exit (Cmd.eval cmd)

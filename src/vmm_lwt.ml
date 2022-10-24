@@ -12,25 +12,36 @@ let safe_close fd =
     (fun () -> Lwt_unix.close fd)
     (fun _ -> Lwt.return_unit)
 
-let server_socket ~systemd sock =
-  if systemd
-  then match Vmm_unix.sd_listen_fds () with
-    | Some [fd] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)
-    | _ -> failwith "Systemd socket activation error" (* FIXME *)
-  else
-    let name = Vmm_core.socket_path sock in
-    (Lwt_unix.file_exists name >>= function
-      | true -> Lwt_unix.unlink name
-      | false -> Lwt.return_unit) >>= fun () ->
-    let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
-    Lwt_unix.set_close_on_exec s ;
-    let old_umask = Unix.umask 0 in
-    let _ = Unix.umask (old_umask land 0o707) in
-    Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
-    Logs.app (fun m -> m "listening on %s" name);
-    let _ = Unix.umask old_umask in
-    Lwt_unix.listen s 1 ;
-    s
+let port_socket port =
+  let open Lwt_unix in
+  let s = socket PF_INET6 SOCK_STREAM 0 in
+  set_close_on_exec s ;
+  setsockopt s SO_REUSEADDR true ;
+  setsockopt s IPV6_ONLY false ;
+  bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
+  listen s 10 ;
+  Lwt.return s
+
+let systemd_socket () =
+  match Vmm_unix.sd_listen_fds () with
+  | Some [ fd ] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)
+  | _ -> (* FIXME *) failwith "Systemd socket activation error"
+
+let service_socket sock =
+  let name = Vmm_core.socket_path sock in
+  (Lwt_unix.file_exists name >>= function
+   | true -> Lwt_unix.unlink name
+   | false -> Lwt.return_unit)
+  >>= fun () ->
+  let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  Lwt_unix.set_close_on_exec s;
+  let old_umask = Unix.umask 0 in
+  let _ = Unix.umask (old_umask land 0o707) in
+  Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
+  Logs.app (fun m -> m "listening on %s" name);
+  let _ = Unix.umask old_umask in
+  Lwt_unix.listen s 1;
+  s
 
 let connect addrtype sockaddr =
   let c = Lwt_unix.(socket addrtype SOCK_STREAM 0) in

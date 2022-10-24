@@ -1,0 +1,16 @@
+[Unit]
+Description=Albatross tls endpoint
+requires=albatross_daemon.socket albatross_tls_endpoint.socket
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=albatross
+Group=albatross
+# Either replace ${CA}, ${CERT} and ${KEY} with paths, or
+# add Environment=CA=/path/to/ca.pem directives.
+ExecStart=/usr/libexec/albatross/albatross-tls-endpoint --systemd-socket-activation --tmpdir="%t/albatross/" "${CA}" "${CERT}" "${KEY}"
+
+[Install]
+Also=albatross_tls_endpoint.socket
+WantedBy=multi-user.target

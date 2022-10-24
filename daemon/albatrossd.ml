@@ -168,8 +168,11 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats migrate_name =
           Some s
         else
           Lwt.return_none) >>= fun s ->
-       Lwt.catch
-         (fun () -> Vmm_lwt.server_socket ~systemd `Vmmd)
+       let listen_socket () =
+         if systemd then Vmm_lwt.systemd_socket ()
+         else Vmm_lwt.service_socket `Vmmd
+       in
+       Lwt.catch listen_socket
          (fun e ->
             let str =
               Fmt.str "unable to create server socket %a: %s"
