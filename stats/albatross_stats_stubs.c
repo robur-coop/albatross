@@ -209,6 +209,12 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
   CAMLreturn(res);
 }
+
+CAMLprim value vmmanage_sysctl_ifdata_by_name(value name) {
+  CAMLparam1(name);
+  uerror("cmmanage_sysctl_ifdata_by_name", Nothing);
+}
+
 #elif __linux__ /* FreeBSD */
 #include <netlink/netlink.h>
 #include <netlink/socket.h>
@@ -218,25 +224,16 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
 CAMLprim value vmmanage_sysctl_ifcount(value unit) {
   CAMLparam1(unit);
-  int err;
-  struct nl_sock *nl_sock;
-  struct nl_cache *link_cache;
-
-  nl_sock = nl_socket_alloc();
-  if (nl_sock == 0)
-    uerror("nl_socket_alloc", Nothing);
-  err = nl_connect(nl_sock, NETLINK_ROUTE);
-  if (err < 0)
-    uerror("nl_connect", Nothing);
-  err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  if (err < 0)
-    uerror("rtnl_link_alloc_cache", Nothing);
-
-  CAMLreturn(Val_long(nl_cache_nitems(link_cache)));
+  CAMLreturn(Val_long(0));
 }
 
 CAMLprim value vmmanage_sysctl_ifdata(value num) {
   CAMLparam1(num);
+  uerror("vmmanage_sysctl_ifdata", Nothing);
+}
+
+CAMLprim value vmmanage_sysctl_ifdata_by_name(value name) {
+  CAMLparam1(name);
   CAMLlocal1(res);
   int err;
   struct nl_sock *nl_sock;
@@ -247,14 +244,20 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   if (nl_sock == 0)
     uerror("nl_socket_alloc", Nothing);
   err = nl_connect(nl_sock, NETLINK_ROUTE);
-  if (err < 0)
+  if (err < 0) {
+    nl_socket_free();
     uerror("nl_connect", Nothing);
+  }
   err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  if (err < 0)
+  if (err < 0) {
+    nl_socket_free();
     uerror("rtnl_link_alloc_cache", Nothing);
-  link = rtnl_link_get(link_cache, Int_val(num));
-  if (link == NULL)
+  }
+  link = rtnl_link_get_by_name(link_cache, String_val(name));
+  if (link == NULL) {
+    nl_socket_free();
     uerror("rtnl_link_get", Nothing);
+  }
   res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(rtnl_link_get_name(link)));
   Store_field(res, 1, Val32(rtnl_link_get_flags(link)));
@@ -274,6 +277,7 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   Store_field(res, 15, Val64(0));
   Store_field(res, 16, Val64(get_stat(link, RX_DROPPED)));
   Store_field(res, 17, Val64(get_stat(link, TX_DROPPED)));
+  nl_socket_free();
   CAMLreturn(res);
 }
 

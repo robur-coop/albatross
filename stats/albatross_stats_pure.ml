@@ -10,6 +10,8 @@ external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
   "vmmanage_sysctl_kinfo_proc"
 external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
 external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
+external sysctl_ifdata_by_name : string -> Stats.ifdata =
+  "vmmanage_sysctl_ifdata_by_name"
 
 type vmctx
 
@@ -17,6 +19,8 @@ external vmmapi_open : string -> vmctx = "vmmanage_vmmapi_open"
 external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
 external vmmapi_stats : vmctx -> (string * int64) list = "vmmanage_vmmapi_stats"
 
+(* note that on Linux, the id (second element of the triple in the last list) is
+   not used and always 0. *)
 type 'a t = {
   pid_nic : ((vmctx, int) result * string * (string * int * string) list) IM.t ;
   vmid_pid : int Vmm_trie.t ;
@@ -195,6 +199,17 @@ let rusage pid =
       Logs.err (fun m -> m "error %s while reading /proc/" msg);
       None
 
+let ifdata (bridge, nic, nname) =
+  match
+    match Lazy.force Vmm_unix.uname with
+    | Vmm_unix.FreeBSD -> wrap sysctl_ifdata nic
+    | Vmm_unix.Linux -> wrap sysctl_ifdata_by_name nname
+  with
+  | None ->
+    Logs.warn (fun m -> m "failed to get ifdata for %s" nname);
+    None
+  | Some data -> Some { data with Stats.bridge }
+
 let gather pid vmctx nics =
   let ru, mem =
     match rusage pid with
@@ -205,12 +220,10 @@ let gather pid vmctx nics =
   (match vmctx with
    | Error _ -> None
    | Ok vmctx -> wrap vmmapi_stats vmctx),
-  List.fold_left (fun ifd (bridge, nic, nname) ->
-      match wrap sysctl_ifdata nic with
-      | None ->
-        Logs.warn (fun m -> m "failed to get ifdata for %s" nname) ;
-        ifd
-      | Some data -> { data with Stats.bridge }::ifd)
+  List.fold_left (fun ifd t ->
+      match ifdata t with
+      | None -> ifd
+      | Some data -> data::ifd)
     [] nics
 
 let tick gather_bhyve t =
@@ -266,7 +279,13 @@ let add_pid t vmid vmmdev pid nics =
       else
         List.rev acc
     in
-    let nic_ids = go (List.length nics) [] max_nic in
+    let nic_ids =
+      (* on Linux, we retrieve the ifdata by the interface name, thus no need
+         for an id. *)
+      match Lazy.force Vmm_unix.uname with
+      | Vmm_unix.FreeBSD -> go (List.length nics) [] max_nic
+      | Vmm_unix.Linux -> List.map (fun (bridge, tap) -> bridge, 0, tap) nics
+    in
     Logs.info (fun m -> m "adding %a %d %a" Name.pp vmid pid pp_nics nics) ;
     let pid_nic = IM.add pid (Error 4, vmmdev, nic_ids) t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
