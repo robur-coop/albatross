@@ -176,7 +176,7 @@ CAMLprim value vmmanage_get_ifindex_by_name (value name) {
   if (sysctl(name_ifcount, nitems(name_ifcount), &ifcount, &dlen, NULL, 0) != 0)
     uerror("sysctl", Nothing);
 
-  for (int idx = ifcount; idx > 0; idx--) {
+  for (int idx = ifcount; idx >= 0; idx--) {
     name_ifdata[0] = CTL_NET;
     name_ifdata[1] = PF_LINK;
     name_ifdata[2] = NETLINK_GENERIC;
