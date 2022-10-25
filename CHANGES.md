@@ -1,3 +1,15 @@
+# v1.5.2 (2022-10-25)
+
+- BUGFIX policy (vmm_resources): when inserting a policy, check policies above,
+  but not the same one (@hannesm)
+- tls-endpoint: listen on systemd socket, add systemd example (#119 @Julow
+  @reynir)
+- albatross-stats systemd service: allow AF_NETLINK to gather network interface
+  statistics (@reynir)
+- BUGFIX albatross-stats: use if_nametoindex, simplify code (#125 @dinosaure
+  @reynir @hannesm)
+- Add deployment scripts for nixos (#120 @Julow)
+
 # v1.5.1 (2022-08-31)
 
 - Albatross_influx: drop leading ':' if path should be dropped (#114 @hannesm)
