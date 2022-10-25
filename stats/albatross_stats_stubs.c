@@ -32,6 +32,7 @@ CAMLprim value vmmanage_sysconf_clock_tick(value unit) {
 
 #ifdef __FreeBSD__
 #include <sys/sysctl.h>
+#include <sys/socket.h>
 #include <net/if_mib.h>
 #include <vm/vm.h>
 #include <machine/vmm.h>
@@ -156,47 +157,17 @@ CAMLprim value vmmanage_vmmapi_stats (value octx) {
 CAMLprim value vmmanage_get_ifindex_by_name (value name) {
   CAMLparam1(name);
   const char *devname;
-  int ifcount = 0;
-  size_t dlen = 0;
-  int name_ifcount[5];
-  int name_ifdata[6];
-  struct ifmibdata data;
+  int ifindex = 0;
 
   if (! caml_string_is_c_safe(name)) caml_raise_not_found();
 
   devname = String_val(name);
 
-  name_ifcount[0] = CTL_NET;
-  name_ifcount[1] = PF_LINK;
-  name_ifcount[2] = NETLINK_GENERIC;
-  name_ifcount[3] = IFMIB_SYSTEM;
-  name_ifcount[4] = IFMIB_IFCOUNT;
-  dlen = sizeof(ifcount);
+  ifindex = if_nametoindex(devname);
+  if (ifindex == 0)
+    caml_raise_not_found();
 
-  if (sysctl(name_ifcount, nitems(name_ifcount), &ifcount, &dlen, NULL, 0) != 0)
-    uerror("sysctl", Nothing);
-
-  for (int idx = ifcount; idx >= 0; idx--) {
-    name_ifdata[0] = CTL_NET;
-    name_ifdata[1] = PF_LINK;
-    name_ifdata[2] = NETLINK_GENERIC;
-    name_ifdata[3] = IFMIB_IFDATA;
-    name_ifdata[4] = idx;
-    name_ifdata[5] = IFDATA_GENERAL;
-    dlen = sizeof(data);
-
-    if (sysctl(name_ifdata, nitems(name_ifdata), &data, &dlen, NULL, 0) != 0) {
-      if (errno == ENOENT) continue;
-      uerror("sysctl", Nothing);
-    }
-
-    if (strlen(devname) == strlen(data.ifmd_name) &&
-        strncmp(data.ifmd_name, devname, strlen(devname)) == 0) {
-      CAMLreturn(Val_long(idx));
-    }
-  }
-
-  caml_raise_not_found();
+  CAMLreturn(Val_long(ifindex));
 }
 
 CAMLprim value vmmanage_sysctl_ifdata (value num) {
@@ -249,38 +220,15 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 CAMLprim value vmmanage_get_ifindex_by_name(value name) {
   CAMLparam1(name);
   const char *devname;
-  int err;
-  struct nl_sock *nl_sock;
-  struct nl_cache *link_cache;
-  struct rtnl_link *link;
   int ifindex;
 
   if (! caml_string_is_c_safe(name)) caml_raise_not_found();
+
   devname = String_val(name);
 
-  nl_sock = nl_socket_alloc();
-  if (nl_sock == 0)
-    uerror("nl_socket_alloc", Nothing);
-  err = nl_connect(nl_sock, NETLINK_ROUTE);
-  if (err < 0) {
-    nl_socket_free(nl_sock);
-    uerror("nl_connect", Nothing);
-  }
-  err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  nl_socket_free(nl_sock);
-  if (err < 0)
-    uerror("rtnl_link_alloc_cache", Nothing);
-
-  link = rtnl_link_get_by_name(link_cache, devname);
-  if (link == NULL) {
-    nl_cache_free(link_cache);
+  ifindex = if_nametoindex(devname);
+  if (ifindex == 0)
     caml_raise_not_found();
-  }
-  ifindex = rtnl_link_get_ifindex(link);
-  nl_cache_free(link_cache);
-  if (ifindex == 0) {
-    caml_raise_not_found();
-  }
 
   CAMLreturn(Val_long(ifindex));
 }
