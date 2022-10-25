@@ -297,16 +297,19 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   if (nl_sock == 0)
     uerror("nl_socket_alloc", Nothing);
   err = nl_connect(nl_sock, NETLINK_ROUTE);
-  if (err < 0)
+  if (err < 0) {
+    nl_socket_free(nl_sock);
     uerror("nl_connect", Nothing);
+  }
   err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
   if (err < 0) {
-    nl_close(nl_sock);
+    nl_socket_free(nl_sock);
     uerror("rtnl_link_alloc_cache", Nothing);
   }
   link = rtnl_link_get(link_cache, Int_val(num));
   if (link == NULL) {
-    nl_close(nl_sock);
+    nl_socket_free(nl_sock);
+    nl_cache_free(link_cache);
     uerror("rtnl_link_get", Nothing);
   }
   res = caml_alloc(18, 0);
@@ -328,7 +331,8 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   Store_field(res, 15, Val64(0));
   Store_field(res, 16, Val64(get_stat(link, RX_DROPPED)));
   Store_field(res, 17, Val64(get_stat(link, TX_DROPPED)));
-  nl_close(nl_sock);
+  nl_cache_free(link_cache);
+  nl_socket_free(nl_sock);
   CAMLreturn(res);
 }
 
