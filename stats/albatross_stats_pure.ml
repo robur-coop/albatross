@@ -8,7 +8,7 @@ external sysconf_clock_tick : unit -> int = "vmmanage_sysconf_clock_tick"
 
 external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
   "vmmanage_sysctl_kinfo_proc"
-external sysctl_ifcount : unit -> int = "vmmanage_sysctl_ifcount"
+external get_ifindex_by_name : string -> int = "vmmanage_get_ifindex_by_name"
 external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
 type vmctx
@@ -250,23 +250,14 @@ let tick gather_bhyve t =
   (t'', outs)
 
 let add_pid t vmid vmmdev pid nics =
-  match wrap sysctl_ifcount () with
-  | None ->
-    Logs.err (fun m -> m "sysctl ifcount failed for %d %a" pid pp_nics nics) ;
-    Error (`Msg "sysctl ifcount failed")
-  | Some max_nic ->
-    let rec go cnt acc id =
-      if id > 0 && cnt > 0 then
-        match wrap sysctl_ifdata id with
-        | None -> go cnt acc (pred id)
-        | Some ifd ->
-          match List.find_opt (fun (_, tap) -> String.equal tap ifd.Stats.bridge) nics with
-          | Some (bridge, tap) -> go (pred cnt) ((bridge, id, tap) :: acc) (pred id)
-          | None -> go cnt acc (pred id)
-      else
-        List.rev acc
+    let nic_ids =
+      List.filter_map
+        (fun (bridge, tap) ->
+           match wrap get_ifindex_by_name tap with
+           | Some ifindex -> Some (bridge, ifindex, tap)
+           | None -> Logs.debug (fun m -> m "failed to get ifindex for: %S" tap); None)
+        nics
     in
-    let nic_ids = go (List.length nics) [] max_nic in
     Logs.info (fun m -> m "adding %a %d %a" Name.pp vmid pid pp_nics nics) ;
     let pid_nic = IM.add pid (Error 4, vmmdev, nic_ids) t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid

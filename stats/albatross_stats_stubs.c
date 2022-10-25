@@ -13,6 +13,9 @@
 #include <sys/user.h>
 #include <net/if.h>
 
+#include <string.h>
+#include <errno.h>
+
 #define Val32 caml_copy_int32
 #define Val64 caml_copy_int64
 
@@ -29,6 +32,7 @@ CAMLprim value vmmanage_sysconf_clock_tick(value unit) {
 
 #ifdef __FreeBSD__
 #include <sys/sysctl.h>
+#include <sys/socket.h>
 #include <net/if_mib.h>
 #include <vm/vm.h>
 #include <machine/vmm.h>
@@ -150,23 +154,20 @@ CAMLprim value vmmanage_vmmapi_stats (value octx) {
   CAMLreturn(res);
 }
 
-CAMLprim value vmmanage_sysctl_ifcount (value unit) {
-  CAMLparam1(unit);
-  int data = 0;
-  size_t dlen = 0;
-  int name[5];
+CAMLprim value vmmanage_get_ifindex_by_name (value name) {
+  CAMLparam1(name);
+  const char *devname;
+  int ifindex = 0;
 
-  name[0] = CTL_NET;
-  name[1] = PF_LINK;
-  name[2] = NETLINK_GENERIC;
-  name[3] = IFMIB_SYSTEM;
-  name[4] = IFMIB_IFCOUNT;
-  dlen = sizeof(data);
+  if (! caml_string_is_c_safe(name)) caml_raise_not_found();
 
-  if (sysctl(name, nitems(name), &data, &dlen, NULL, 0) != 0)
-    uerror("sysctl", Nothing);
+  devname = String_val(name);
 
-  CAMLreturn(Val_long(data));
+  ifindex = if_nametoindex(devname);
+  if (ifindex == 0)
+    caml_raise_not_found();
+
+  CAMLreturn(Val_long(ifindex));
 }
 
 CAMLprim value vmmanage_sysctl_ifdata (value num) {
@@ -216,23 +217,20 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
 #define get_stat(link, stat) rtnl_link_get_stat(link, RTNL_LINK_##stat)
 
-CAMLprim value vmmanage_sysctl_ifcount(value unit) {
-  CAMLparam1(unit);
-  int err;
-  struct nl_sock *nl_sock;
-  struct nl_cache *link_cache;
+CAMLprim value vmmanage_get_ifindex_by_name(value name) {
+  CAMLparam1(name);
+  const char *devname;
+  int ifindex;
 
-  nl_sock = nl_socket_alloc();
-  if (nl_sock == 0)
-    uerror("nl_socket_alloc", Nothing);
-  err = nl_connect(nl_sock, NETLINK_ROUTE);
-  if (err < 0)
-    uerror("nl_connect", Nothing);
-  err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  if (err < 0)
-    uerror("rtnl_link_alloc_cache", Nothing);
+  if (! caml_string_is_c_safe(name)) caml_raise_not_found();
 
-  CAMLreturn(Val_long(nl_cache_nitems(link_cache)));
+  devname = String_val(name);
+
+  ifindex = if_nametoindex(devname);
+  if (ifindex == 0)
+    caml_raise_not_found();
+
+  CAMLreturn(Val_long(ifindex));
 }
 
 CAMLprim value vmmanage_sysctl_ifdata(value num) {
@@ -247,14 +245,21 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   if (nl_sock == 0)
     uerror("nl_socket_alloc", Nothing);
   err = nl_connect(nl_sock, NETLINK_ROUTE);
-  if (err < 0)
+  if (err < 0) {
+    nl_socket_free(nl_sock);
     uerror("nl_connect", Nothing);
+  }
   err = rtnl_link_alloc_cache(nl_sock, AF_UNSPEC, &link_cache);
-  if (err < 0)
+  if (err < 0) {
+    nl_socket_free(nl_sock);
     uerror("rtnl_link_alloc_cache", Nothing);
+  }
   link = rtnl_link_get(link_cache, Int_val(num));
-  if (link == NULL)
+  if (link == NULL) {
+    nl_socket_free(nl_sock);
+    nl_cache_free(link_cache);
     uerror("rtnl_link_get", Nothing);
+  }
   res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(rtnl_link_get_name(link)));
   Store_field(res, 1, Val32(rtnl_link_get_flags(link)));
@@ -274,6 +279,8 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   Store_field(res, 15, Val64(0));
   Store_field(res, 16, Val64(get_stat(link, RX_DROPPED)));
   Store_field(res, 17, Val64(get_stat(link, TX_DROPPED)));
+  nl_cache_free(link_cache);
+  nl_socket_free(nl_sock);
   CAMLreturn(res);
 }
 
@@ -311,9 +318,9 @@ CAMLprim value vmmanage_sysctl_kinfo_proc (value pid_r) {
   uerror("sysctl_kinfo_proc", Nothing);
 }
 
-CAMLprim value vmmanage_sysctl_ifcount (value unit) {
+CAMLprim value vmmanage_get_ifindex_by_name (value unit) {
   CAMLparam1(unit);
-  uerror("sysctl_ifcount", Nothing);
+  uerror("get_ifindex_by_name", Nothing);
 }
 
 CAMLprim value vmmanage_sysctl_ifdata (value num) {
