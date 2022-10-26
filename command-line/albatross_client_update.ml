@@ -6,9 +6,10 @@ let job_and_build loc =
   | _ -> Error (`Msg ("expected '/job/<jobname>/build/<uuid>', got: " ^ loc))
 
 let http_get_redirect ~happy_eyeballs uri =
-  Http_lwt_client.one_request ~happy_eyeballs ~follow_redirect:false uri >|= function
+  let body_f () _ = Lwt.return_unit in
+  Http_lwt_client.request ~happy_eyeballs ~follow_redirect:false uri body_f () >|= function
   | Error _ as e -> e
-  | Ok (resp, _body) ->
+  | Ok (resp, ()) ->
     match resp.Http_lwt_client.status with
     | #Http_lwt_client.Status.redirection ->
       (match Http_lwt_client.Headers.get resp.Http_lwt_client.headers "location" with
@@ -34,14 +35,12 @@ let can_update ~happy_eyeballs host hash =
 
 let http_get_binary ~happy_eyeballs host job build =
   let uri = host ^ "/job/" ^ job ^ "/build/" ^ build ^ "/main-binary" in
-  Http_lwt_client.one_request ~happy_eyeballs uri >|= function
+  let body_f acc data = Lwt.return (acc ^ data) in
+  Http_lwt_client.request ~happy_eyeballs uri body_f "" >|= function
   | Error _ as e -> e
-  | Ok (resp, None) ->
-    Logs.warn (fun m -> m "received HTTP reply without body: %a" Http_lwt_client.pp_response resp);
-    Error (`Msg "unexpected HTTP reply")
-  | Ok (resp, Some body) ->
+  | Ok (resp, body) ->
     match resp.Http_lwt_client.status with
-    | #Http_lwt_client.Status.successful -> Ok body
+    | #Http_lwt_client.Status.successful when String.length body > 0 -> Ok body
     | _ ->
       Logs.warn (fun m -> m "received HTTP reply: %a" Http_lwt_client.pp_response resp);
       Error (`Msg "unexpected HTTP reply")
