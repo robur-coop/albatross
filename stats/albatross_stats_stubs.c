@@ -13,9 +13,6 @@
 #include <sys/user.h>
 #include <net/if.h>
 
-#include <string.h>
-#include <errno.h>
-
 #define Val32 caml_copy_int32
 #define Val64 caml_copy_int64
 
