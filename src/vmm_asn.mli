@@ -18,4 +18,4 @@ val of_cert_extension :
 val to_cert_extension : Vmm_commands.t -> Cstruct.t
 
 val unikernels_to_cstruct : Unikernel.config Vmm_trie.t -> Cstruct.t
-val unikernels_of_cstruct : migrate_name:bool -> Cstruct.t -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
+val unikernels_of_cstruct : Cstruct.t -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result

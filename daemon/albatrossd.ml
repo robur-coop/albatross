@@ -138,7 +138,7 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ systemd influx tmpdir dbdir retries enable_stats migrate_name =
+let jump _ systemd influx tmpdir dbdir retries enable_stats =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
@@ -146,7 +146,7 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats migrate_name =
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m
    | Ok () -> ());
-  match Vmm_vmmd.restore_unikernels ~migrate_name () with
+  match Vmm_vmmd.restore_unikernels () with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->
     Lwt_main.run
@@ -221,13 +221,9 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats migrate_name =
 
 open Cmdliner
 
-let migrate_name =
-  let doc = "Migrate name to use the first label as path (WARNING: do not use this if any of the paths are expected to be 2 labels or longer)" in
-  Arg.(value & flag & info [ "migrate-name" ] ~doc)
-
 let cmd =
   let term =
-    Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats $ migrate_name)
+    Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version
   in
   Cmd.v info term
