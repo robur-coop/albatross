@@ -31,6 +31,8 @@ let linux c =
   in
   write_sexp conf
 
+let niet _ = write_sexp {libs = []; cflags = []}
+
 let () =
   C.main ~name:"libnl-3-pkg-config" (fun c ->
       match C.ocaml_config_var_exn c "system" with
@@ -39,4 +41,5 @@ let () =
       | "linux_elf" -> linux c (* x86_32 *)
       | "linux_eabihf" -> linux c (* arm32 *)
       | "elf" -> linux c (* ppc64 & s390x *)
+      | "macosx" -> niet c (* skip *)
       | os -> failwith ("Unsupported platform: "^os))
