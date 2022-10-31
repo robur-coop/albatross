@@ -311,7 +311,7 @@ let prepare name (vm : Unikernel.config) =
 let vm_device vm =
   match Lazy.force uname with
   | FreeBSD -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
-  | _ -> Error (`Msg "don't know what you mean (trying to find vm device)")
+  | Linux -> Error (`Msg "don't know what you mean (trying to find vm device)")
 
 let free_system_resources name taps =
   (* same order as prepare! *)
