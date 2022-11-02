@@ -87,7 +87,6 @@ let handle chain =
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
                  Vmm_core.Name.pp name Certificate.pp leaf
                  Fmt.(list ~sep:(any " -> ") Certificate.pp) rest);
-  (* TODO: logging let login_hdr, login_ev = Log.hdr name, `Login addr in *)
   match wire_command_of_cert leaf with
   | Error `Msg p -> Error (`Msg p)
   | Error `Not_present ->
@@ -96,7 +95,6 @@ let handle chain =
     (* we only allow some commands via certificate *)
     match wire with
     | `Console_cmd (`Console_subscribe _)
-    | `Stats_cmd `Stats_subscribe
     | `Unikernel_cmd _
     | `Policy_cmd `Policy_info
     | `Block_cmd _ -> Ok (name, policies, v, wire)

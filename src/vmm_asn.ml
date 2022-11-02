@@ -782,32 +782,7 @@ let unikernels =
            (my_explicit 3 ~label:"unikernel" version3_unikernels))
 
 let unikernels_of_cstruct, unikernels_to_cstruct =
-  let dec, enc = projections_of unikernels in
-  (fun ~migrate_name cs ->
-    let* trie = dec cs in
-    if migrate_name then
-      Ok (Vmm_trie.fold Name.root_path trie
-          (fun name unikernel acc ->
-            let name =
-              if Name.is_root_path (Name.path name) then
-                match Name.name name with
-                | None -> name
-                | Some n ->
-                  try
-                    let first_dot = String.index n '.' in
-                    let first_part = String.sub n 0 first_dot in
-                    let name = String.sub n (first_dot + 1) (String.length n - (first_dot + 1)) in
-                    let path = Result.get_ok (Name.path_of_list [ first_part ]) in
-                    Name.create_exn path name
-                  with
-                    Not_found -> name
-              else
-                name
-            in
-            fst (Vmm_trie.insert name unikernel acc))
-          Vmm_trie.empty)
-    else
-      Ok trie), enc
+  projections_of unikernels
 
 let cert_extension =
   (* note that subCAs are deployed out there, thus modifying the encoding of

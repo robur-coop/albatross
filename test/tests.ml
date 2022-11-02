@@ -835,9 +835,9 @@ let command_tests = [
 let test_unikernels =
   test_trie Unikernel.pp_config_with_argv unikernel_config_eq
 
-let dec_b64_unik ~migrate_name data =
+let dec_b64_unik data =
   let data = Base64.decode_exn data in
-  Result.get_ok (Vmm_asn.unikernels_of_cstruct ~migrate_name (Cstruct.of_string data))
+  Result.get_ok (Vmm_asn.unikernels_of_cstruct (Cstruct.of_string data))
 
 let u1_3 =
   Unikernel.{
@@ -873,7 +873,7 @@ let wire4_unikernel3_data =
   {|o4IBsDCCAawwgZAMFWZvby5teS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgYQMCWZvby5oZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhci5oZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMR0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|}
 
 let wire4_unikernel3 () =
-  let trie = dec_b64_unik ~migrate_name:false wire4_unikernel3_data in
+  let trie = dec_b64_unik wire4_unikernel3_data in
   Alcotest.check test_unikernels __LOC__ unikernels3 trie
 
 let u1_2 =
@@ -891,7 +891,7 @@ let wire4_unikernel2_data =
   {|ooIBjDCCAYgwfwwVZm9vLm15Lm5pY2UudW5pa2VybmVsMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwcwwJZm9vLmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhci5oZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|}
 
 let wire4_unikernel2 () =
-  let trie = dec_b64_unik ~migrate_name:false wire4_unikernel2_data in
+  let trie = dec_b64_unik wire4_unikernel2_data in
   Alcotest.check test_unikernels __LOC__ unikernels2 trie
 
 let u1_1 =
@@ -914,7 +914,7 @@ let wire4_unikernel1_data =
   {|oIIBPjCCATowbAwVZm9vLm15Lm5pY2UudW5pa2VybmVsMFOgAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZGJsb2NroRYxFAwHc2VydmljZQwJb3RoZXItbmV0og4wDAwKLWwgKjpkZWJ1ZzBgDAlmb28uaGVsbG8wU6ACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kYmxvY2uhFjEUDAdzZXJ2aWNlDAlvdGhlci1uZXSiDjAMDAotbCAqOmRlYnVnMDkMFWJhci5teS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLQwJYmFyLmhlbGxvMCCgAgUAAQEABACgAgUAAgECAgEKoQsxCQwHc2VydmljZQ==|}
 
 let wire4_unikernel1 () =
-  let trie = dec_b64_unik ~migrate_name:false wire4_unikernel1_data in
+  let trie = dec_b64_unik wire4_unikernel1_data in
   Alcotest.check test_unikernels __LOC__ unikernels1 trie
 
 let wire5_unikernel3_data =
@@ -923,7 +923,7 @@ let wire5_unikernel3_data =
   {|o4IBtDCCAbAwgZEMFjpmb28ubXkubmljZS51bmlrZXJuZWwwd6ACBQABAQAEAKACBQACAQACAQGgJzElMAcMBWJsb2NrMBoMC3NlY29uZGJsb2NrDAtzZWNvbmQtZGF0YaEpMScwCQwHc2VydmljZTAaDAlvdGhlci1uZXQMDXNlY29uZC1icmlkZ2WiDjAMDAotbCAqOmRlYnVnMIGFDAo6Zm9vLmhlbGxvMHegAgUAAQEABACgAgUAAgEAAgEBoCcxJTAHDAVibG9jazAaDAtzZWNvbmRibG9jawwLc2Vjb25kLWRhdGGhKTEnMAkMB3NlcnZpY2UwGgwJb3RoZXItbmV0DA1zZWNvbmQtYnJpZGdlog4wDAwKLWwgKjpkZWJ1ZzBODBY6YmFyLm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEIMCjpiYXIuaGVsbG8wNKACBQABAQAEAKACBQACAQICAQqhHzEdMBsMB3NlcnZpY2UMEGJyaWRnZS1pbnRlcmZhY2U=|}
 
 let wire5_unikernel3 () =
-  let trie = dec_b64_unik ~migrate_name:false wire5_unikernel3_data in
+  let trie = dec_b64_unik wire5_unikernel3_data in
   Alcotest.check test_unikernels __LOC__ unikernels3 trie
 
 let wire5_unikernel2_data =
@@ -932,7 +932,7 @@ let wire5_unikernel2_data =
   {|ooIBkTCCAY0wgYAMFjpmb28ubXkubmljZS51bmlrZXJuZWwwZqACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kLWRhdGGhKTAnMAkMB3NlcnZpY2UwGgwJb3RoZXItbmV0DA1zZWNvbmQtYnJpZGdlog4wDAwKLWwgKjpkZWJ1ZzB0DAo6Zm9vLmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTgwWOmJhci5teS5uaWNlLnVuaWtlcm5lbDA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZTBCDAo6YmFyLmhlbGxvMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNl|}
 
 let wire5_unikernel2 () =
-  let trie = dec_b64_unik ~migrate_name:false wire5_unikernel2_data in
+  let trie = dec_b64_unik wire5_unikernel2_data in
   Alcotest.check test_unikernels __LOC__ unikernels2 trie
 
 let wire5_unikernel1_data =
@@ -941,7 +941,7 @@ let wire5_unikernel1_data =
   {|oIIBQjCCAT4wbQwWOmZvby5teS5uaWNlLnVuaWtlcm5lbDBToAIFAAEBAAQAoAIFAAIBAAIBAaAWMRQMBWJsb2NrDAtzZWNvbmRibG9ja6EWMRQMB3NlcnZpY2UMCW90aGVyLW5ldKIOMAwMCi1sICo6ZGVidWcwYQwKOmZvby5oZWxsbzBToAIFAAEBAAQAoAIFAAIBAAIBAaAWMRQMBWJsb2NrDAtzZWNvbmRibG9ja6EWMRQMB3NlcnZpY2UMCW90aGVyLW5ldKIOMAwMCi1sICo6ZGVidWcwOgwWOmJhci5teS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLgwKOmJhci5oZWxsbzAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2U=|}
 
 let wire5_unikernel1 () =
-  let trie = dec_b64_unik ~migrate_name:false wire5_unikernel1_data in
+  let trie = dec_b64_unik wire5_unikernel1_data in
   Alcotest.check test_unikernels __LOC__ unikernels1 trie
 
 let unikernels3_path =
@@ -972,36 +972,12 @@ let unikernels_with_mac =
   let t = ins "foo:my.nice.unikernel" u1_3 t in
   ins "bar:my.nice.unikernel" u2 t
 
-let wire4_unikernel3_path () =
-  let trie = dec_b64_unik ~migrate_name:true wire4_unikernel3_data in
-  Alcotest.check test_unikernels __LOC__ unikernels3_path trie
-
-let wire4_unikernel2_path () =
-  let trie = dec_b64_unik ~migrate_name:true wire4_unikernel2_data in
-  Alcotest.check test_unikernels __LOC__ unikernels2_path trie
-
-let wire4_unikernel1_path () =
-  let trie = dec_b64_unik ~migrate_name:true wire4_unikernel1_data in
-  Alcotest.check test_unikernels __LOC__ unikernels1_path trie
-
-let wire5_unikernel3_migrate () =
-  let trie = dec_b64_unik ~migrate_name:true wire5_unikernel3_data in
-  Alcotest.check test_unikernels __LOC__ unikernels3_path trie
-
-let wire5_unikernel2_migrate () =
-  let trie = dec_b64_unik ~migrate_name:true wire5_unikernel2_data in
-  Alcotest.check test_unikernels __LOC__ unikernels2_path trie
-
-let wire5_unikernel1_migrate () =
-  let trie = dec_b64_unik ~migrate_name:true wire5_unikernel1_data in
-  Alcotest.check test_unikernels __LOC__ unikernels1_path trie
-
 let wire5_unikernel3_path_data =
   (* the dump of a unikernel trie, wire version 5, unikernel version 3, using a path *)
   {|o4IBsDCCAawwgZAMFWZvbzpteS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgYQMCWZvbzpoZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8xHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhcjpoZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMR0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|}
 
 let wire5_unikernel3_path () =
-  let trie = dec_b64_unik ~migrate_name:false wire5_unikernel3_path_data in
+  let trie = dec_b64_unik wire5_unikernel3_path_data in
   Alcotest.check test_unikernels __LOC__ unikernels3_path trie
 
 let wire5_unikernel2_path_data =
@@ -1009,7 +985,7 @@ let wire5_unikernel2_path_data =
   {|ooIBjDCCAYgwfwwVZm9vOm15Lm5pY2UudW5pa2VybmVsMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwcwwJZm9vOmhlbGxvMGagAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZC1kYXRhoSkwJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwTQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDSgAgUAAQEABACgAgUAAgECAgEKoR8wHTAbDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlMEEMCWJhcjpoZWxsbzA0oAIFAAEBAAQAoAIFAAIBAgIBCqEfMB0wGwwHc2VydmljZQwQYnJpZGdlLWludGVyZmFjZQ==|}
 
 let wire5_unikernel2_path () =
-  let trie = dec_b64_unik ~migrate_name:false wire5_unikernel2_path_data in
+  let trie = dec_b64_unik wire5_unikernel2_path_data in
   Alcotest.check test_unikernels __LOC__ unikernels2_path trie
 
 let wire5_unikernel1_path_data =
@@ -1017,26 +993,14 @@ let wire5_unikernel1_path_data =
   {|oIIBPjCCATowbAwVZm9vOm15Lm5pY2UudW5pa2VybmVsMFOgAgUAAQEABACgAgUAAgEAAgEBoBYxFAwFYmxvY2sMC3NlY29uZGJsb2NroRYxFAwHc2VydmljZQwJb3RoZXItbmV0og4wDAwKLWwgKjpkZWJ1ZzBgDAlmb286aGVsbG8wU6ACBQABAQAEAKACBQACAQACAQGgFjEUDAVibG9jawwLc2Vjb25kYmxvY2uhFjEUDAdzZXJ2aWNlDAlvdGhlci1uZXSiDjAMDAotbCAqOmRlYnVnMDkMFWJhcjpteS5uaWNlLnVuaWtlcm5lbDAgoAIFAAEBAAQAoAIFAAIBAgIBCqELMQkMB3NlcnZpY2UwLQwJYmFyOmhlbGxvMCCgAgUAAQEABACgAgUAAgECAgEKoQsxCQwHc2VydmljZQ==|}
 
 let wire5_unikernel1_path () =
-  let trie = dec_b64_unik ~migrate_name:false wire5_unikernel1_path_data in
-  Alcotest.check test_unikernels __LOC__ unikernels1_path trie
-
-let wire5_unikernel3_path_migrate () =
-  let trie = dec_b64_unik ~migrate_name:true wire5_unikernel3_path_data in
-  Alcotest.check test_unikernels __LOC__ unikernels3_path trie
-
-let wire5_unikernel2_path_migrate () =
-  let trie = dec_b64_unik ~migrate_name:true wire5_unikernel2_path_data in
-  Alcotest.check test_unikernels __LOC__ unikernels2_path trie
-
-let wire5_unikernel1_path_migrate () =
-  let trie = dec_b64_unik ~migrate_name:true wire5_unikernel1_path_data in
+  let trie = dec_b64_unik wire5_unikernel1_path_data in
   Alcotest.check test_unikernels __LOC__ unikernels1_path trie
 
 let wire5_unikernel3_with_mac () =
   let data =
     {|o4IBwDCCAbwwSQwJYmFyOmhlbGxvMDygAgUAAQEABACgAgUAAgECAgEKoScxJTAjDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlBAYA3q2+7wAwVQwVYmFyOm15Lm5pY2UudW5pa2VybmVsMDygAgUAAQEABACgAgUAAgECAgEKoScxJTAjDAdzZXJ2aWNlDBBicmlkZ2UtaW50ZXJmYWNlBAYA3q2+7wAwgYQMCWZvbzpoZWxsbzB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWcwgZAMFWZvbzpteS5uaWNlLnVuaWtlcm5lbDB3oAIFAAEBAAQAoAIFAAIBAAIBAaAnMSUwBwwFYmxvY2swGgwLc2Vjb25kYmxvY2sMC3NlY29uZC1kYXRhoSkxJzAJDAdzZXJ2aWNlMBoMCW90aGVyLW5ldAwNc2Vjb25kLWJyaWRnZaIOMAwMCi1sICo6ZGVidWc=|}
   in
-  let trie = dec_b64_unik ~migrate_name:false data in
+  let trie = dec_b64_unik data in
   Alcotest.check test_unikernels __LOC__ unikernels_with_mac trie
 
 let wire_tests = [
@@ -1046,18 +1010,9 @@ let wire_tests = [
   "Wire version 5, unikernel version 3", `Quick, wire5_unikernel3 ;
   "Wire version 5, unikernel version 2", `Quick, wire5_unikernel2 ;
   "Wire version 5, unikernel version 1", `Quick, wire5_unikernel1 ;
-  "Wire version 4, unikernel version 3, migrate, path", `Quick, wire4_unikernel3_path ;
-  "Wire version 4, unikernel version 2, migrate, path", `Quick, wire4_unikernel2_path ;
-  "Wire version 4, unikernel version 1, migrate, path", `Quick, wire4_unikernel1_path ;
-  "Wire version 5, unikernel version 3, migrate", `Quick, wire5_unikernel3_migrate ;
-  "Wire version 5, unikernel version 2, migrate", `Quick, wire5_unikernel2_migrate ;
-  "Wire version 5, unikernel version 1, migrate", `Quick, wire5_unikernel1_migrate ;
   "Wire version 5, unikernel version 3, path", `Quick, wire5_unikernel3_path ;
   "Wire version 5, unikernel version 2, path", `Quick, wire5_unikernel2_path ;
   "Wire version 5, unikernel version 1, path", `Quick, wire5_unikernel1_path ;
-  "Wire version 5, unikernel version 3, path, migrate", `Quick, wire5_unikernel3_path_migrate ;
-  "Wire version 5, unikernel version 2, path, migrate", `Quick, wire5_unikernel2_path_migrate ;
-  "Wire version 5, unikernel version 1, path, migrate", `Quick, wire5_unikernel1_path_migrate ;
   "Wire version 5, unikernel version 3, with mac", `Quick, wire5_unikernel3_with_mac ;
 ]
 

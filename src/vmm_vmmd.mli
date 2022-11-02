@@ -38,6 +38,6 @@ val handle_command : 'a t -> Vmm_commands.wire ->
 
 val killall : 'a t -> (unit -> 'b * 'a) -> 'a t * 'b list
 
-val restore_unikernels : migrate_name:bool -> unit -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
+val restore_unikernels : unit -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
 
 val dump_unikernels : 'a t -> unit

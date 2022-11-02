@@ -135,9 +135,6 @@ let create _ endp cert key ca key_type bits name dbdir force image cpuid memory 
 let console _ endp cert key ca key_type bits name since count =
   jump endp cert key ca key_type bits name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
-let stats _ endp cert key ca key_type bits name =
-  jump endp cert key ca key_type bits name (`Stats_cmd `Stats_subscribe)
-
 let block_info _ endp cert key ca key_type bits block_name =
   jump endp cert key ca key_type bits block_name (`Block_cmd `Block_info)
 
@@ -305,18 +302,6 @@ let console_cmd =
   in
   Cmd.v info term
 
-let stats_cmd =
-  let doc = "statistics of VMs" in
-  let man =
-    [`S "DESCRIPTION";
-     `P "Shows statistics of VMs."]
-  in
-  let term =
-    Term.(term_result (const stats $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ opt_vm_name))
-  and info = Cmd.info "stats" ~doc ~man ~exits
-  in
-  Cmd.v info term
-
 let block_info_cmd =
   let doc = "Information about block devices" in
   let man =
@@ -400,7 +385,7 @@ let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              block_set_cmd ; block_dump_cmd ;
-             console_cmd ; stats_cmd ;
+             console_cmd ;
              update_cmd ]
 
 let () =
