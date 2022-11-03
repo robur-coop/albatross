@@ -6,7 +6,7 @@ let job_and_build loc =
   | _ -> Error (`Msg ("expected '/job/<jobname>/build/<uuid>', got: " ^ loc))
 
 let http_get_redirect ~happy_eyeballs uri =
-  let body_f () _ = Lwt.return_unit in
+  let body_f _ () _ = Lwt.return_unit in
   Http_lwt_client.request ~happy_eyeballs ~follow_redirect:false uri body_f () >|= function
   | Error _ as e -> e
   | Ok (resp, ()) ->
@@ -35,7 +35,7 @@ let can_update ~happy_eyeballs host hash =
 
 let http_get_binary ~happy_eyeballs host job build =
   let uri = host ^ "/job/" ^ job ^ "/build/" ^ build ^ "/main-binary" in
-  let body_f acc data = Lwt.return (acc ^ data) in
+  let body_f _ acc data = Lwt.return (acc ^ data) in
   Http_lwt_client.request ~happy_eyeballs uri body_f "" >|= function
   | Error _ as e -> e
   | Ok (resp, body) ->
