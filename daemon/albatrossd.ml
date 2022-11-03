@@ -8,11 +8,13 @@ open Lwt.Infix
 
 let state = ref Vmm_vmmd.empty
 
+let stats_fd = ref None
+
 let stub_data_out _ = Lwt.return_unit
 
 let create_lock = Lwt_mutex.create ()
 (* the global lock held during execution of create -- and also while
-   Vmm_vmmd.handle is getting called, and while communicating via log /
+   Vmm_vmmd.handle is getting called, and while communicating via
    console / stat socket communication. *)
 
 let rec create stat_out cons_out data_out name config =
@@ -70,7 +72,7 @@ let handle cons_out stat_out fd addr =
     Vmm_lwt.read_wire fd >>= function
     | Error _ ->
       Logs.err (fun m -> m "error while reading") ;
-      Lwt.return_unit
+      Lwt.return `Close
     | Ok (hdr, wire) ->
       let out wire' =
         (* TODO should we terminate the connection on write failure? *)
@@ -80,21 +82,31 @@ let handle cons_out stat_out fd addr =
                      (Vmm_commands.pp_wire ~verbose:false) (hdr, wire));
       Lwt_mutex.lock create_lock >>= fun () ->
       match Vmm_vmmd.handle_command !state (hdr, wire) with
-      | Error wire' -> Lwt_mutex.unlock create_lock; out wire'
+      | Error wire' ->
+        Lwt_mutex.unlock create_lock;
+        out wire' >|= fun () ->
+        `Close
       | Ok (state', next) ->
         state := state' ;
         match next with
-        | `Loop wire -> Lwt_mutex.unlock create_lock; out wire >>= loop
-        | `End wire -> Lwt_mutex.unlock create_lock; out wire
+        | `Loop wire ->
+          Lwt_mutex.unlock create_lock;
+          out wire >>= loop
+        | `End wire ->
+          Lwt_mutex.unlock create_lock;
+          out wire >|= fun () ->
+          `Close
         | `Create (id, vm) ->
           create stat_out cons_out out id vm >|= fun () ->
-          Lwt_mutex.unlock create_lock
+          Lwt_mutex.unlock create_lock;
+          `Close
         | `Wait (who, data) ->
           let state', task = Vmm_vmmd.register !state who Lwt.task in
           state := state';
           Lwt_mutex.unlock create_lock;
           task >>= fun r ->
-          out (data r)
+          out (data r) >|= fun () ->
+          `Close
         | `Wait_and_create (who, (id, vm)) ->
           let state', task = Vmm_vmmd.register !state who Lwt.task in
           state := state';
@@ -102,10 +114,22 @@ let handle cons_out stat_out fd addr =
           task >>= fun r ->
           Logs.info (fun m -> m "wait returned %a" pp_process_exit r);
           Lwt_mutex.with_lock create_lock (fun () ->
-              create stat_out cons_out out id vm)
+              create stat_out cons_out out id vm) >|= fun () ->
+          `Close
+        | `Replace_stats (wire, datas) ->
+          (Option.fold
+             ~none:Lwt.return_unit
+             ~some:(fun fd -> Vmm_lwt.safe_close fd)
+             !stats_fd) >>= fun () ->
+          stats_fd := Some fd;
+          out wire >>= fun () ->
+          Lwt_list.iter_s (stat_out "setting up stats") datas >|= fun () ->
+          Lwt_mutex.unlock create_lock;
+          `Retain
   in
-  loop () >>= fun () ->
-  Vmm_lwt.safe_close fd
+  loop () >>= function
+  | `Close -> Vmm_lwt.safe_close fd
+  | `Retain -> Lwt.return_unit
 
 let write_reply name fd txt (hdr, cmd) =
   Vmm_lwt.write_wire fd (hdr, cmd) >>= function
@@ -138,7 +162,7 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ systemd influx tmpdir dbdir retries enable_stats =
+let jump _ systemd influx tmpdir dbdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
@@ -150,24 +174,11 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok old_unikernels ->
     Lwt_main.run
-      (let rec unix_connect ~retries s =
-         let path = socket_path s in
-         Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX path) >>= function
-         | Some x -> Lwt.return x
-         | None when (retries <> 0) ->
-           Logs.err (fun m -> m "unable to connect to %a, retrying in 3 seconds"
-                        pp_socket s);
-           Lwt_unix.sleep 3.0 >>= fun () ->
-           unix_connect ~retries:(retries - 1) s
-         | None -> Lwt.fail_with (Fmt.str "cannot connect to %a" pp_socket s)
-       in
+      (let console_path = socket_path `Console in
+       (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX console_path) >|= function
+         | Some x -> x
+         | None -> failwith (Fmt.str "cannot connect to %a" pp_socket `Console)) >>= fun c ->
        init_influx "albatross" influx;
-       unix_connect ~retries `Console >>= fun c ->
-       (if enable_stats then
-          unix_connect ~retries `Stats >|= fun s ->
-          Some s
-        else
-          Lwt.return_none) >>= fun s ->
        let listen_socket () =
          if systemd then Vmm_lwt.systemd_socket ()
          else Vmm_lwt.service_socket `Vmmd
@@ -192,12 +203,19 @@ let jump _ systemd influx tmpdir dbdir retries enable_stats =
        Sys.(set_signal sigterm
               (Signal_handle (fun _ -> Lwt.async self_destruct)));
        let cons_out = write_reply "cons" c
-       and stat_out txt wire = match s with
+       and stat_out txt wire = match !stats_fd with
          | None ->
            Logs.info (fun m -> m "ignoring stat %s %a" txt
                          (Vmm_commands.pp_wire ~verbose:false) wire);
            Lwt.return_unit
-         | Some s -> write_reply "stat" s txt wire >|= fun _ -> ()
+         | Some s ->
+           Lwt.catch
+             (fun () -> write_reply "stat" s txt wire >|= fun _ -> ())
+             (fun e ->
+                Logs.err (fun m -> m "exception while writing to stats: %s"
+                             (Printexc.to_string e));
+                stats_fd := None;
+                Lwt.return_unit)
        in
        Lwt_list.iter_s (fun (name, config) ->
            Lwt_mutex.with_lock create_lock (fun () ->
@@ -223,7 +241,7 @@ open Cmdliner
 
 let cmd =
   let term =
-    Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir $ retry_connections $ enable_stats)
+    Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version
   in
   Cmd.v info term

@@ -1,16 +1,15 @@
-(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018, 2022 Hannes Mehnert, all rights reserved *)
 
-(* the process responsible for gathering statistics (CPU + mem + network) *)
+(* the process responsible for gathering statistics (CPU + mem + network), and
+   pushing them to influxDB *)
 
-(* a shared unix domain socket between vmmd and vmm_stats is used as
-   communication channel, where the vmmd can issue commands:
+(* upon startup, it connects to the unix domain socket of vmmd, where the vmmd
+   can issue commands:
 
    - add pid taps
    - remove pid
-   - statistics pid
 
-   every 10 seconds, statistics of all registered pids are recorded. `statistics`
-   reports last recorded stats *)
+   every 10 seconds, statistics of all registered pids are recorded. *)
 
 open Lwt.Infix
 
@@ -76,6 +75,35 @@ let jump _ systemd interval gather_bhyve influx tmpdir =
   in
   Lwt_main.run
     (Albatross_cli.init_influx "albatross_stats" influx;
+     let vmmd_path = Vmm_core.socket_path `Vmmd in
+     let addr = Lwt_unix.ADDR_UNIX vmmd_path in
+     let rec vmmd_connect ?(wait = false) () =
+       (if wait then Lwt_unix.sleep 1. else Lwt.return_unit) >>= fun () ->
+       Vmm_lwt.connect Lwt_unix.PF_UNIX addr >>= function
+       | None ->
+         Logs.err (fun m -> m "cannot connect to %a" Vmm_core.pp_socket `Vmmd);
+         vmmd_connect ~wait:true ()
+       | Some s ->
+         let header = Vmm_commands.header Vmm_core.Name.root in
+         Vmm_lwt.write_wire s (header, `Command (`Stats_cmd `Stats_initial)) >>= function
+         | Error _ ->
+           Logs.err (fun m -> m "error while writing initial to vmmd");
+           vmmd_connect ~wait:true ()
+         | Ok () ->
+           Vmm_lwt.read_wire s >>= function
+           | Ok (h, `Success _) when Int64.equal h.sequence header.sequence ->
+             handle s addr >>= fun () ->
+             t := empty ();
+             vmmd_connect ~wait:true ()
+           | Ok w ->
+             Logs.err (fun m -> m "issue reading from vmmd: %a"
+                          (Vmm_commands.pp_wire ~verbose:true) w);
+             vmmd_connect ~wait:true ()
+           | Error _ ->
+             Logs.err (fun m -> m "error while reading initial from vmmd");
+             vmmd_connect ~wait:true ()
+     in
+     Lwt.async vmmd_connect;
      socket () >>= fun s ->
      let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async (timer gather_bhyve)) in
      let rec loop () =

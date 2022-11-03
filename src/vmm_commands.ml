@@ -42,6 +42,7 @@ type stats_cmd = [
   | `Stats_add of string * int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
+  | `Stats_initial
 ]
 
 let pp_stats_cmd ppf = function
@@ -50,6 +51,7 @@ let pp_stats_cmd ppf = function
       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string string)) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
+  | `Stats_initial -> Fmt.string ppf "stat initial"
 
 type unikernel_cmd = [
   | `Unikernel_info

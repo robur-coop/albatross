@@ -26,6 +26,7 @@ type stats_cmd = [
   | `Stats_add of string * int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
+  | `Stats_initial
 ]
 
 type unikernel_cmd = [
