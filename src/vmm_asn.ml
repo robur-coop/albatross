@@ -264,13 +264,15 @@ let stats_cmd =
     | `C1 (name, pid, taps) -> `Stats_add (name, pid, taps)
     | `C2 () -> `Stats_remove
     | `C3 () -> `Stats_subscribe
+    | `C4 () -> `Stats_initial
   and g = function
     | `Stats_add (name, pid, taps) -> `C1 (name, pid, taps)
     | `Stats_remove -> `C2 ()
     | `Stats_subscribe -> `C3 ()
+    | `Stats_initial -> `C4 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice4
            (my_explicit 0 ~label:"add"
               (sequence3
                  (required ~label:"vmmdev" utf8_string)
@@ -281,7 +283,8 @@ let stats_cmd =
                           (required ~label:"bridge" utf8_string)
                           (required ~label:"tap" utf8_string))))))
            (my_explicit 1 ~label:"remove" null)
-           (my_explicit 2 ~label:"subscribe" null))
+           (my_explicit 2 ~label:"subscribe" null)
+           (my_explicit 3 ~label:"initial" null))
 
 let old_name =
   let f list =

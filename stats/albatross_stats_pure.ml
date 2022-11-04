@@ -271,6 +271,9 @@ let handle t socket (hdr, wire) =
     begin
       let id = hdr.Vmm_commands.name in
       match cmd with
+      | `Stats_initial ->
+        Logs.warn (fun m -> m "unexpected message initial");
+        Error (`Msg "unexpected message initial")
       | `Stats_add (vmmdev, pid, taps) ->
         let* t = add_pid t id vmmdev pid taps in
         Ok (t, None, "added")

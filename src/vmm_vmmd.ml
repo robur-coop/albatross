@@ -438,6 +438,17 @@ let handle_block_cmd t id = function
     in
     Ok (t, `End (`Success (`Block_devices blocks)))
 
+let handle_stats_initial t stats_counter =
+  let t = { t with stats_counter = Int64.succ stats_counter } in
+  let t, data =
+    let unikernels = Vmm_trie.all t.resources.Vmm_resources.unikernels in
+    List.fold_left (fun (t, acc) (name, vm) ->
+        let t, out = setup_stats t name vm in
+        (t, out :: acc))
+      (t, []) unikernels
+  in
+  Ok (t, `Replace_stats (`Success `Empty, data))
+
 let handle_command t (header, payload) =
   let msg_to_err = function
     | Ok x -> Ok x
@@ -451,6 +462,8 @@ let handle_command t (header, payload) =
     | `Command (`Policy_cmd pc) -> handle_policy_cmd t id pc
     | `Command (`Unikernel_cmd vc) -> handle_unikernel_cmd t id vc
     | `Command (`Block_cmd bc) -> handle_block_cmd t id bc
+    | `Command (`Stats_cmd `Stats_initial) ->
+      handle_stats_initial t header.Vmm_commands.sequence
     | _ ->
       Logs.err (fun m -> m "ignoring %a"
                    (Vmm_commands.pp_wire ~verbose:false) (header, payload)) ;
