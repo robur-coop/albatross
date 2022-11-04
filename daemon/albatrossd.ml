@@ -25,7 +25,7 @@ let rec create stat_out cons_out data_out name config =
    | Ok (state', (cons, succ_cont, fail_cont)) ->
      state := state';
      cons_out "create" cons >>= function
-     | Error () -> Lwt.return (None, fail_cont ())
+     | Error `Msg _ -> Lwt.return (None, fail_cont ())
      | Ok () -> match succ_cont !state with
        | Error (`Msg msg) ->
          Logs.err (fun m -> m "create (exec) failed %s" msg) ;
@@ -134,14 +134,14 @@ let handle cons_out stat_out fd addr =
 let write_reply name fd txt (hdr, cmd) =
   Vmm_lwt.write_wire fd (hdr, cmd) >>= function
   | Error `Exception ->
-    invalid_arg ("exception during " ^ txt ^ " while writing to " ^ name)
+    Lwt.return_error (`Msg ("exception during " ^ txt ^ " while writing to " ^ name))
   | Ok () ->
     Vmm_lwt.read_wire fd >|= function
     | Ok (hdr', reply) ->
       if not Vmm_commands.(Int64.equal hdr.sequence hdr'.sequence) then begin
         Logs.err (fun m -> m "%s: wrong id %Lu (expected %Lu) in reply from %s"
                      txt hdr'.Vmm_commands.sequence hdr.Vmm_commands.sequence name) ;
-        invalid_arg "wrong sequence number received"
+        Error (`Msg "wrong sequence number received")
       end else begin
         Logs.debug (fun m -> m "%s: received valid reply from %s %a (request %a)"
                        txt name
@@ -151,14 +151,14 @@ let write_reply name fd txt (hdr, cmd) =
         | `Success _ -> Ok ()
         | `Failure msg ->
           Logs.err (fun m -> m "%s: received failure %s from %s" txt msg name) ;
-          Error ()
+          Error (`Msg msg)
         | _ ->
           Logs.err (fun m -> m "%s: unexpected data from %s" txt name) ;
-          invalid_arg "unexpected data"
+          Error (`Msg "unexpected data")
       end
     | Error _ ->
       Logs.err (fun m -> m "error in read from %s" name) ;
-      invalid_arg "communication failure"
+      Error (`Msg "communication failure")
 
 let m = conn_metrics "unix"
 
@@ -209,13 +209,11 @@ let jump _ systemd influx tmpdir dbdir =
                          (Vmm_commands.pp_wire ~verbose:false) wire);
            Lwt.return_unit
          | Some s ->
-           Lwt.catch
-             (fun () -> write_reply "stat" s txt wire >|= fun _ -> ())
-             (fun e ->
-                Logs.err (fun m -> m "exception while writing to stats: %s"
-                             (Printexc.to_string e));
-                stats_fd := None;
-                Lwt.return_unit)
+           write_reply "stat" s txt wire >|= function
+           | Ok () -> ()
+           | Error `Msg msg ->
+             Logs.err (fun m -> m "error while writing to stats: %s" msg);
+             stats_fd := None
        in
        Lwt_list.iter_s (fun (name, config) ->
            Lwt_mutex.with_lock create_lock (fun () ->
