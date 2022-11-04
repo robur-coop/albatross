@@ -447,7 +447,7 @@ let handle_stats_initial t stats_counter =
         (t, out :: acc))
       (t, []) unikernels
   in
-  Ok (t, `Replace_stats (`Success (`String "registered stat"), data))
+  Ok (t, `Replace_stats (`Success `Empty, data))
 
 let handle_command t (header, payload) =
   let msg_to_err = function

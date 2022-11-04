@@ -91,7 +91,7 @@ let jump _ systemd interval gather_bhyve influx tmpdir =
            vmmd_connect ~wait:true ()
          | Ok () ->
            Vmm_lwt.read_wire s >>= function
-           | Ok (h, `Success _) when Int64.equal h.sequence header.sequence ->
+           | Ok (h, `Success `Empty) when Int64.equal h.sequence header.sequence ->
              handle s addr >>= fun () ->
              t := empty ();
              vmmd_connect ~wait:true ()
