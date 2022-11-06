@@ -1,5 +1,5 @@
 name:         albatross
-version:      %%VERSION_NUM%%
+version:      "%%VERSION_NUM%%"
 origin:	      local/albatross
 comment:      Albatross: orchestrate and manage MirageOS unikernels with Solo5
 www:	      https://github.com/roburio/albatross
