@@ -3,7 +3,7 @@
 # $FreeBSD$
 #
 # PROVIDE: albatross_stats
-# REQUIRE: LOGIN
+# REQUIRE: LOGIN albatross_daemon
 # KEYWORD: shutdown
 #
 # Define these albatross_stats_* variables in one of these files
@@ -30,6 +30,36 @@ start_cmd="albatross_stats_start"
 
 pidfile="/var/run/albatross_stats.pid"
 procname="/usr/local/libexec/albatross/albatross-stats"
+#
+# force_depend script [rcvar]
+#	Force a service to start. Intended for use by services
+#	to resolve dependency issues.
+#	$1 - filename of script, in /usr/local/etc/rc.d, to run
+#	$2 - name of the script's rcvar (minus the _enable)
+#
+my_force_depend()
+{
+	local _depend _dep_rcvar
+
+	_depend="$1"
+	_dep_rcvar="${2:-$1}_enable"
+
+	[ -n "$rc_fast" ] && ! checkyesno always_force_depends &&
+	    checkyesno $_dep_rcvar && return 0
+
+	/usr/local/etc/rc.d/${_depend} forcestatus >/dev/null 2>&1 && return 0
+
+	info "${name} depends on ${_depend}, which will be forced to start."
+	if ! /usr/local/etc/rc.d/${_depend} forcestart; then
+		warn "Unable to force ${_depend}. It may already be running."
+		return 1
+	fi
+}
+
+albatross_stats_precmd() {
+    my_force_depend albatross_daemon || err 1 "Cannot run albatross_daemon"
+}
+
 
 albatross_stats_start () {
     echo "Starting ${name}."

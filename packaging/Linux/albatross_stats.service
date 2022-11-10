@@ -3,8 +3,8 @@
 # to create an override configuration:
 # systemctl edit albatross_stats.service
 Description=Albatross stats daemon (albatross-stats)
-Requires=albatross_stats.socket
-After=syslog.target
+Requires=albatross_daemon.socket albatross_stats.socket
+After=syslog.target albatross_daemon.service
 
 [Service]
 Type=simple
