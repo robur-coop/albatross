@@ -328,15 +328,35 @@ let colon_separated_c =
   and pp ppf (a, b) =
     Fmt.pf ppf "%s:%s" a (match b with None -> a | Some b -> b)
   in
+  parse, pp
+
+let block_c =
+  let parse_block, pp_block = colon_separated_c in
+  let parse s =
+    let ( let* ) = Result.bind in
+    match String.split_on_char '@' s with
+    | [ block ] ->
+      let* (name, device_name) = parse_block block in
+      Ok (name, device_name, None)
+    | [ block; sector_size ] ->
+      let* sector_size =
+        try Ok (int_of_string sector_size)
+        with Failure _ -> Error (`Msg "sector size must be an integer")
+      in
+      let* (name, device_name) = parse_block block in
+      Ok (name, device_name, Some sector_size)
+    | _ -> Error (`Msg "format is 'name[@sector-size]' or 'name:device-name[@sector-size]'")
+  and pp ppf (a, b, c) =
+    Fmt.pf ppf "%a%a" pp_block (a, b) Fmt.(option ((any "@") ++ int)) c
+  in
   Arg.conv (parse, pp)
 
 let block =
   let doc = "Block device name (block or name:block-device-name)" in
-  Arg.(value & opt_all colon_separated_c [] & info [ "block" ] ~doc)
+  Arg.(value & opt_all block_c [] & info [ "block" ] ~doc)
 
 let net_with_mac =
-  let parse_net = Arg.conv_parser colon_separated_c in
-  let pp_net = Arg.conv_printer colon_separated_c in
+  let parse_net, pp_net = colon_separated_c in
   let parse s =
     let ( let* ) = Result.bind in
     match String.split_on_char '@' s with

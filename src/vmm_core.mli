@@ -104,7 +104,7 @@ module Unikernel : sig
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : (string * string option) list ;
+    block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
   }
@@ -132,7 +132,7 @@ module Unikernel : sig
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : (string * string option) list ;
+    block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
     digest : Cstruct.t ;

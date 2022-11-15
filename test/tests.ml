@@ -242,10 +242,12 @@ let trie_tests = [
 
 let unikernel_config_eq =
   let open Unikernel in
-  let eq_pair_list_opt =
-    List.equal (fun (n, dopt) (n', dopt') ->
-        String.equal n n' && Option.equal String.equal dopt dopt')
-  and eq_triple_list_opt =
+  let eq_triple_list_opt_int =
+    List.equal (fun (n, dopt, sopt) (n', dopt', sopt') ->
+        String.equal n n' &&
+        Option.equal String.equal dopt dopt' &&
+        Option.equal Int.equal sopt sopt')
+  and eq_triple_list_opt_mac =
     List.equal (fun (n, dopt, mopt) (n', dopt', mopt') ->
         String.equal n n' &&
         Option.equal String.equal dopt dopt' &&
@@ -260,8 +262,8 @@ let unikernel_config_eq =
      | `Restart Some a, `Restart Some b -> IS.equal a b
      | _ -> false) &&
     a.cpuid = b.cpuid && a.memory = b.memory &&
-    eq_pair_list_opt a.block_devices b.block_devices &&
-    eq_triple_list_opt a.bridges b.bridges &&
+    eq_triple_list_opt_int a.block_devices b.block_devices &&
+    eq_triple_list_opt_mac a.bridges b.bridges &&
     Option.equal (List.equal String.equal) a.argv b.argv
 
 let unikernel_eq (a : Unikernel.t) (b : Unikernel.t) =
@@ -483,7 +485,7 @@ let resource_add_remove_vm () =
   | Error _ -> Alcotest.fail "expected vm removal to succeed"
 
 let resource_vm_with_block () =
-  let uc2 = Unikernel.{ u with block_devices = [ "block", None ] } in
+  let uc2 = Unikernel.{ u with block_devices = [ "block", None, None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
     Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc2);
   let r2 =
@@ -491,7 +493,7 @@ let resource_vm_with_block () =
   in
   Alcotest.check ok_msg __LOC__ (Ok ())
     Vmm_resources.(check_vm r2 (n_o_s "alpha:bar") uc2);
-  let uc3 = { uc2 with block_devices = [ "block", Some "b" ] } in
+  let uc3 = { uc2 with block_devices = [ "block", Some "b", None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
     Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc3);
   let u = Unikernel.{ config = uc2; cmd = Bos.Cmd.v "" ; pid = 0 ; taps = [] ; digest = Cstruct.empty } in
@@ -843,7 +845,7 @@ let u1_3 =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
-    block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
+    block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
   }
@@ -877,7 +879,7 @@ let wire4_unikernel3 () =
   Alcotest.check test_unikernels __LOC__ unikernels3 trie
 
 let u1_2 =
-  Unikernel.{ u1_3 with block_devices = [ "block", None ; "second-data", None ] }
+  Unikernel.{ u1_3 with block_devices = [ "block", None, None ; "second-data", None, None ] }
 
 let unikernels2 =
   let t = ins "foo.hello" u1_2 Vmm_trie.empty in
@@ -896,7 +898,7 @@ let wire4_unikernel2 () =
 
 let u1_1 =
   Unikernel.{ u1_3 with
-                       block_devices = [ "block", None ; "secondblock", None ];
+                       block_devices = [ "block", None, None ; "secondblock", None, None ];
                        bridges = [ "service", None, None ; "other-net", None, None ] }
 
 let u2_1 =
