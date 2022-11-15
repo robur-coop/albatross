@@ -340,7 +340,12 @@ let block_c =
       Ok (name, device_name, None)
     | [ block; sector_size ] ->
       let* sector_size =
-        try Ok (int_of_string sector_size)
+        try
+          let sector_size = int_of_string sector_size in
+          if sector_size < 512 || sector_size land (sector_size - 1) <> 0 then
+            Error (`Msg "sector size must be a power of two greater than or equal 512")
+          else
+            Ok sector_size
         with Failure _ -> Error (`Msg "sector size must be an integer")
       in
       let* (name, device_name) = parse_block block in
