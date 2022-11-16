@@ -1,3 +1,12 @@
+# v1.5.3 (2022-11-16)
+
+- Support --block-sector-size (solo5 0.7.4) (#134 @hannesm @reynir)
+- Invert communication between albatross-stats and albatross-daemon (#131 #133 @hannesm @reynir)
+- Cleanups (avoid catch-all, remove migrate_name support, #130 @hannesm)
+- Add minimal support for macOS (#128 @samoht)
+- Upgrade to http-lwt-client 0.2.0 (#127 @hannesm)
+- Remove unnecessary includes (#126 @reynir)
+
 # v1.5.2 (2022-10-25)
 
 - BUGFIX policy (vmm_resources): when inserting a policy, check policies above,
