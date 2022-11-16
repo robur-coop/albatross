@@ -357,7 +357,7 @@ let block_c =
   Arg.conv (parse, pp)
 
 let block =
-  let doc = "Block device name (block or name:block-device-name)" in
+  let doc = "Block device name (block[@sector-size] or name:block-device-name[@sector-size])" in
   Arg.(value & opt_all block_c [] & info [ "block" ] ~doc)
 
 let net_with_mac =
