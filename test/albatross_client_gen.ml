@@ -4,7 +4,7 @@ let u1 =
   Vmm_core.Unikernel.{
     typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
-    block_devices = [ "block", None ; "secondblock", Some "second-data" ] ;
+    block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
   }

@@ -105,7 +105,7 @@ let use_blocks t name vm active =
   | [] -> t
   | blocks ->
     let block_names =
-      List.map (fun (bd, dev) ->
+      List.map (fun (bd, dev, _sector_size) ->
           let bd = match dev with None -> bd | Some b -> b in
           Name.block_name name bd)
         blocks
@@ -170,7 +170,7 @@ let check_vm t name vm =
       let used = vm_usage t path in
       check_policy p used vm
   and block_ok =
-    List.fold_left (fun r (block, dev) ->
+    List.fold_left (fun r (block, dev, _sector_size) ->
         let* () = r in
         let bl = match dev with Some b -> b | None -> block in
         let block_name = Name.block_name name bl in

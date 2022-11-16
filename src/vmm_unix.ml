@@ -238,8 +238,8 @@ let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
 
 let manifest_devices_match ~bridges ~block_devices image =
   let* things = solo5_image_devices image in
-  let bridges = List.map (fun (b,_,_) -> b) bridges
-  and block_devices = List.map fst block_devices
+  let bridges = List.map (fun (b, _, _) -> b) bridges
+  and block_devices = List.map (fun (b, _, _) -> b) block_devices
   in
   devices_match ~bridges ~block_devices things
 
@@ -336,10 +336,14 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
            "--net:" ^ bridge ^ "=" ^ tap,
            "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
           bridge_taps)
-  and blocks =
-    List.map (fun (name, dev) ->
-        "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev))
-      blocks
+  and blocks, block_sector_sizes =
+    List.split
+      (List.map (fun (name, dev, sector_size) ->
+           "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev),
+           Option.map
+             (fun s -> "--block-sector-size:" ^ name ^ "=" ^ string_of_int s)
+             sector_size)
+          blocks)
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
@@ -358,7 +362,8 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let* tender = check_solo5_cmd (solo5_tender target) in
   let cmd =
     Bos.Cmd.(of_list cpuset %% tender % mem %%
-             of_list net %% of_list macs %% of_list blocks %
+             of_list net %% of_list macs %% of_list blocks %%
+             of_list (List.filter_map Fun.id block_sector_sizes) %
              "--" % p (Name.image_file name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in

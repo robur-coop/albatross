@@ -266,7 +266,7 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : (string * string option) list ;
+    block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
   }
@@ -276,11 +276,9 @@ module Unikernel = struct
       (fun (net, bri, _mac) -> match bri with None -> net | Some s -> s)
       vm.bridges
 
-  let pp_opt_list ppf xs =
-    Fmt.(list ~sep:(any ", ")
-           (pair ~sep:(any " -> ") string string))
-      ppf
-      (List.map (fun (a, b) -> a, Option.value ~default:a b) xs)
+  let pp_block ppf (name, device, sector_size) =
+    Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name device)
+      Fmt.(option ((any ", sector-size: ") ++ int)) sector_size
 
   let pp_bridge ppf (name, bridge, mac) =
     Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name bridge)
@@ -293,7 +291,7 @@ module Unikernel = struct
       (Cstruct.length vm.image)
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
-      pp_opt_list vm.block_devices
+      Fmt.(list ~sep:(any ", ") pp_block) vm.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) vm.bridges
 
   let pp_config_with_argv ppf (vm : config) =
@@ -316,7 +314,7 @@ module Unikernel = struct
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       vm.pid
       Fmt.(list ~sep:(any ", ") string) vm.taps
-      pp_opt_list vm.config.block_devices
+      Fmt.(list ~sep:(any ", ") pp_block) vm.config.block_devices
       Bos.Cmd.pp vm.cmd
       hex_digest
 
@@ -325,7 +323,7 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : (string * string option) list ;
+    block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
     digest : Cstruct.t ;
@@ -343,7 +341,7 @@ module Unikernel = struct
       pp_typ info.typ
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
-      pp_opt_list info.block_devices
+      Fmt.(list ~sep:(any ", ") pp_block) info.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) info.bridges
       hex_digest
 
