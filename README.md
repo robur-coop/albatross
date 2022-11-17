@@ -17,7 +17,7 @@ Albatross consists of multiple processes, each running with the least
 privileges. Albatross can be run next to other orchestration systems; it does
 not assume to be the single instance on a dom0 which creates and destroys
 virtual machines. Resource policies can be dynamically configured for each
-administrative domain (similar to DNS, a hierarchical naming scheme), and are 
+administrative domain (similar to DNS, a hierarchical naming scheme), and are
 checked statically (to decrease while going down the tree)
 and dynamically when a new unikernel is to be deployed.
 
@@ -78,13 +78,9 @@ The following command-line applications for local and remote management are prov
 
 ## Installation
 
-To install Albatross, run `opam install albatross`.
+Binary packages are available for Debian, Ubuntu and FreeBSD. [How to install](https://robur.coop/Projects/Reproducible_builds).
 
-Init scripts for FreeBSD are provided in the `packaging/FreeBSD/rc.d`
-subdirectory, and a script to create a FreeBSD package
-`packaging/FreeBSD/create_package.sh`.
-For Linux, systemd service scripts are available in `packaging/Linux`.
-Consider removing `NetworkManager-wait-online.service` from the `Wants=` directive in albatross.service if you don't need it.
+For other operating systems / distributions, run `opam install albatross`.
 
-It may help to read [the _outdated_ blog article](https://hannes.nqsb.io/Posts/VMM)
+Also read [the blog article](https://hannes.nqsb.io/Posts/Albatross)
 for the motivation behind albatross and an overview of its functionality.
