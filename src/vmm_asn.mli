@@ -6,7 +6,7 @@ open Vmm_core
 
 (** {1 Object Identifier} *)
 
-(** OID in the Mirage namespace (enterprise arc 1.3.6.1.4.1.49836.43) *)
+(** OID in the Mirage namespace (enterprise arc 1.3.6.1.4.1.49836.42) *)
 val oid : Asn.OID.t
 
 val wire_to_cstruct : Vmm_commands.wire -> Cstruct.t
