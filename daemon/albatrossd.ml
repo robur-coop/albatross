@@ -175,6 +175,10 @@ let jump _ systemd influx tmpdir dbdir =
   | Ok old_unikernels ->
     Lwt_main.run
       (let console_path = socket_path `Console in
+       if not (Sys.file_exists console_path) then
+         Fmt.failwith
+           "%s does not exist. Is `albatross-console' running?"
+           console_path;
        (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX console_path) >|= function
          | Some x -> x
          | None -> failwith (Fmt.str "cannot connect to %a" pp_socket `Console)) >>= fun c ->

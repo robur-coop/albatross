@@ -27,6 +27,12 @@ let systemd_socket () =
   | Some [ fd ] -> Lwt.return (Lwt_unix.of_unix_file_descr fd)
   | _ -> (* FIXME *) failwith "Systemd socket activation error"
 
+let mkdir dir =
+  if not (Sys.file_exists dir) then
+    match Bos.OS.Dir.create ~mode:0o700 (Fpath.v dir) with
+    | Ok _ -> ()
+    | Error (`Msg e) -> failwith e
+
 let service_socket sock =
   let name = Vmm_core.socket_path sock in
   (Lwt_unix.file_exists name >>= function
@@ -37,6 +43,7 @@ let service_socket sock =
   Lwt_unix.set_close_on_exec s;
   let old_umask = Unix.umask 0 in
   let _ = Unix.umask (old_umask land 0o707) in
+  mkdir Filename.(dirname name);
   Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
   Logs.app (fun m -> m "listening on %s" name);
   let _ = Unix.umask old_umask in
