@@ -307,9 +307,10 @@ let name =
 let typ =
   let f = function
     | `C1 () -> `Solo5
-    | `C2 () -> assert false
+    | `C2 () -> `Process
   and g = function
     | `Solo5 -> `C1 ()
+    | `Process -> `C2 ()
   in
   Asn.S.map f g @@
   Asn.S.(choice2

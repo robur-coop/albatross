@@ -8,13 +8,14 @@ let dbdir = ref (Fpath.v "/nonexisting")
 
 let set_dbdir path = dbdir := path
 
-type supported = FreeBSD | Linux
+type supported = FreeBSD | Linux | Darwin
 
 let uname =
   let cmd = Bos.Cmd.(v "uname" % "-s") in
   lazy (match Bos.OS.Cmd.(run_out cmd |> out_string |> success) with
-      | Ok s when s = "FreeBSD" -> FreeBSD
-      | Ok s when s = "Linux" -> Linux
+      | Ok "FreeBSD" -> FreeBSD
+      | Ok "Linux" -> Linux
+      | Ok "Darwin" -> Darwin
       | Ok s -> invalid_arg (Printf.sprintf "OS %s not supported" s)
       | Error (`Msg m) -> invalid_arg m)
 
@@ -54,6 +55,7 @@ let check_commands () =
     match Lazy.force uname with
     | Linux -> [ "ip" ; "taskset" ]
     | FreeBSD -> [ "ifconfig" ; "cpuset" ]
+    | Darwin -> [ "ifconfig" ]
   in
   let* _ =
     List.fold_left
@@ -163,7 +165,7 @@ let rec fifo_exists file =
 
 let create_tap bridge =
   match Lazy.force uname with
-  | FreeBSD ->
+  | FreeBSD | Darwin ->
     let cmd = Bos.Cmd.(v "ifconfig" % "tap" % "create") in
     let* name = Bos.OS.Cmd.(run_out cmd |> out_string |> success) in
     let* () = Bos.OS.Cmd.run Bos.Cmd.(v "ifconfig" % bridge % "addm" % name) in
@@ -192,7 +194,7 @@ let create_tap bridge =
 let destroy_tap tap =
   let cmd =
     match Lazy.force uname with
-    | FreeBSD -> Bos.Cmd.(v "ifconfig" % tap % "destroy")
+    | FreeBSD | Darwin -> Bos.Cmd.(v "ifconfig" % tap % "destroy")
     | Linux -> Bos.Cmd.(v "ip" % "tuntap" % "del" % "dev" % tap % "mode" % "tap")
   in
   Bos.OS.Cmd.run cmd
@@ -236,19 +238,22 @@ let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
   equal_string_lists manifest_net bridges
     "specified bridge(s) does not match with the manifest"
 
-let manifest_devices_match ~bridges ~block_devices image =
-  let* things = solo5_image_devices image in
-  let bridges = List.map (fun (b, _, _) -> b) bridges
-  and block_devices = List.map (fun (b, _, _) -> b) block_devices
-  in
-  devices_match ~bridges ~block_devices things
+let manifest_devices_match typ ~bridges ~block_devices image =
+  match typ with
+  | `Process -> Ok ()
+  | `Solo5 ->
+     let* things = solo5_image_devices image in
+     let bridges = List.map (fun (b, _, _) -> b) bridges
+     and block_devices = List.map (fun (b, _, _) -> b) block_devices
+     in
+     devices_match ~bridges ~block_devices things
 
 let bridge_name (service, b, _mac) = match b with None -> service | Some b -> b
 
 let bridge_exists bridge_name =
   let cmd =
     match Lazy.force uname with
-    | FreeBSD -> Bos.Cmd.(v "ifconfig" % bridge_name)
+    | FreeBSD | Darwin -> Bos.Cmd.(v "ifconfig" % bridge_name)
     | Linux -> Bos.Cmd.(v "ip" % "link" % "show" % bridge_name)
   in
   Result.map_error
@@ -264,21 +269,28 @@ let bridges_exist bridges =
 
 let prepare name (vm : Unikernel.config) =
   let* image =
-    match vm.Unikernel.typ with
+    match vm.typ with
+    | `Process -> Ok vm.image
     | `Solo5 ->
-      if vm.Unikernel.compressed then
-        match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
+      if vm.compressed then
+        match Vmm_compress.uncompress (Cstruct.to_string vm.image) with
         | Ok blob -> Ok (Cstruct.of_string blob)
         | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
       else
-        Ok vm.Unikernel.image
+        Ok vm.image
   in
-  let filename = Name.image_file name in
+  let filename = Name.image_file vm.typ name in
   let digest = Mirage_crypto.Hash.SHA256.digest image in
-  let* target = solo5_image_target image in
-  let* _ = check_solo5_cmd (solo5_tender target) in
-  let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices image in
-  let* () = Bos.OS.File.write filename (Cstruct.to_string image) in
+  let* _ =
+    match vm.typ with
+    | `Process -> Ok Bos.Cmd.empty
+    | `Solo5 ->
+       let* target = solo5_image_target image in
+       check_solo5_cmd (solo5_tender target)
+  in
+  let* () = manifest_devices_match vm.typ ~bridges:vm.bridges ~block_devices:vm.block_devices image in
+  let mode = match vm.typ with `Solo5 -> 0o644 | `Process -> 0o755 in
+  let* () = Bos.OS.File.write filename ~mode (Cstruct.to_string image) in
   let* () = bridges_exist vm.Unikernel.bridges in
   let fifo = Name.fifo_file name in
   let* () =
@@ -311,11 +323,11 @@ let prepare name (vm : Unikernel.config) =
 let vm_device vm =
   match Lazy.force uname with
   | FreeBSD -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
-  | Linux -> Error (`Msg "don't know what you mean (trying to find vm device)")
+  | Linux | Darwin -> Error (`Msg "don't know what you mean (trying to find vm device)")
 
-let free_system_resources name taps =
+let free_system_resources name typ taps =
   (* same order as prepare! *)
-  let* () = Bos.OS.File.delete (Name.image_file name) in
+  let* () = Bos.OS.File.delete (Name.image_file typ name) in
   let* () = Bos.OS.File.delete (Name.fifo_file name) in
   List.fold_left (fun r n ->
       let* () = r in
@@ -327,8 +339,9 @@ let cpuset cpu =
   match Lazy.force uname with
   | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
+  | Darwin -> Ok []
 
-let exec name (config : Unikernel.config) bridge_taps blocks digest =
+let exec_solo5 name (config : Unikernel.config) bridge_taps blocks digest =
   let net, macs =
     List.split
       (List.map (fun (bridge, tap, mac) ->
@@ -364,7 +377,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     Bos.Cmd.(of_list cpuset %% tender % mem %%
              of_list net %% of_list macs %% of_list blocks %%
              of_list (List.filter_map Fun.id block_sector_sizes) %
-             "--" % p (Name.image_file name) %% of_list argv)
+             "--" % p (Name.image_file config.typ name) %% of_list argv)
   in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
@@ -386,6 +399,37 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
     Error (`Msg (Fmt.str "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_err e))
+
+let exec_process name (config : Unikernel.config) bridge_taps _blocks digest =
+  let argv = match config.Unikernel.argv with None -> [] | Some xs -> xs in
+  let prog = Bos.Cmd.p (Name.image_file config.typ name) in
+  let cmd = Bos.Cmd.(v prog %% of_list argv) in
+  let line = Bos.Cmd.to_list cmd in
+  let prog = try List.hd line with Failure _ -> failwith err_empty_line in
+  let line = Array.of_list line in
+  let fifo = Name.fifo_file name in
+  Logs.debug (fun m -> m "write fd for fifo %a" Fpath.pp fifo);
+  let* stdout = write_fd_for_file fifo in
+  Logs.debug (fun m -> m "opened file descriptor!");
+  try
+    Logs.debug (fun m -> m "creating process");
+    Fmt.epr "XXX exec_process %a\n%!" Fmt.Dump.(array string) line;
+    let pid = create_process prog line stdout in
+    Logs.debug (fun m -> m "created process %d: %a" pid Bos.Cmd.pp cmd) ;
+    (* we gave a copy (well, two copies) of that file descriptor to the solo5
+       process and don't really need it here anymore... *)
+    close_no_err stdout ;
+    let taps = List.map (fun (_,tap,_) -> tap) bridge_taps in
+    Ok Unikernel.{ config ; cmd ; pid ; taps ; digest }
+   with
+     Unix.Unix_error (e, _, _) ->
+     close_no_err stdout;
+     Error (`Msg (Fmt.str "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_err e))
+
+let exec name (config : Unikernel.config) bridge_taps blocks digest =
+  match config.typ with
+  | `Solo5   -> exec_solo5 name config bridge_taps blocks digest
+  | `Process -> exec_process name config bridge_taps blocks digest
 
 let destroy vm = Unix.kill vm.Unikernel.pid Sys.sigterm
 

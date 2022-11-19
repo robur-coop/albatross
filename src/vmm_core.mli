@@ -64,7 +64,7 @@ module Name : sig
   val append_path : path -> string -> (path, [> `Msg of string ]) result
   val append_path_exn : path -> string -> path
 
-  val image_file : t -> Fpath.t
+  val image_file : [ `Solo5 | `Process ] -> t -> Fpath.t
   val fifo_file : t -> Fpath.t
   val block_name : t -> string -> t
 
@@ -92,7 +92,7 @@ module Policy : sig
 end
 
 module Unikernel : sig
-  type typ = [ `Solo5 ]
+  type typ = [ `Solo5 | `Process ]
   val pp_typ : typ Fmt.t
 
   type fail_behaviour = [ `Quit | `Restart of IS.t option ]

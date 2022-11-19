@@ -4,6 +4,18 @@ open Vmm_core
 
 open Lwt.Infix
 
+(* This is larger than Vmm_unix.supported as this should work for clients too *)
+type supported = FreeBSD | Linux | Darwin
+
+let uname =
+  let cmd = Bos.Cmd.(v "uname" % "-s") in
+  match Bos.OS.Cmd.(run_out cmd |> out_string |> success) with
+  | Ok "FreeBSD" -> FreeBSD
+  | Ok "Linux" -> Linux
+  | Ok "Darwin" -> Darwin
+  | Ok s -> Fmt.invalid_arg "OS %s not supported" s
+  | Error (`Msg e) -> invalid_arg e
+
 let process =
   Metrics.field ~doc:"name of the process" "vm" Metrics.String
 
@@ -120,7 +132,8 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
   let ( let* ) = Result.bind in
   let img_file = Fpath.v image in
   let* image = Bos.OS.File.read img_file in
-  let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices (Cstruct.of_string image) in
+  let typ = match uname with Darwin -> `Process | FreeBSD | Linux -> `Solo5 in
+  let* () = Vmm_unix.manifest_devices_match typ ~bridges ~block_devices (Cstruct.of_string image) in
   let image, compressed = match compression with
     | 0 -> Cstruct.of_string image, false
     | level ->
@@ -131,7 +144,7 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
     let exits = match exit_codes with [] -> None | xs -> Some (IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
-  let config = { Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
+  let config = { Unikernel.typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let create_block size compression data =
@@ -416,18 +429,6 @@ let since_count since count = match since with
 let version =
   Fmt.str "version %%VERSION%% protocol version %a"
     Vmm_commands.pp_version Vmm_commands.current
-
-(* This is larger than Vmm_unix.supported as this should work for clients too *)
-type supported = FreeBSD | Linux | Darwin
-
-let uname =
-  let cmd = Bos.Cmd.(v "uname" % "-s") in
-  match Bos.OS.Cmd.(run_out cmd |> out_string |> success) with
-  | Ok "FreeBSD" -> FreeBSD
-  | Ok "Linux" -> Linux
-  | Ok "Darwin" -> Darwin
-  | Ok s -> Fmt.invalid_arg "OS %s not supported" s
-  | Error (`Msg e) -> invalid_arg e
 
 let default_tmpdir =
   match uname with

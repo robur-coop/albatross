@@ -69,7 +69,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
           Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
           Lwt.return (Error Albatross_cli.Http_error)
         | Ok unikernel ->
-          let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
+          let r = Vmm_unix.manifest_devices_match typ ~bridges ~block_devices
               (Cstruct.of_string unikernel)
           in
           match r with

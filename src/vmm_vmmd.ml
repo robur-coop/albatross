@@ -206,7 +206,7 @@ let handle_create t name vm_config =
     let t, stat_out = setup_stats t name vm in
     Ok (t, stat_out, `Success (`String "created VM"), name, vm)
   and fail () =
-    match Vmm_unix.free_system_resources name (List.map (fun (_,tap,_) -> tap) taps) with
+    match Vmm_unix.free_system_resources name vm_config.typ (List.map (fun (_,tap,_) -> tap) taps) with
     | Ok () -> `Failure "could not create VM: console failed"
     | Error (`Msg msg) ->
       let m = "could not create VM: console failed, and also " ^ msg ^ " while cleaning resources" in
@@ -215,8 +215,8 @@ let handle_create t name vm_config =
   Ok ({ t with console_counter = Int64.succ t.console_counter },
       (cons_out, success, fail))
 
-let handle_shutdown t name vm r =
-  (match Vmm_unix.free_system_resources name vm.Unikernel.taps with
+let handle_shutdown t name (vm : Unikernel.t) r =
+  (match Vmm_unix.free_system_resources name vm.config.typ vm.taps with
    | Ok () -> ()
    | Error (`Msg e) ->
      Logs.err (fun m -> m "%s while shutdown vm %a" e Unikernel.pp vm));

@@ -188,7 +188,7 @@ let linux_rusage pid =
 
 let rusage pid =
   match Lazy.force Vmm_unix.uname with
-  | Vmm_unix.FreeBSD -> wrap sysctl_kinfo_proc pid
+  | Vmm_unix.FreeBSD | Darwin -> wrap sysctl_kinfo_proc pid
   | Vmm_unix.Linux -> match linux_rusage pid with
     | Ok x -> Some x
     | Error (`Msg msg) ->

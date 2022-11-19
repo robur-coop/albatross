@@ -193,9 +193,11 @@ module Name = struct
     | Ok p -> p
     | Error `Msg m -> invalid_arg m
 
-  let image_file name =
+  let image_file typ name =
     let file = to_string name in
-    Fpath.(!tmpdir / file + "img")
+    match typ with
+    | `Solo5 -> Fpath.(!tmpdir / file + "img")
+    | `Process -> Fpath.(!tmpdir / file + "exe")
 
   let fifo_file name =
     let file = to_string name in
@@ -245,10 +247,11 @@ module Policy = struct
 end
 
 module Unikernel = struct
-  type typ = [ `Solo5 ]
+  type typ = [ `Solo5 | `Process ]
 
   let pp_typ ppf = function
     | `Solo5 -> Fmt.pf ppf "solo5"
+    | `Process -> Fmt.pf ppf "process"
 
   type fail_behaviour = [ `Quit | `Restart of IS.t option ]
 
