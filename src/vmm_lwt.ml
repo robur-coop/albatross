@@ -28,16 +28,26 @@ let systemd_socket () =
   | _ -> (* FIXME *) failwith "Systemd socket activation error"
 
 let service_socket sock =
+  let permissions = {|, are the permissions of the socket file correct? Is the user to execute this daemon the right one?|} in
   let name = Vmm_core.socket_path sock in
   (Lwt_unix.file_exists name >>= function
-   | true -> Lwt_unix.unlink name
-   | false -> Lwt.return_unit)
+    | true ->
+      Lwt.catch (fun () -> Lwt_unix.unlink name)
+        (function
+          | Unix.Unix_error (Unix.EACCES, _, _) ->
+            failwith ("Couldn't unlink old socket file (EACCES)" ^ permissions)
+          | e -> raise e)
+    | false -> Lwt.return_unit)
   >>= fun () ->
   let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
   Lwt_unix.set_close_on_exec s;
   let old_umask = Unix.umask 0 in
   let _ = Unix.umask (old_umask land 0o707) in
-  Lwt_unix.(bind s (ADDR_UNIX name)) >|= fun () ->
+  Lwt.catch (fun () -> Lwt_unix.(bind s (ADDR_UNIX name)))
+    (function
+      | Unix.Unix_error (Unix.EACCES, _, _) ->
+        failwith ("Couldn't bind socket " ^ name ^ " (EACCES)" ^ permissions)
+      | e -> raise e) >|= fun () ->
   Logs.app (fun m -> m "listening on %s" name);
   let _ = Unix.umask old_umask in
   Lwt_unix.listen s 1;
