@@ -177,7 +177,8 @@ let jump _ systemd influx tmpdir dbdir =
       (let console_path = socket_path `Console in
        (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX console_path) >|= function
          | Some x -> x
-         | None -> failwith (Fmt.str "cannot connect to %a" pp_socket `Console)) >>= fun c ->
+         | None ->
+           failwith ("Failed to connect to " ^ console_path ^ ", is albatross-console started?")) >>= fun c ->
        init_influx "albatross" influx;
        let listen_socket () =
          if systemd then Vmm_lwt.systemd_socket ()
