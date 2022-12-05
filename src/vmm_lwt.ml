@@ -18,7 +18,7 @@ let port_socket port =
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
   setsockopt s IPV6_ONLY false ;
-  bind s (ADDR_INET (Unix.inet_addr_any, port)) >>= fun () ->
+  bind s (ADDR_INET (Unix.inet6_addr_any, port)) >>= fun () ->
   listen s 10 ;
   Lwt.return s
 
