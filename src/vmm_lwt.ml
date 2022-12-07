@@ -18,6 +18,7 @@ let port_socket ip port =
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
   setsockopt s IPV6_ONLY false ;
+  let ip = Ipaddr.V6 (Ipaddr.to_v6 ip) in
   bind s (ADDR_INET (Ipaddr_unix.to_inet_addr ip, port)) >>= fun () ->
   listen s 10 ;
   Lwt.return s
