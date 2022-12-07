@@ -12,13 +12,13 @@ let safe_close fd =
     (fun () -> Lwt_unix.close fd)
     (fun _ -> Lwt.return_unit)
 
-let port_socket port =
+let port_socket ip port =
   let open Lwt_unix in
   let s = socket PF_INET6 SOCK_STREAM 0 in
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
   setsockopt s IPV6_ONLY false ;
-  bind s (ADDR_INET (Unix.inet6_addr_any, port)) >>= fun () ->
+  bind s (ADDR_INET (Ipaddr_unix.to_inet_addr ip, port)) >>= fun () ->
   listen s 10 ;
   Lwt.return s
 
