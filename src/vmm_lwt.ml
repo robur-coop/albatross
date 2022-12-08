@@ -14,12 +14,19 @@ let safe_close fd =
 
 let port_socket ip port =
   let open Lwt_unix in
-  let s = socket PF_INET6 SOCK_STREAM 0 in
+  let pf, addr, sockopt =
+    match ip with
+    | Ipaddr.V4 v4 ->
+      PF_INET, ADDR_INET (Ipaddr_unix.V4.to_inet_addr v4, port), fun _s -> ()
+    | Ipaddr.V6 v6 ->
+      PF_INET6, ADDR_INET (Ipaddr_unix.V6.to_inet_addr v6, port),
+      fun s -> setsockopt s IPV6_ONLY false
+  in
+  let s = socket pf SOCK_STREAM 0 in
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
-  setsockopt s IPV6_ONLY false ;
-  let ip = Ipaddr.V6 (Ipaddr.to_v6 ip) in
-  bind s (ADDR_INET (Ipaddr_unix.to_inet_addr ip, port)) >>= fun () ->
+  sockopt s ;
+  bind s addr >>= fun () ->
   listen s 10 ;
   Lwt.return s
 
