@@ -174,10 +174,10 @@ let influx =
 
 let host_port =
   let parse s =
-    match String.split_on_char ':' s with
-    | [ hostname ; port ] ->
+    match List.rev (String.split_on_char ':' s) with
+    | port :: host ->
       begin try
-          Ok (hostname, int_of_string port)
+          Ok (String.concat ":" (List.rev host), int_of_string port)
         with
           Not_found -> Error (`Msg "failed to parse port")
       end
