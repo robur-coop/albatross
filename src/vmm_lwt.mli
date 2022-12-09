@@ -3,7 +3,7 @@
 val pp_sockaddr : Format.formatter -> Lwt_unix.sockaddr -> unit
 
 (** Listen on a port. *)
-val port_socket : int -> Lwt_unix.file_descr Lwt.t
+val port_socket : Ipaddr.t -> int -> Lwt_unix.file_descr Lwt.t
 
 (** Listen on a socket passed by systemd through a variable. *)
 val systemd_socket : unit -> Lwt_unix.file_descr Lwt.t

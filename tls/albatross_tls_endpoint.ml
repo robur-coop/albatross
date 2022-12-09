@@ -4,12 +4,12 @@ open Lwt.Infix
 
 open Albatross_tls_common
 
-let jump _ cacert cert priv_key port_or_socket tmpdir =
+let jump _ cacert cert priv_key ip port_or_socket tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   let socket () =
     match port_or_socket with
-    | `Port p -> Vmm_lwt.port_socket p
+    | `Port p -> Vmm_lwt.port_socket ip p
     | `Systemd_socket -> Vmm_lwt.systemd_socket ()
   in
   Lwt_main.run
@@ -48,10 +48,17 @@ let jump _ cacert cert priv_key port_or_socket tmpdir =
 open Cmdliner
 open Albatross_cli
 
+let ip_c = Arg.conv (Ipaddr.of_string, Ipaddr.pp)
+
+let ip =
+  let doc = "Listen IP address" in
+  Arg.(value & opt ip_c Ipaddr.(V6 V6.unspecified) & info [ "ip" ] ~doc)
+
 let cmd =
   let term =
     Term.(
       const jump $ setup_log $ cacert $ cert $ key
+      $ ip
       $ port_or_socket ~default_port:1025
       $ tmpdir)
   and info = Cmd.info "albatross-tls-endpoint" ~version in
