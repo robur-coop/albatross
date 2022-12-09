@@ -1,3 +1,15 @@
+# v1.5.4 (2022-12-09)
+
+- Improve error messages when socket binding fails, and when albatross-console
+  is not running (#139, inspired by #137, @hannesm @samoht)
+- Debian packages: add gmp and libnl package dependencies (#141 #142 @reynir
+  @hannesm)
+- albatross-tls-endpoint: use Unix.inet6_addr_any, also add a command line
+  argument to specify the listening address (#144 #145 @reynir @hannesm,
+  reported in #143 by @palainp)
+- command line: allow multiple ":" in the hostname (to support IPv6 addresses)
+  (#146 @hannesm)
+
 # v1.5.3 (2022-11-16)
 
 - Support --block-sector-size (solo5 0.7.4) (#134 @hannesm @reynir)
