@@ -381,7 +381,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
        process and don't really need it here anymore... *)
     close_no_err stdout ;
     let taps = List.map (fun (_,tap,_) -> tap) bridge_taps in
-    Ok Unikernel.{ config ; cmd ; pid ; taps ; digest }
+    Ok Unikernel.{ config ; cmd = line ; pid ; taps ; digest }
   with
     Unix.Unix_error (e, _, _) ->
     close_no_err stdout;
