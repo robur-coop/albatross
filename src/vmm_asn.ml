@@ -307,7 +307,7 @@ let name =
 let typ =
   let f = function
     | `C1 () -> `Solo5
-    | `C2 () -> assert false
+    | `C2 () -> Asn.S.parse_error "typ not yet supported"
   and g = function
     | `Solo5 -> `C1 ()
   in
@@ -482,6 +482,8 @@ let unikernel_cmd =
     | `C2 `C4 vm -> `Unikernel_create vm
     | `C2 `C5 vm -> `Unikernel_force_create vm
     | `C2 `C6 level -> `Unikernel_get level
+    | `C3 `C1 () -> `Unikernel_restart
+    | `C3 `C2 () -> Asn.S.parse_error "unikernel command not yet supported"
   and g = function
     | `Old_unikernel_info -> `C1 (`C1 ())
     | `Unikernel_create vm -> `C2 (`C4 vm)
@@ -490,9 +492,10 @@ let unikernel_cmd =
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Unikernel_info -> `C2 (`C2 ())
     | `Unikernel_get level -> `C2 (`C6 level)
+    | `Unikernel_restart -> `C3 (`C1 ())
   in
   Asn.S.map f g @@
-  Asn.S.(choice2
+  Asn.S.(choice3
           (choice6
              (my_explicit 0 ~label:"info-OLD" null)
              (my_explicit 1 ~label:"create-OLD1" v1_unikernel_config)
@@ -506,7 +509,10 @@ let unikernel_cmd =
              (my_explicit 8 ~label:"get-OLD2" null)
              (my_explicit 9 ~label:"create" unikernel_config)
              (my_explicit 10 ~label:"force-create" unikernel_config)
-             (my_explicit 11 ~label:"get" int)))
+             (my_explicit 11 ~label:"get" int))
+          (choice2
+             (my_explicit 12 ~label:"restart" null)
+             (my_explicit 13 ~label:"placeholder" null)))
 
 let policy_cmd =
   let f = function

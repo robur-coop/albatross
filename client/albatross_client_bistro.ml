@@ -132,6 +132,9 @@ let create _ endp cert key ca key_type bits name dbdir force image cpuid memory 
   | Ok cmd -> jump endp cert key ca key_type bits name (`Unikernel_cmd cmd)
   | Error (`Msg msg) -> failwith msg
 
+let restart _ endp cert key ca key_type bits name =
+  jump endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_restart)
+
 let console _ endp cert key ca key_type bits name since count =
   jump endp cert key ca key_type bits name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
@@ -210,14 +213,26 @@ let destination =
   Arg.(value & opt host_port ("localhost", 1025) & info [ "d" ; "destination" ] ~doc ~docv:"HOST:PORT")
 
 let destroy_cmd =
-  let doc = "destroys a virtual machine" in
+  let doc = "destroys a unikernel" in
   let man =
     [`S "DESCRIPTION";
-     `P "Destroy a virtual machine."]
+     `P "Destroy a unikernel."]
   in
   let term =
     Term.(term_result (const destroy $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name))
   and info = Cmd.info "destroy" ~doc ~man ~exits
+  in
+  Cmd.v info term
+
+let restart_cmd =
+  let doc = "restarts a unikernel" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Destroy a unikernel."]
+  in
+  let term =
+    Term.(term_result (const restart $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name))
+  and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
 
@@ -282,10 +297,10 @@ let add_policy_cmd =
   Cmd.v info term
 
 let create_cmd =
-  let doc = "creates a virtual machine" in
+  let doc = "creates a unikernel" in
   let man =
     [`S "DESCRIPTION";
-     `P "Creates a virtual machine."]
+     `P "Creates a unikernel."]
   in
   let term =
     Term.(term_result (const create $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ vm_name $ dbdir $ force $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 9 $ restart_on_fail $ exit_code))
@@ -397,7 +412,7 @@ let help_cmd =
   Term.(ret (const help $ setup_log $ destination $ Arg.man_format $ Term.choice_names $ topic))
 
 let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
-             info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
+             info_cmd ; get_cmd ; destroy_cmd ; create_cmd ; restart_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              block_set_cmd ; block_dump_cmd ;
              console_cmd ; stats_cmd ;

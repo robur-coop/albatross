@@ -302,7 +302,7 @@ let drop_label =
 let vm_c = Arg.conv (Name.of_string, Name.pp)
 
 let opt_vm_name =
-  let doc = "name of virtual machine." in
+  let doc = "name of unikernel." in
   Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
 
 let cmd =
