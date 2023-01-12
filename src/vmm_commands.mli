@@ -33,6 +33,7 @@ type unikernel_cmd = [
   | `Unikernel_info
   | `Unikernel_create of Unikernel.config
   | `Unikernel_force_create of Unikernel.config
+  | `Unikernel_restart
   | `Unikernel_destroy
   | `Unikernel_get of int
   | `Old_unikernel_info

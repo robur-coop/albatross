@@ -119,7 +119,7 @@ module Unikernel : sig
 
   type t = {
     config : config;
-    cmd : Bos.Cmd.t;
+    cmd : string array;
     pid : int;
     taps : string list;
     digest : Cstruct.t;

@@ -87,6 +87,9 @@ let create _ opt_socket dbdir force name image cpuid memory argv block network c
   | Ok cmd -> jump opt_socket name (`Unikernel_cmd cmd) tmpdir
   | Error (`Msg msg) -> Error (`Msg msg)
 
+let restart _ opt_socket name =
+  jump opt_socket name (`Unikernel_cmd `Unikernel_restart)
+
 let console _ opt_socket name since count =
   jump opt_socket name (`Console_cmd (`Console_subscribe (Albatross_cli.since_count since count)))
 
@@ -160,21 +163,21 @@ let path_c =
      fun ppf p -> Name.pp ppf (Name.create_of_path p))
 
 let opt_path =
-  let doc = "path to virtual machines." in
+  let doc = "path to unikernels." in
   Arg.(value & opt path_c Name.root_path & info [ "p" ; "path"] ~doc)
 
 let path =
-  let doc = "path to virtual machines." in
+  let doc = "path to unkernels." in
   Arg.(required & pos 0 (some path_c) None & info [] ~doc ~docv:"PATH")
 
 let vm_c = Arg.conv (Name.of_string, Name.pp)
 
 let opt_vm_name =
-  let doc = "name of virtual machine." in
+  let doc = "name of unkernel." in
   Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
 
 let vm_name =
-  let doc = "Name virtual machine." in
+  let doc = "Name unikernel." in
   Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"VM")
 
 let block_name =
@@ -190,14 +193,26 @@ let socket =
   Arg.(value & opt (some string) None & info [ "socket" ] ~doc)
 
 let destroy_cmd =
-  let doc = "destroys a virtual machine" in
+  let doc = "destroys a unikernel" in
   let man =
     [`S "DESCRIPTION";
-     `P "Destroy a virtual machine."]
+     `P "Destroy a unikernel."]
   in
   let term =
     Term.(term_result (const destroy $ setup_log $ socket $ vm_name $ tmpdir))
   and info = Cmd.info "destroy" ~doc ~man ~exits
+  in
+  Cmd.v info term
+
+let restart_cmd =
+  let doc = "restarts a unikernel" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Destroy a unikernel."]
+  in
+  let term =
+    Term.(term_result (const restart $ setup_log $ socket $ vm_name $ tmpdir))
+  and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
 
@@ -262,10 +277,10 @@ let add_policy_cmd =
   Cmd.v info term
 
 let create_cmd =
-  let doc = "creates a virtual machine" in
+  let doc = "creates a unikernel" in
   let man =
     [`S "DESCRIPTION";
-     `P "Creates a virtual machine."]
+     `P "Creates a unikernel."]
   in
   let term =
     Term.(term_result (const create $ setup_log $ socket $ dbdir $ force $ vm_name $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level 0 $ restart_on_fail $ exit_code $ tmpdir))
@@ -401,7 +416,7 @@ let help_cmd =
   Term.(ret (const help $ setup_log $ socket $ Arg.man_format $ Term.choice_names $ topic))
 
 let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
-             info_cmd ; get_cmd ; destroy_cmd ; create_cmd ;
+             info_cmd ; get_cmd ; destroy_cmd ; create_cmd ; restart_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              block_set_cmd ; block_dump_cmd ;
              console_cmd ;

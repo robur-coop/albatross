@@ -331,6 +331,13 @@ let handle_unikernel_cmd t id = function
          | () -> ());
         Ok (t, `Wait_and_create (id, (id, vm_config)))
     end
+  | `Unikernel_restart ->
+    begin
+      match Vmm_resources.find_vm t.resources id with
+      | None -> stop_create t id
+      | Some vm ->
+        Ok (t, `Wait_and_create (id, (id, vm.Unikernel.config)))
+    end
   | `Unikernel_destroy ->
     match Vmm_resources.find_vm t.resources id with
     | None -> stop_create t id

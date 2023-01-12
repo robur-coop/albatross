@@ -192,11 +192,11 @@ let label_c =
      Fmt.string)
 
 let opt_path =
-  let doc = "path to virtual machines." in
+  let doc = "path to unikernels." in
   Arg.(value & opt label_c "." & info [ "p" ; "path"] ~doc)
 
 let path =
-  let doc = "path to virtual machines." in
+  let doc = "path to unikernels." in
   Arg.(required & pos 0 (some label_c) None & info [] ~doc ~docv:"PATH")
 
 let bridge_tap_c =
@@ -221,7 +221,7 @@ let vmm_dev_req0 =
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VMMDEV")
 
 let opt_vm_name =
-  let doc = "name of virtual machine." in
+  let doc = "name of unikernel." in
   Arg.(value & opt label_c "." & info [ "n" ; "name"] ~doc)
 
 let uri_c =
@@ -260,11 +260,11 @@ let vms =
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"VMS")
 
 let image =
-  let doc = "File of virtual machine image." in
+  let doc = "File of unikernel image." in
   Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"IMAGE")
 
 let vm_name =
-  let doc = "Name virtual machine." in
+  let doc = "Name unikernel." in
   Arg.(required & pos 0 (some label_c) None & info [] ~doc ~docv:"VM")
 
 let block_name =

@@ -303,7 +303,7 @@ module Unikernel = struct
 
   type t = {
     config : config ;
-    cmd : Bos.Cmd.t ;
+    cmd : string array ;
     pid : int ;
     taps : string list ;
     digest : Cstruct.t ;
@@ -315,7 +315,7 @@ module Unikernel = struct
       vm.pid
       Fmt.(list ~sep:(any ", ") string) vm.taps
       Fmt.(list ~sep:(any ", ") pp_block) vm.config.block_devices
-      Bos.Cmd.pp vm.cmd
+      Fmt.(array ~sep:(any " ") string) vm.cmd
       hex_digest
 
   type info = {
