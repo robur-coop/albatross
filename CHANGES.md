@@ -1,3 +1,8 @@
+# v1.5.5 (2023-02-16)
+
+- Systemd scripts: default to less verbose logging (#151 @dinosaure @reynir)
+- Add a command to restart unikernels (#148 @hannesm @reynir)
+
 # v1.5.4 (2022-12-09)
 
 - Improve error messages when socket binding fails, and when albatross-console
