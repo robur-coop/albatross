@@ -2,6 +2,8 @@
 
 - Systemd scripts: default to less verbose logging (#151 @dinosaure @reynir)
 - Add a command to restart unikernels (#148 @hannesm @reynir)
+- Split code depending on unix into albatross.unix to allow usage of albatross
+  in environments without unix - thus MirageOS (#148 @hannesm @reynir)
 
 # v1.5.4 (2022-12-09)
 
