@@ -9,7 +9,7 @@ Type=simple
 #  create tap interfaces should be fine!
 User=root
 Group=albatross
-ExecStart=/usr/libexec/albatross/albatrossd --systemd-socket-activation --tmpdir="%t/albatross/" -vv
+ExecStart=/usr/libexec/albatross/albatrossd --systemd-socket-activation --tmpdir="%t/albatross/"
 PIDFile=%t/albatross/daemon.pid
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=albatross
