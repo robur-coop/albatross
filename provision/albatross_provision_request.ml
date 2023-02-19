@@ -15,7 +15,7 @@ let csr priv name cmd =
 
 let jump key_type bits name cmd =
   let ( let* ) = Result.bind in
-  Mirage_crypto_rng_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
   let* priv = priv_key key_type bits name in
   let* csr = csr priv name cmd in
   let enc = X509.Signing_request.encode_pem csr in

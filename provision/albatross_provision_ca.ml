@@ -67,7 +67,7 @@ let sign_csr dbname cacert key csr days =
   sign ~dbname extensions issuer key csr (Duration.of_day days)
 
 let sign_main _ db cacert cakey csrname days =
-  Mirage_crypto_rng_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
   let* cacert = Bos.OS.File.read (Fpath.v cacert) in
   let* cacert = Certificate.decode_pem (Cstruct.of_string cacert) in
   let* pk = Bos.OS.File.read (Fpath.v cakey) in
@@ -82,7 +82,7 @@ let help _ man_format cmds = function
   | Some _ -> List.iter print_endline cmds; `Ok ()
 
 let generate _ name db days sname sdays key_type bits =
-  Mirage_crypto_rng_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
   let* key = priv_key key_type bits name in
   let name = [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
   let* csr = Signing_request.create name key in
