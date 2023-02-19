@@ -1,3 +1,7 @@
+# v1.5.6 (2023-02-19)
+
+- Update to tls 0.16 packaging (#154 @hannesm)
+
 # v1.5.5 (2023-02-16)
 
 - Systemd scripts: default to less verbose logging (#151 @dinosaure @reynir)
