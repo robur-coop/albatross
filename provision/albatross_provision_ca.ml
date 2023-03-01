@@ -46,9 +46,17 @@ let sign_csr dbname cacert key csr days =
       if not Vmm_commands.(is_current version) then
         Logs.warn (fun m -> m "version in request (%a) different from our version %a, using ours"
                       Vmm_commands.pp_version version Vmm_commands.pp_version Vmm_commands.current);
-      let exts, default_days = match cmd with
-        | `Policy_cmd (`Policy_add _) -> d_exts (), 365
-        | _ -> l_exts, 1
+      let* exts, default_days = match cmd with
+        | `Policy_cmd (`Policy_add pa) ->
+          if pa.Vmm_core.Policy.vms <= 0 then
+            Error (`Msg "Policy with no VMs")
+          else if Vmm_core.IS.is_empty pa.cpuids then
+            Error (`Msg "Policy with no CPUid")
+          else if pa.memory <= 16 then
+            Error (`Msg "Policy with <= 16MB memory")
+          else
+            Ok (d_exts (), 365)
+        | _ -> Ok (l_exts, 1)
       in
       let days = Option.value ~default:default_days days in
       Logs.app (fun m -> m "signing %a" (Vmm_commands.pp ~verbose:false) cmd);
