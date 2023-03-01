@@ -89,6 +89,8 @@ module Policy : sig
   val equal : t -> t -> bool
 
   val pp : t Fmt.t
+
+  val usable : t -> (unit, [ `Msg of string ]) result
 end
 
 module Unikernel : sig

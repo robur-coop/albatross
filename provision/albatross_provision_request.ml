@@ -28,15 +28,9 @@ let remove_policy _ key_type bits path =
   jump key_type bits path (`Policy_cmd `Policy_remove)
 
 let add_policy _ key_type bits path vms memory cpus block bridges =
-  if vms <= 0 then
-    Error (`Msg "Policy with no VMs (please specify > 0)")
-  else if cpus = [] then
-    Error (`Msg "Policy with no CPUids (please specify --cpu=<ID> at least once)")
-  else if memory <= 16 then
-    Error (`Msg "Policy with memory <= 16MB")
-  else
-    let p = Albatross_cli.policy vms memory cpus block bridges in
-    jump key_type bits path (`Policy_cmd (`Policy_add p))
+  let p = Albatross_cli.policy vms memory cpus block bridges in
+  let* () = Vmm_core.Policy.usable p in
+  jump key_type bits path (`Policy_cmd (`Policy_add p))
 
 let info_ _ key_type bits name =
   jump key_type bits name (`Unikernel_cmd `Unikernel_info)

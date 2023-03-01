@@ -242,6 +242,16 @@ module Policy = struct
       res.vms pp_is res.cpuids res.memory
       Fmt.(option ~none:(any "no") int) res.block
       Fmt.(list ~sep:(any ", ") string) (String_set.elements res.bridges)
+
+  let usable { vms ; cpuids ; memory ; _ } =
+    if vms <= 0 then
+      Error (`Msg "Unusable policy with no VMs")
+    else if IS.is_empty cpuids then
+      Error (`Msg "Unusable policy with no CPUids")
+    else if memory <= 16 then
+      Error (`Msg "Unusable policy with memory <= 16 MB")
+    else
+      Ok ()
 end
 
 module Unikernel = struct
