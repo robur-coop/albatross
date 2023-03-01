@@ -54,6 +54,7 @@ let init_influx name data =
 type exit_status =
   | Success
   | Local_authentication_failed
+  | Chain_failure
   | Remote_authentication_failed
   | Communication_failed
   | Connect_failed
@@ -505,6 +506,7 @@ let exit_status = function
    - 127 (bash) command not found
    - 255 OCaml abort
 *)
+let chain_failure = 116
 let remote_command_failed = 117
 let http_failed = 118
 let local_authentication_failed = 119
@@ -515,6 +517,7 @@ let connect_failed = 122
 let exit_status_to_int = function
   | Success -> Cmd.Exit.ok
   | Local_authentication_failed -> local_authentication_failed
+  | Chain_failure -> chain_failure
   | Remote_authentication_failed -> remote_authentication_failed
   | Communication_failed -> communication_failed
   | Connect_failed -> connect_failed
@@ -543,6 +546,9 @@ let auth_exits =
   [ Cmd.Exit.info ~doc:"on local authentication failure \
                          (certificate not accepted by remote)"
       local_authentication_failed ;
+    Cmd.Exit.info ~doc:"on certificate chain failure \
+                         (certificate chain couldn't be validated locally)"
+      chain_failure ;
     Cmd.Exit.info ~doc:"on remote authentication failure \
                          (couldn't validate trust anchor)"
       remote_authentication_failed ]

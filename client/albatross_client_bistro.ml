@@ -55,72 +55,81 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
   | _, Error (`Msg e) ->
     Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
   | Ok cert, Ok key ->
-    (match cmd with
-     | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
-       (match extract_policy cert with
-        | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
-        | Ok None -> Lwt.return_unit
-        | Ok Some p ->
-          (match Vmm_core.Unikernel.fine_with_policy p u with
-             | Ok () -> Lwt.return_unit
-             | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
-     | `Policy_cmd `Policy_add p ->
-       (match extract_policy cert with
-        | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
-        | Ok None -> Lwt.return_unit
-        | Ok Some super ->
-          (match Vmm_core.Policy.is_smaller ~sub:p ~super with
-             | Ok () -> Lwt.return_unit
-             | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
-     | _ -> Lwt.return_unit) >>= fun () ->
-    let tmpkey = X509.Private_key.generate ~bits key_type in
-    let extensions =
-      let v = Vmm_asn.to_cert_extension cmd in
-      Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
-                   (add Basic_constraints (true, (false, None))
-                      (add Ext_key_usage (true, [ `Client_auth ])
-                         (singleton (Unsupported Vmm_asn.oid) (false, v)))))
-    in
-    match
-      let name =
-        [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
-      in
-      let extensions = Signing_request.Ext.(singleton Extensions extensions) in
-      Signing_request.create name ~extensions tmpkey
-    with
-    | Error `Msg m -> Lwt.fail_with m
-    | Ok csr ->
-      let valid_from, valid_until = timestamps 300 in
-      let extensions =
-        let capub = X509.Private_key.public key in
-        key_ids extensions Signing_request.((info csr).public_key) capub
-      in
-      let issuer = Certificate.subject cert in
-      match Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer with
-      | Error e ->
-        Lwt.fail_with (Fmt.to_to_string X509.Validation.pp_signature_error e)
-      | Ok mycert ->
-        match host with
-        | "-" ->
-          Logs.app (fun m -> m "leaf cert:@.%s@.@.@.intermediate:@.%s@."
-                       (Cstruct.to_string (X509.Certificate.encode_pem mycert))
-                       (Cstruct.to_string (X509.Certificate.encode_pem cert)));
-          Lwt.return (Error Albatross_cli.Connect_failed)
-        | _ ->
-          let certificates = `Single ([ mycert ; cert ], tmpkey) in
-          X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-          Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
-          | Error `Msg msg ->
-            Logs.err (fun m -> m "connect failed with %s" msg);
-            Lwt.return (Error Albatross_cli.Connect_failed)
-          | Ok ((ip, port), fd) ->
-            Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
-            let client = Tls.Config.client ~certificates ~authenticator () in
-            Lwt.catch (fun () ->
-                Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
-                Logs.debug (fun m -> m "finished tls handshake") ;
-                Ok fd)
-              (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
+    let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
+    if not (key_eq (Private_key.public key) (Certificate.public_key cert)) then
+      Lwt.fail_with "Public key of certificate doesn't match private key"
+    else
+      X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
+      match authenticator ~host:None [ cert ] with
+      | Error ve ->
+        Lwt.fail_with ("TLS validation error of provided certificate chain: " ^
+                       Fmt.to_to_string X509.Validation.pp_validation_error ve)
+      | Ok _ ->
+        (match cmd with
+         | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+           (match extract_policy cert with
+            | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
+            | Ok None -> Lwt.return_unit
+            | Ok Some p ->
+              (match Vmm_core.Unikernel.fine_with_policy p u with
+               | Ok () -> Lwt.return_unit
+               | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
+         | `Policy_cmd `Policy_add p ->
+           (match extract_policy cert with
+            | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
+            | Ok None -> Lwt.return_unit
+            | Ok Some super ->
+              (match Vmm_core.Policy.is_smaller ~sub:p ~super with
+               | Ok () -> Lwt.return_unit
+               | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
+         | _ -> Lwt.return_unit) >>= fun () ->
+        let tmpkey = X509.Private_key.generate ~bits key_type in
+        let extensions =
+          let v = Vmm_asn.to_cert_extension cmd in
+          Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
+                       (add Basic_constraints (true, (false, None))
+                          (add Ext_key_usage (true, [ `Client_auth ])
+                             (singleton (Unsupported Vmm_asn.oid) (false, v)))))
+        in
+        match
+          let name =
+            [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
+          in
+          let extensions = Signing_request.Ext.(singleton Extensions extensions) in
+          Signing_request.create name ~extensions tmpkey
+        with
+        | Error `Msg m -> Lwt.fail_with m
+        | Ok csr ->
+          let valid_from, valid_until = timestamps 300 in
+          let extensions =
+            let capub = X509.Private_key.public key in
+            key_ids extensions Signing_request.((info csr).public_key) capub
+          in
+          let issuer = Certificate.subject cert in
+          match Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer with
+          | Error e ->
+            Lwt.fail_with (Fmt.to_to_string X509.Validation.pp_signature_error e)
+          | Ok mycert ->
+            match host with
+            | "-" ->
+              Logs.app (fun m -> m "leaf cert:@.%s@.@.@.intermediate:@.%s@."
+                           (Cstruct.to_string (X509.Certificate.encode_pem mycert))
+                           (Cstruct.to_string (X509.Certificate.encode_pem cert)));
+              Lwt.return (Error Albatross_cli.Connect_failed)
+            | _ ->
+              let certificates = `Single ([ mycert ; cert ], tmpkey) in
+              Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
+              | Error `Msg msg ->
+                Logs.err (fun m -> m "connect failed with %s" msg);
+                Lwt.return (Error Albatross_cli.Connect_failed)
+              | Ok ((ip, port), fd) ->
+                Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
+                let client = Tls.Config.client ~certificates ~authenticator () in
+                Lwt.catch (fun () ->
+                    Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
+                    Logs.debug (fun m -> m "finished tls handshake") ;
+                    Ok fd)
+                  (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
 
 let jump endp cert key ca key_type bits name cmd =
   Lwt_main.run (
