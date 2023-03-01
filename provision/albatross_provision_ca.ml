@@ -96,7 +96,7 @@ open Cmdliner
 open Albatross_cli
 
 let csr =
-  let doc = "signing request" in
+  let doc = "Signing request" in
   Arg.(required & pos 3 (some file) None & info [] ~doc ~docv:"CSR")
 
 let key =
