@@ -113,6 +113,8 @@ module Unikernel : sig
 
   val bridges : config -> string list
 
+  val fine_with_policy : Policy.t -> config -> (unit, [ `Msg of string ]) result
+
   val pp_config : config Fmt.t
 
   val pp_config_with_argv : config Fmt.t

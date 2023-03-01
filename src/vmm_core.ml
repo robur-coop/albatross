@@ -286,6 +286,18 @@ module Unikernel = struct
       (fun (net, bri, _mac) -> match bri with None -> net | Some s -> s)
       vm.bridges
 
+  let fine_with_policy (p : Policy.t) (c : config) =
+    if not (IS.mem c.cpuid p.cpuids) then
+      Error (`Msg "CPUid of unikernel not allowed by policy")
+    else if c.memory > p.memory then
+      Error (`Msg (Fmt.str "Amount of memory needed by unikernel (%uMB) exceeds policy (%uMB)" c.memory p.memory))
+    else if List.for_all (fun b -> String_set.mem b p.bridges) (bridges c) then
+      Error (`Msg (Fmt.str "Some bridges needed by unikernel (%a) not allowed by policy (%a)"
+                     Fmt.(list ~sep:(any ", ") string) (bridges c)
+                     Fmt.(list ~sep:(any ", ") string) (String_set.elements p.bridges)))
+    else
+      Ok ()
+
   let pp_block ppf (name, device, sector_size) =
     Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name device)
       Fmt.(option ((any ", sector-size: ") ++ int)) sector_size

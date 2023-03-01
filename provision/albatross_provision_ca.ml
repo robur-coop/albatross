@@ -38,7 +38,6 @@ let sign_csr dbname cacert key csr days =
   Logs.app (fun m -> m "signing certificate with subject %a"
                Distinguished_name.pp ri.Signing_request.subject);
   let issuer = Certificate.subject cacert in
-  (* TODO: check delegation! verify whitelisted commands!? *)
   let* extensions, days =
     match albatross_extension csr with
     | Ok v ->
@@ -50,6 +49,16 @@ let sign_csr dbname cacert key csr days =
         | `Policy_cmd (`Policy_add p) ->
           let* () = Vmm_core.Policy.usable p in
           Ok (d_exts (), 365)
+        | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+          let* () =
+            match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cacert)) with
+            | None -> Ok ()
+            | Some (_, data) -> match Vmm_asn.of_cert_extension data with
+              | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension in cacert")
+              | Ok (_, `Policy_cmd `Policy_add p) -> Vmm_core.Unikernel.fine_with_policy p u
+              | _ -> Ok ()
+          in
+          Ok (l_exts, 1)
         | _ -> Ok (l_exts, 1)
       in
       let days = Option.value ~default:default_days days in

@@ -47,6 +47,18 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
   | _, Error (`Msg e) ->
     Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
   | Ok cert, Ok key ->
+    (match cmd with
+     | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+       (match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
+        | None -> Lwt.return_unit
+        | Some (_, data) -> match Vmm_asn.of_cert_extension data with
+          | Error (`Msg _) -> Lwt.fail_with "couldn't parse albatross extension in cert"
+          | Ok (_, `Policy_cmd `Policy_add p) ->
+            (match Vmm_core.Unikernel.fine_with_policy p u with
+             | Ok () -> Lwt.return_unit
+             | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m))
+          | _ -> Lwt.return_unit)
+     | _ -> Lwt.return_unit) >>= fun () ->
     let tmpkey = X509.Private_key.generate ~bits key_type in
     let extensions =
       let v = Vmm_asn.to_cert_extension cmd in
