@@ -70,7 +70,7 @@ albatross-provision-ca sign cacert.pem db ca.key user.req
 | _certificate signing request_ | |            |            | user.req        |        |
 
 5. **client:** the client wants to create an unikernel, instead of using the
-traditional albatross-client-local command, it has to wrap the request in a
+albatross-client-local command, it has to wrap the request in a
 certificate signing request which will be submitted to the intermediate CA.
 
 ```
