@@ -43,10 +43,10 @@ albatross-tls-endpoint cacert.pem server.pem server.key
 
 3. **intermediate CA:** we want to delegate part of the resources to a given
 user. The user generates a signing request to allow a memory of 1024MB to run
-16 unikernels on two CPUs.
+16 unikernels on CPU IDs 0 and 1.
 
 ```
-albatross-provision-request add_policy user 16 --mem 1024 --cpu 0
+albatross-provision-request add_policy user 16 --mem 1024 --cpu 0 --cpu 1
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client |
