@@ -153,7 +153,7 @@ let check_policy (p : Policy.t) (running_vms, used_memory) (vm : Unikernel.confi
                    "maximum allowed memory (%d, used %d) would be exceeded (requesting %d)"
                    p.Policy.memory used_memory vm.Unikernel.memory))
   else if not (IS.mem vm.Unikernel.cpuid p.Policy.cpuids) then
-    Error (`Msg "CPUid is not allowed by policy")
+    Error (`Msg (Fmt.str "CPUid %u is not allowed by policy" vm.Unikernel.cpuid))
   else
     match List.partition (bridge_allowed p.Policy.bridges) (Unikernel.bridges vm) with
     | _, [] -> Ok ()
@@ -229,35 +229,6 @@ let insert_block t name size =
   report_vms t' name;
   Ok t'
 
-let sub_policy ~super ~sub =
-  let sub_block sub super =
-    match super, sub with
-    | None, None -> true
-    | Some _, None -> true
-    | Some x, Some y -> x >= y
-    | None, Some _ -> false
-  in
-  if super.Policy.vms < sub.Policy.vms then
-    Error (`Msg (Fmt.str "policy above allows %d unikernels, which is fewer than %d"
-                   super.Policy.vms sub.Policy.vms))
-  else if super.Policy.memory < sub.Policy.memory then
-    Error (`Msg (Fmt.str "policy above allows %d MB memory, which is fewer than %d MB"
-                   super.Policy.memory sub.Policy.memory))
-  else if not (IS.subset sub.Policy.cpuids super.Policy.cpuids) then
-    Error (`Msg (Fmt.str "policy above allows CPUids %a, which is not a superset of %a"
-                   Fmt.(list ~sep:(any ", ") int) (IS.elements super.Policy.cpuids)
-                   Fmt.(list ~sep:(any ", ") int) (IS.elements sub.Policy.cpuids)))
-  else if not (String_set.subset sub.Policy.bridges super.Policy.bridges) then
-    Error (`Msg (Fmt.str "policy above allows bridges %a, which is not a superset of %a"
-                   Fmt.(list ~sep:(any ", ") string) (String_set.elements super.Policy.bridges)
-                   Fmt.(list ~sep:(any ", ") string) (String_set.elements sub.Policy.bridges)))
-  else if not (sub_block sub.Policy.block super.Policy.block) then
-    Error (`Msg (Fmt.str "policy above allows %d MB block storage, which is fewer than %d MB"
-                   (match super.Policy.block with None -> 0 | Some x -> x)
-                   (match sub.Policy.block with None -> 0 | Some x -> x)))
-  else
-    Ok ()
-
 let check_policies_above t path sub =
   let rec go prefix =
     if Name.is_root_path prefix then
@@ -266,7 +237,7 @@ let check_policies_above t path sub =
       let* () =
         match find_policy t prefix with
         | None -> Ok ()
-        | Some super -> sub_policy ~super ~sub
+        | Some super -> Policy.is_smaller ~super ~sub
       in
       go (Name.parent_path prefix)
   in
@@ -278,7 +249,7 @@ let check_policies_below t path super =
       if Name.is_root name then
         res
       else
-        sub_policy ~super ~sub:policy)
+        Policy.is_smaller ~super ~sub:policy)
     (Ok ())
 
 let check_vms t path p =

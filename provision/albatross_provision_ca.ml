@@ -33,6 +33,14 @@ let albatross_extension csr =
   | Some (_, v) -> Ok v
   | None -> Error (`Msg "couldn't find albatross extension in CSR")
 
+let extract_policy cacert =
+  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cacert)) with
+  | None -> Ok None
+  | Some (_, data) -> match Vmm_asn.of_cert_extension data with
+    | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension in cacert")
+    | Ok (_, `Policy_cmd `Policy_add p) -> Ok (Some p)
+    | _ -> Ok None
+
 let sign_csr dbname cacert key csr days =
   let ri = Signing_request.info csr in
   Logs.app (fun m -> m "signing certificate with subject %a"
@@ -48,15 +56,20 @@ let sign_csr dbname cacert key csr days =
       let* exts, default_days = match cmd with
         | `Policy_cmd (`Policy_add p) ->
           let* () = Vmm_core.Policy.usable p in
+          let* super = extract_policy cacert in
+          let* () =
+            Option.fold
+              ~none:(Ok ())
+              ~some:(fun super -> Vmm_core.Policy.is_smaller ~super ~sub:p) super
+          in
           Ok (d_exts (), 365)
         | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+          let* p = extract_policy cacert in
           let* () =
-            match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cacert)) with
-            | None -> Ok ()
-            | Some (_, data) -> match Vmm_asn.of_cert_extension data with
-              | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension in cacert")
-              | Ok (_, `Policy_cmd `Policy_add p) -> Vmm_core.Unikernel.fine_with_policy p u
-              | _ -> Ok ()
+            Option.fold
+              ~none:(Ok ())
+              ~some:(fun p -> Vmm_core.Unikernel.fine_with_policy p u)
+              p
           in
           Ok (l_exts, 1)
         | _ -> Ok (l_exts, 1)

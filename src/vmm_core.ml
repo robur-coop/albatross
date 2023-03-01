@@ -252,6 +252,35 @@ module Policy = struct
       Error (`Msg "Unusable policy with memory <= 16 MB")
     else
       Ok ()
+
+  let is_smaller ~super ~sub =
+    let sub_block sub super =
+      match super, sub with
+      | None, None -> true
+      | Some _, None -> true
+      | Some x, Some y -> x >= y
+      | None, Some _ -> false
+    in
+    if super.vms < sub.vms then
+      Error (`Msg (Fmt.str "policy above allows %d unikernels, which is fewer than %d"
+                     super.vms sub.vms))
+    else if super.memory < sub.memory then
+      Error (`Msg (Fmt.str "policy above allows %d MB memory, which is fewer than %d MB"
+                     super.memory sub.memory))
+    else if not (IS.subset sub.cpuids super.cpuids) then
+      Error (`Msg (Fmt.str "policy above allows CPUids %a, which is not a superset of %a"
+                     Fmt.(list ~sep:(any ", ") int) (IS.elements super.cpuids)
+                     Fmt.(list ~sep:(any ", ") int) (IS.elements sub.cpuids)))
+    else if not (String_set.subset sub.bridges super.bridges) then
+      Error (`Msg (Fmt.str "policy above allows bridges %a, which is not a superset of %a"
+                     Fmt.(list ~sep:(any ", ") string) (String_set.elements super.bridges)
+                     Fmt.(list ~sep:(any ", ") string) (String_set.elements sub.bridges)))
+    else if not (sub_block sub.block super.block) then
+      Error (`Msg (Fmt.str "policy above allows %d MB block storage, which is fewer than %d MB"
+                     (match super.block with None -> 0 | Some x -> x)
+                     (match sub.block with None -> 0 | Some x -> x)))
+    else
+      Ok ()
 end
 
 module Unikernel = struct
@@ -287,16 +316,16 @@ module Unikernel = struct
       vm.bridges
 
   let fine_with_policy (p : Policy.t) (c : config) =
+    let bridge_allowed set s = String_set.mem s set in
     if not (IS.mem c.cpuid p.cpuids) then
       Error (`Msg "CPUid of unikernel not allowed by policy")
     else if c.memory > p.memory then
       Error (`Msg (Fmt.str "Amount of memory needed by unikernel (%uMB) exceeds policy (%uMB)" c.memory p.memory))
-    else if List.for_all (fun b -> String_set.mem b p.bridges) (bridges c) then
-      Error (`Msg (Fmt.str "Some bridges needed by unikernel (%a) not allowed by policy (%a)"
-                     Fmt.(list ~sep:(any ", ") string) (bridges c)
-                     Fmt.(list ~sep:(any ", ") string) (String_set.elements p.bridges)))
-    else
-      Ok ()
+    else match List.partition (bridge_allowed p.Policy.bridges) (bridges c) with
+      | _, [] -> Ok ()
+      | _, disallowed ->
+        Error (`Msg (Fmt.str "bridges %a not allowed by policy"
+                       Fmt.(list ~sep:(any ", ") string) disallowed))
 
   let pp_block ppf (name, device, sector_size) =
     Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name device)

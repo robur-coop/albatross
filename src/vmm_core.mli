@@ -90,7 +90,9 @@ module Policy : sig
 
   val pp : t Fmt.t
 
-  val usable : t -> (unit, [ `Msg of string ]) result
+  val usable : t -> (unit, [> `Msg of string ]) result
+
+  val is_smaller : super:t -> sub:t -> (unit, [> `Msg of string ]) result
 end
 
 module Unikernel : sig
@@ -113,7 +115,7 @@ module Unikernel : sig
 
   val bridges : config -> string list
 
-  val fine_with_policy : Policy.t -> config -> (unit, [ `Msg of string ]) result
+  val fine_with_policy : Policy.t -> config -> (unit, [> `Msg of string ]) result
 
   val pp_config : config Fmt.t
 

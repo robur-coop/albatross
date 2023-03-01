@@ -34,6 +34,14 @@ let timestamps validity =
   | None, _ | _, None -> invalid_arg "span too big - reached end of ptime"
   | Some now, Some exp -> (now, exp)
 
+let extract_policy cert =
+  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
+  | None -> Ok None
+  | Some (_, data) -> match Vmm_asn.of_cert_extension data with
+    | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension in cert")
+    | Ok (_, `Policy_cmd `Policy_add p) -> Ok (Some p)
+    | Ok (_, _) -> Ok None
+
 let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca key_type bits name (cmd : Vmm_commands.t) =
   Printexc.register_printer (function
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
@@ -49,15 +57,21 @@ let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert k
   | Ok cert, Ok key ->
     (match cmd with
      | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
-       (match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
-        | None -> Lwt.return_unit
-        | Some (_, data) -> match Vmm_asn.of_cert_extension data with
-          | Error (`Msg _) -> Lwt.fail_with "couldn't parse albatross extension in cert"
-          | Ok (_, `Policy_cmd `Policy_add p) ->
-            (match Vmm_core.Unikernel.fine_with_policy p u with
+       (match extract_policy cert with
+        | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
+        | Ok None -> Lwt.return_unit
+        | Ok Some p ->
+          (match Vmm_core.Unikernel.fine_with_policy p u with
              | Ok () -> Lwt.return_unit
-             | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m))
-          | _ -> Lwt.return_unit)
+             | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
+     | `Policy_cmd `Policy_add p ->
+       (match extract_policy cert with
+        | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
+        | Ok None -> Lwt.return_unit
+        | Ok Some super ->
+          (match Vmm_core.Policy.is_smaller ~sub:p ~super with
+             | Ok () -> Lwt.return_unit
+             | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
      | _ -> Lwt.return_unit) >>= fun () ->
     let tmpkey = X509.Private_key.generate ~bits key_type in
     let extensions =
