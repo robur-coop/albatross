@@ -16,7 +16,7 @@ are 4 entities:
 
 _Note_: there are 4 entities but depending on the security model some can exist
 on the same machine. For example, when **client** and **intermediate CA** can be
-combined, requests are automatically signed using `albatross-client-bistro`.
+combined, requests are automatically signed using `albatross-client-bistro` (see step 8).
 
 ## Setup
 
@@ -74,7 +74,7 @@ albatross-client-local command, it has to wrap the request in a
 certificate signing request which will be submitted to the intermediate CA.
 
 ```
-albatross-provision-request create hello hello-key.hvt
+albatross-provision-request create hello hello-key.hvt [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client        |
@@ -101,4 +101,12 @@ with the intermediate CA certificate to form the full chain.
 ```
 cat hello.pem user.pem > hello.bundle
 albatross-client-remote-tls cacert.pem hello.bundle hello.key <REMOTE_IP:PORT>`
+```
+
+8. Steps 5, 6, and 7 can be done in a single command - if there's no requirement
+to retain the signing request and certificate, and the user keys are on the
+local machine.
+
+```
+albatross-client-bistro create hello hello.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
