@@ -68,6 +68,7 @@ certificate chain as the administrative domain. The policies are embedded in CA
 certificates, and the command is embedded in the leaf certificate. The
 `albatross-tls-endpoint` is an alternative which listens on a TCP port and
 executes an asynchronous task for each incoming request.
+Further documentation on the TLS endpoint: [TLS](./TLS.md)
 
 The following command-line applications for local and remote management are provided:
 - `albatross-client-local`: sends a command locally to the Unix domain sockets
