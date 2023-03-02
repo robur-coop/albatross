@@ -272,7 +272,7 @@ module Policy = struct
                      Fmt.(list ~sep:(any ", ") int) (IS.elements super.cpuids)
                      Fmt.(list ~sep:(any ", ") int) (IS.elements sub.cpuids)))
     else if not (String_set.subset sub.bridges super.bridges) then
-      Error (`Msg (Fmt.str "policy above allows bridges %a, which is not a superset of %a"
+      Error (`Msg (Fmt.str "policy above allows bridge(s) %a, which is not a superset of %a"
                      Fmt.(list ~sep:(any ", ") string) (String_set.elements super.bridges)
                      Fmt.(list ~sep:(any ", ") string) (String_set.elements sub.bridges)))
     else if not (sub_block sub.block super.block) then
@@ -324,7 +324,7 @@ module Unikernel = struct
     else match List.partition (bridge_allowed p.Policy.bridges) (bridges c) with
       | _, [] -> Ok ()
       | _, disallowed ->
-        Error (`Msg (Fmt.str "bridges %a not allowed by policy"
+        Error (`Msg (Fmt.str "bridge(s) %a not allowed by policy"
                        Fmt.(list ~sep:(any ", ") string) disallowed))
 
   let pp_block ppf (name, device, sector_size) =
