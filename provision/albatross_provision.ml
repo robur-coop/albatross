@@ -68,7 +68,7 @@ let sign ?dbname ?certname ?cacert extensions issuer key csr delta =
       X509.(Certificate.(Distinguished_name.equal (subject c) (issuer c)))
     in
     match cacert with
-    | Some c when self_signed c -> [ cert ; c ]
+    | Some c when not (self_signed c) -> [ cert ; c ]
     | _ -> [ cert ]
   in
   let enc = X509.Certificate.encode_pem_multiple chain in
