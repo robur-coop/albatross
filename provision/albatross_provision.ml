@@ -101,3 +101,11 @@ let db =
 let mem =
   let doc = "Memory to provision" in
   Arg.(required & pos 2 (some int) None & info [] ~doc ~docv:"MEM")
+
+let pub_key_type =
+  let doc = "Asymmetric key type to use" in
+  Arg.(value & opt (Arg.enum X509.Key_type.strings) `ED25519 & info [ "key-type" ] ~doc)
+
+let key_bits =
+  let doc = "Public key bits to use (only relevant for RSA)" in
+  Arg.(value & opt int 4096 & info [ "bits" ] ~doc)

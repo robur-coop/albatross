@@ -119,14 +119,6 @@ let sday =
   let doc = "Server validity" in
   Arg.(value & opt int 365 & info [ "server-days" ] ~doc)
 
-let pub_key_type =
-  let doc = "Asymmetric key type to use" in
-  Arg.(value & opt (Arg.enum X509.Key_type.strings) `ED25519 & info [ "key-type" ] ~doc)
-
-let key_bits =
-  let doc = "Public key bits to use (only relevant for RSA)" in
-  Arg.(value & opt int 4096 & info [ "bits" ] ~doc)
-
 let generate_cmd =
   let doc = "generates a certificate authority" in
   let man =

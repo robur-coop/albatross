@@ -86,15 +86,6 @@ let help _ man_format cmds = function
 open Cmdliner
 open Albatross_cli
 
-let pub_key_type =
-  let doc = "Asymmetric key type to use" in
-  Arg.(value & opt (Arg.enum X509.Key_type.strings) `ED25519 & info [ "key-type" ] ~doc)
-
-let key_bits =
-  let doc = "Public key bits to use (only relevant for RSA)" in
-  Arg.(value & opt int 4096 & info [ "bits" ] ~doc)
-
-
 let destroy_cmd =
   let doc = "destroys a unikernel" in
   let man =
