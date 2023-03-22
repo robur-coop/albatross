@@ -5,7 +5,7 @@
  (modules albatross_cli)
  (libraries checkseum.c albatross albatross.unix lwt.unix cmdliner logs.fmt
    logs.cli fmt fmt.cli fmt.tty ipaddr.unix metrics metrics-lwt metrics-influx
-   ptime.clock.os metrics-rusage x509))
+   ptime.clock.os metrics-rusage))
 
 (library
  (name albatross_client_update)

@@ -483,14 +483,6 @@ let port_or_socket ~default_port =
          | None, false -> Ok (`Port default_port))
     $ port $ systemd_socket_activation)
 
-let pub_key_type =
-  let doc = "Asymmetric key type to use" in
-  Arg.(value & opt (Arg.enum X509.Key_type.strings) `ED25519 & info [ "key-type" ] ~doc)
-
-let key_bits =
-  let doc = "Public key bits to use (only relevant for RSA)" in
-  Arg.(value & opt int 4096 & info [ "bits" ] ~doc)
-
 let exit_status = function
   | Ok () -> Ok Success
   | Error e -> Ok e

@@ -200,6 +200,14 @@ let server_ca =
   let doc = "The certificate authority used to verify the remote server." in
   Arg.(value & opt string "cacert.pem" & info [ "server-ca" ] ~doc)
 
+let pub_key_type =
+  let doc = "Asymmetric key type to use" in
+  Arg.(value & opt (Arg.enum X509.Key_type.strings) `ED25519 & info [ "key-type" ] ~doc)
+
+let key_bits =
+  let doc = "Public key bits to use (only relevant for RSA)" in
+  Arg.(value & opt int 4096 & info [ "bits" ] ~doc)
+
 let ca_cert =
   let doc = "The certificate authority used to issue the certificate" in
   Arg.(value & opt string "ca.pem" & info [ "ca" ] ~doc)
