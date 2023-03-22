@@ -100,11 +100,6 @@ let sign_main _ db cacert cakey csrname days =
   let* csr = Signing_request.decode_pem (Cstruct.of_string enc) in
   sign_csr (Fpath.v db) cacert cakey csr days
 
-let help _ man_format cmds = function
-  | None -> `Help (`Pager, None)
-  | Some t when List.mem t cmds -> `Help (man_format, Some t)
-  | Some _ -> List.iter print_endline cmds; `Ok ()
-
 let generate _ name db days sname sdays key_type bits =
   Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
   let* key = priv_key key_type bits name in
@@ -175,21 +170,13 @@ let sign_cmd =
   in
   Cmd.v info term
 
-let help_cmd =
-  let topic =
-    let doc = "The topic to get help on. `topics' lists the topics." in
-    Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
-  in
-  Term.(ret (const help $ setup_log $ Arg.man_format $ Term.choice_names $ topic))
-
 let cmds = [ sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)]
 
-let () =
+let cmd =
   let doc = "Albatross CA provisioning" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) does CA operations (creation, sign, etc.)" ]
   in
-  let info = Cmd.info "albatross-provision-ca" ~version ~doc ~man in
-  let group = Cmd.group ~default:help_cmd info cmds in
-  exit (Cmd.eval group)
+  let info = Cmd.info "ca" ~version ~doc ~man in
+  Cmd.group ~default:(help_cmd (Some "ca")) info cmds

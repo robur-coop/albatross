@@ -81,11 +81,6 @@ let block_set _ key_type bits block_name compression block_data =
 let block_destroy _ key_type bits block_name =
   jump key_type bits block_name (`Block_cmd `Block_remove)
 
-let help _ man_format cmds = function
-  | None -> `Help (`Pager, None)
-  | Some t when List.mem t cmds -> `Help (man_format, Some t)
-  | Some _ -> List.iter print_endline cmds; `Ok ()
-
 open Cmdliner
 open Albatross_cli
 
@@ -269,25 +264,17 @@ let block_destroy_cmd =
   in
   Cmd.v info term
 
-let help_cmd =
-  let topic =
-    let doc = "The topic to get help on. `topics' lists the topics." in
-    Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
-  in
-  Term.(ret (const help $ setup_log $ Arg.man_format $ Term.choice_names $ topic))
-
 let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              info_cmd ; get_cmd ; destroy_cmd ; create_cmd ; restart_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              block_set_cmd ; block_dump_cmd ;
              console_cmd ; stats_cmd ]
 
-let () =
+let cmd =
   let doc = "Albatross provisioning request" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) creates a certificate signing request for Albatross" ]
   in
-  let info = Cmd.info "albatross-provision-request" ~version ~doc ~man in
-  let group = Cmd.group ~default:help_cmd info cmds in
-  exit (Cmd.eval group)
+  let info = Cmd.info "request" ~version ~doc ~man in
+  Cmd.group ~default:(help_cmd (Some "request")) info cmds

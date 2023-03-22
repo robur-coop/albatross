@@ -33,8 +33,7 @@ do install $bdir/$f $libexecdir/$f; done
 for f in albatross-client-local \
              albatross-client-remote-tls \
              albatross-client-bistro \
-             albatross-provision-ca \
-             albatross-provision-request
+             albatross-provision
 do install $bdir/$f $bindir/$f; done
 
 # stage systemd scripts

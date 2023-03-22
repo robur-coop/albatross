@@ -90,6 +90,18 @@ let priv_key typ bits name =
 
 open Cmdliner
 
+let help default_cmd man_format cmds = function
+  | None -> `Help (`Pager, default_cmd)
+  | Some t when List.mem t cmds -> `Help (man_format, Some t)
+  | Some _ -> List.iter print_endline cmds; `Ok ()
+
+let help_cmd cmd =
+  let topic =
+    let doc = "The topic to get help on. `topics' lists the topics." in
+    Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
+  in
+  Term.(ret (const help $ const cmd $ Arg.man_format $ Term.choice_names $ topic))
+
 let nam =
   let doc = "Name to provision" in
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VM")
