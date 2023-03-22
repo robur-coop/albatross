@@ -11,4 +11,4 @@
 (executable
  (name albatross_client_gen)
  (modules albatross_client_gen)
- (libraries albatross.cli albatross))
+ (libraries albatross.cli albatross base64))
