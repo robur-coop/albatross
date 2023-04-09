@@ -119,6 +119,18 @@ let setup_log style_renderer level =
 
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let ( let* ) = Result.bind in
+  let* () =
+    if String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
+      Ok ()
+    else
+      Error (`Msg "Bridge names must be a set")
+  in
+  let* () =
+    if String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) block_devices))) = List.length block_devices then
+      Ok ()
+    else
+      Error (`Msg "Block devices must be a set")
+  in
   let img_file = Fpath.v image in
   let* image = Bos.OS.File.read img_file in
   let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices (Cstruct.of_string image) in
@@ -152,10 +164,14 @@ let create_block size compression data =
     else
       Error (`Msg "data exceeds size")
 
-let policy vms memory cpus block bridges =
-  let bridges = String_set.of_list bridges
+let policy vms memory cpus block bridgesl =
+  let bridges = String_set.of_list bridgesl
   and cpuids = IS.of_list cpus
   in
+  if not (String_set.cardinal bridges = List.length bridgesl) then
+    Logs.warn (fun m -> m "Bridges is not a set");
+  if not (IS.cardinal cpuids = List.length cpus) then
+    Logs.warn (fun m -> m "CPUids is not a set");
   Policy.{ vms ; cpuids ; memory ; block ; bridges }
 
 open Cmdliner

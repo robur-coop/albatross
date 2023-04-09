@@ -230,7 +230,8 @@ let equal_string_lists b1 b2 err =
     Error (`Msg err)
 
 let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
-  let* () = equal_string_lists manifest_block block_devices
+  let* () =
+    equal_string_lists manifest_block block_devices
       "specified block device(s) does not match with manifest"
   in
   equal_string_lists manifest_net bridges

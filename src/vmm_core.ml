@@ -238,9 +238,13 @@ module Policy = struct
     String_set.equal p1.bridges p2.bridges
 
   let pp ppf res =
-    Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a MB block bridges: %a"
+    let bridges =
+      if String_set.is_empty res.bridges then "" else ", bridges: "
+    in
+    Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a block%s%a"
       res.vms pp_is res.cpuids res.memory
-      Fmt.(option ~none:(any "no") int) res.block
+      Fmt.(option ~none:(any "no") (int ++ any " MB")) res.block
+      bridges
       Fmt.(list ~sep:(any ", ") string) (String_set.elements res.bridges)
 
   let usable { vms ; cpuids ; memory ; _ } =
@@ -318,14 +322,18 @@ module Unikernel = struct
   let fine_with_policy (p : Policy.t) (c : config) =
     let bridge_allowed set s = String_set.mem s set in
     if not (IS.mem c.cpuid p.cpuids) then
-      Error (`Msg "CPUid of unikernel not allowed by policy")
+      Error (`Msg (Fmt.str "CPUid of unikernel (%d) not allowed by policy (%a)"
+                     c.cpuid Fmt.(list ~sep:(any ", ") int) (IS.elements p.cpuids)))
     else if c.memory > p.memory then
-      Error (`Msg (Fmt.str "Amount of memory needed by unikernel (%uMB) exceeds policy (%uMB)" c.memory p.memory))
+      Error (`Msg (Fmt.str "%u MB memory assigned to unikernel exceeds policy (%uMB)"
+                     c.memory p.memory))
     else match List.partition (bridge_allowed p.Policy.bridges) (bridges c) with
       | _, [] -> Ok ()
       | _, disallowed ->
-        Error (`Msg (Fmt.str "bridge(s) %a not allowed by policy"
-                       Fmt.(list ~sep:(any ", ") string) disallowed))
+        Error (`Msg (Fmt.str "Bridge(s) %a not allowed by policy (available: %a)"
+                       Fmt.(list ~sep:(any ", ") string) disallowed
+                       Fmt.(list ~sep:(any ", ") string)
+                       (String_set.elements p.bridges)))
 
   let pp_block ppf (name, device, sector_size) =
     Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name device)
