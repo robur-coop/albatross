@@ -70,8 +70,7 @@ certificates, and the command is embedded in the leaf certificate.
 The following command-line applications for local and remote management are provided:
 - `albatross-client-local`: sends a command locally to the Unix domain sockets
 - `albatross-client-remote-tls`: connects to a remote TLS endpoint and sends a command
-- `albatross-provision-request`: creates a certificate signing request containing a command
-- `albatross-provision-ca`: certificate authority operations: sign, generate, and revoke (NYI)
+- `albatross-provision`: certificate authority operations and certificate signing request creation
 - `albatross-client-bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key locally)
 
 ## Albatross over TLS
@@ -102,7 +101,7 @@ belong. Filename is in **bold** when it's created by the current step.
 1. Generate the root CA certificate and server keypair
 
 ```
-albatross-provision-ca generate ca db
+albatross-provision generate ca db
 ```
 
 
@@ -122,7 +121,7 @@ user. The user generates a signing request to allow a memory of 1024MB to run
 16 unikernels on CPU IDs 0 and 1.
 
 ```
-albatross-provision-request add_policy user 16 --mem 1024 --cpu 0 --cpu 1
+albatross-provision add_policy user 16 --mem 1024 --cpu 0 --cpu 1
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client |
@@ -136,7 +135,7 @@ certificate containing the restriction policies (limited memory, cpu), which in
 turn will be used to sign user requests.
 
 ```
-albatross-provision-ca sign cacert.pem db ca.key user.req
+albatross-provision sign cacert.pem db ca.key user.req
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client |
@@ -150,7 +149,7 @@ albatross-client-local command, it has to wrap the request in a
 certificate signing request which will be submitted to the intermediate CA.
 
 ```
-albatross-provision-request create hello hello-key.hvt [--arg='--hello=albatross-hi'] [--cpu=1]
+albatross-provision create hello hello-key.hvt [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client        |
@@ -162,7 +161,7 @@ albatross-provision-request create hello hello-key.hvt [--arg='--hello=albatross
 6. **intermediate CA:** the intermediate CA signs the request
 
 ```
-albatross-provision-ca sign user.pem db user.key hello.req
+albatross-provision sign user.pem db user.key hello.req
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client        |
@@ -172,7 +171,7 @@ albatross-provision-ca sign user.pem db user.key hello.req
 | _certificate signing request_ | |            |            | user.req        | hello.req     |
 
 7. **client:** client sends the signed request to the server,
-`albatross-provision-ca` appended the intermediate CA certificate to `hello.pem`
+`albatross-provision` appended the intermediate CA certificate to `hello.pem`
 to form the full chain.
 
 ```

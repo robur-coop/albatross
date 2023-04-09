@@ -1,13 +1,5 @@
-(library
- (name albatross_provision)
- (public_name albatross.provision)
- (wrapped false)
- (modules albatross_provision albatross_provision_ca albatross_provision_request)
- (libraries albatross.cli x509 mirage-crypto-rng.unix))
-
 (executable
-  (name albatross_provision_main)
+  (name albatross_provision)
   (public_name albatross-provision)
   (package albatross)
-  (modules albatross_provision_main)
-  (libraries albatross.cli albatross_provision cmdliner))
+  (libraries albatross.cli x509 mirage-crypto-rng.unix))
