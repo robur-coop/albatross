@@ -152,6 +152,28 @@ let update _ opt_socket host dryrun level name tmpdir =
       Lwt.return (Error Albatross_cli.Remote_command_failed)
   ) |> function Ok a -> a | Error e -> e
 
+let inspect_dump _ name dbdir =
+  Albatross_cli.set_dbdir dbdir;
+  match Vmm_unix.restore ?name () with
+  | Error `NoFile ->
+    Logs.err (fun m -> m "dump file not found");
+    Albatross_cli.Cli_failed
+  | Error (`Msg msg) ->
+    Logs.err (fun m -> m "error while reading dump file: %s" msg);
+    Albatross_cli.Cli_failed
+  | Ok data -> match Vmm_asn.unikernels_of_cstruct data with
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "couldn't parse dump file: %s" msg);
+      Albatross_cli.Cli_failed
+    | Ok unikernels ->
+      let all = Vmm_trie.all unikernels in
+      Logs.app (fun m -> m "parsed %d unikernels:" (List.length all));
+      List.iter (fun (name, unik) ->
+          Logs.app (fun m -> m "%a: %a" Vmm_core.Name.pp name
+                       Vmm_core.Unikernel.pp_config unik))
+        all;
+      Albatross_cli.Success
+
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
   | Some t when List.mem t cmds -> `Help (man_format, Some t)
@@ -415,6 +437,21 @@ let update_cmd =
   in
   Cmd.v info term
 
+let file =
+  let doc = "File to read the dump from (prefixed by dbdir if relative)" in
+  Arg.(value & opt (some string) None & info [ "file" ] ~doc)
+
+let inspect_dump_cmd =
+  let doc = " Inspects an albatross dump file" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Inspects an albatross dump file"]
+  in
+  let term = Term.(const inspect_dump $ setup_log $ file $ dbdir)
+  and info = Cmd.info "inspect-dump" ~doc ~man ~exits
+  in
+  Cmd.v info term
+
 let help_cmd =
   let topic =
     let doc = "The topic to get help on. `topics' lists the topics." in
@@ -428,7 +465,7 @@ let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              block_set_cmd ; block_dump_cmd ;
              console_cmd ;
              stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ;
-             update_cmd ]
+             update_cmd ; inspect_dump_cmd ; ]
 
 let () =
   let doc = "VMM local client" in

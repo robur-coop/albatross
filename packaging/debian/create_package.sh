@@ -34,7 +34,6 @@ do install $bdir/$f $libexecdir/$f; done
 for f in albatross-client-local \
              albatross-client-remote-tls \
              albatross-client-bistro \
-             albatross-client-inspect-dump \
              albatross-provision-ca \
              albatross-provision-request
 do install $bdir/$f $bindir/$f; done
