@@ -95,8 +95,9 @@ albatross-provision-ca sign user.pem db user.key hello.req
 | _public certificate_          | | server.pem | cacert.pem | user.pem        | **hello.pem** |
 | _certificate signing request_ | |            |            | user.req        | hello.req     |
 
-7. **client:** client sends the signed request to the server, it's concatenated
-with the intermediate CA certificate to form the full chain.
+7. **client:** client sends the signed request to the server,
+`albatross-provision-ca` appended the intermediate CA certificate to `hello.pem`
+to form the full chain.
 
 ```
 albatross-client-remote-tls cacert.pem hello.pem hello.key <REMOTE_IP:PORT>`
