@@ -40,7 +40,7 @@ request-response style over Unix domain sockets, are run in the host system:
 - `albatrossd`: privileged to create and destroy unikernels
 - `albatross-console`: reads the console output of unikernels
 - `albatross-stats`: statistics gathering (rusage, ifstat, BHyve debug counters)
-- `albatross-tls-inetd`: remote deployment via TLS and inetd (an alternative is `albatross-tls-endpoint`)
+- `albatross-tls-endpoint`: remote deployment via TLS (and possibly inetd)
 - `albatross-influx`: statistic reporting from `albatross-stats` to influx
 
 The main daemon is the privileged `albatrossd`, which supervises unikernels. It opens
@@ -61,13 +61,11 @@ write their standard output to.
 `Albatross-stats` periodically gathers statistics (memory, CPU, network, hypervisor)
 from all running unikernels.
 
-`Albatross-tls-inetd` is executed via inetd (socket activation) and proxies
-requests from remote clients to the respective daemons described above. It
-enforces client authentication, and uses the common names of the client
+`Albatross-tls-endpoint` listens on a TCP port, or uses systemd socket activation, or
+via inetd, and proxies requests from remote clients to the respective daemons described
+above. It enforces client authentication, and uses the common names of the client
 certificate chain as the administrative domain. The policies are embedded in CA
-certificates, and the command is embedded in the leaf certificate. The
-`albatross-tls-endpoint` is an alternative which listens on a TCP port and
-executes an asynchronous task for each incoming request.
+certificates, and the command is embedded in the leaf certificate.
 Further documentation on the TLS endpoint: [TLS](./TLS.md)
 
 The following command-line applications for local and remote management are provided:

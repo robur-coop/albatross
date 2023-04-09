@@ -34,7 +34,6 @@ for f in albatrossd \
              albatross-console \
              albatross-influx \
              albatross-tls-endpoint \
-             albatross-tls-inetd \
              albatross-stats
 do install -U $bdir/$f $libexecdir/$f; done
 

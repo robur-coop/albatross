@@ -17,10 +17,3 @@
  (package albatross)
  (modules albatross_tls_endpoint)
  (libraries albatross_cli albatross_tls_cli albatross))
-
-(executable
- (name albatross_tls_inetd)
- (public_name albatross-tls-inetd)
- (package albatross)
- (modules albatross_tls_inetd)
- (libraries albatross_cli albatross_tls_cli albatross))
