@@ -40,8 +40,7 @@ do install -U $bdir/$f $libexecdir/$f; done
 for f in albatross-client-local \
              albatross-client-remote-tls \
              albatross-client-bistro \
-             albatross-provision-ca \
-             albatross-provision-request
+             albatross-provision
 do install -U $bdir/$f $sbindir/$f; done
 
 # create +MANIFEST
