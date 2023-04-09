@@ -88,7 +88,7 @@ let sign_csr dbname cacert key csr days =
       let extensions = s_exts in
       Ok (extensions, days)
   in
-  sign ~dbname extensions issuer key csr (Duration.of_day days)
+  sign ~dbname ~cacert extensions issuer key csr (Duration.of_day days)
 
 let sign_main _ db cacert cakey csrname days =
   Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
