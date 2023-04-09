@@ -37,11 +37,9 @@ for f in albatrossd \
              albatross-stats
 do install -U $bdir/$f $libexecdir/$f; done
 
-for f in albatross-stat-client \
-             albatross-client-local \
+for f in albatross-client-local \
              albatross-client-remote-tls \
              albatross-client-bistro \
-             albatross-client-inspect-dump \
              albatross-provision-ca \
              albatross-provision-request
 do install -U $bdir/$f $sbindir/$f; done
