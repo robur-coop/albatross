@@ -31,8 +31,7 @@ for f in albatrossd \
 do install $bdir/$f $libexecdir/$f; done
 
 # stage client binaries
-for f in albatross-stat-client \
-             albatross-client-local \
+for f in albatross-client-local \
              albatross-client-remote-tls \
              albatross-client-bistro \
              albatross-client-inspect-dump \
