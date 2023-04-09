@@ -67,10 +67,17 @@ let remove_policy _ opt_socket path =
   jump opt_socket (Vmm_core.Name.create_of_path path)
     (`Policy_cmd `Policy_remove)
 
-let add_policy _ opt_socket path vms memory cpus block bridges =
+let add_policy _ opt_socket path vms memory cpus block bridges tmpdir =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump opt_socket (Vmm_core.Name.create_of_path path)
-    (`Policy_cmd (`Policy_add p))
+  match Vmm_core.Policy.usable p with
+  | Error `Msg msg ->
+    Logs.err (fun m -> m "%s" msg);
+    Ok Albatross_cli.Cli_failed
+  | Ok () ->
+    if Vmm_core.String_set.is_empty p.bridges then
+      Logs.warn (fun m -> m "policy without any network access");
+    jump opt_socket (Vmm_core.Name.create_of_path path)
+      (`Policy_cmd (`Policy_add p)) tmpdir
 
 let info_ _ opt_socket name =
   jump opt_socket name (`Unikernel_cmd `Unikernel_info)

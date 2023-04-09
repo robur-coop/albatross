@@ -150,7 +150,14 @@ let remove_policy _ endp cert key ca key_type bits path =
 
 let add_policy _ endp cert key ca key_type bits path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
-  jump endp cert key ca key_type bits path (`Policy_cmd (`Policy_add p))
+  match Vmm_core.Policy.usable p with
+  | Error `Msg msg ->
+    Logs.err (fun m -> m "%s" msg);
+    Ok Albatross_cli.Cli_failed
+  | Ok () ->
+    if Vmm_core.String_set.is_empty p.bridges then
+      Logs.warn (fun m -> m "policy without any network access");
+    jump endp cert key ca key_type bits path (`Policy_cmd (`Policy_add p))
 
 let info_ _ endp cert key ca key_type bits name =
   jump endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_info)
