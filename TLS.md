@@ -99,6 +99,5 @@ albatross-provision-ca sign user.pem db user.key hello.req
 with the intermediate CA certificate to form the full chain.
 
 ```
-cat hello.pem user.pem > hello.bundle
-albatross-client-remote-tls cacert.pem hello.bundle hello.key <REMOTE_IP:PORT>`
+albatross-client-remote-tls cacert.pem hello.pem hello.key <REMOTE_IP:PORT>`
 ```
