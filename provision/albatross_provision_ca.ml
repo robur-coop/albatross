@@ -33,12 +33,19 @@ let albatross_extension csr =
   | Some (_, v) -> Ok v
   | None -> Error (`Msg "couldn't find albatross extension in CSR")
 
+let extract_policy cacert =
+  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cacert)) with
+  | None -> Ok None
+  | Some (_, data) -> match Vmm_asn.of_cert_extension data with
+    | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension in cacert")
+    | Ok (_, `Policy_cmd `Policy_add p) -> Ok (Some p)
+    | _ -> Ok None
+
 let sign_csr dbname cacert key csr days =
   let ri = Signing_request.info csr in
   Logs.app (fun m -> m "signing certificate with subject %a"
                Distinguished_name.pp ri.Signing_request.subject);
   let issuer = Certificate.subject cacert in
-  (* TODO: check delegation! verify whitelisted commands!? *)
   let* extensions, days =
     match albatross_extension csr with
     | Ok v ->
@@ -46,9 +53,26 @@ let sign_csr dbname cacert key csr days =
       if not Vmm_commands.(is_current version) then
         Logs.warn (fun m -> m "version in request (%a) different from our version %a, using ours"
                       Vmm_commands.pp_version version Vmm_commands.pp_version Vmm_commands.current);
-      let exts, default_days = match cmd with
-        | `Policy_cmd (`Policy_add _) -> d_exts (), 365
-        | _ -> l_exts, 1
+      let* exts, default_days = match cmd with
+        | `Policy_cmd (`Policy_add p) ->
+          let* () = Vmm_core.Policy.usable p in
+          let* super = extract_policy cacert in
+          let* () =
+            Option.fold
+              ~none:(Ok ())
+              ~some:(fun super -> Vmm_core.Policy.is_smaller ~super ~sub:p) super
+          in
+          Ok (d_exts (), 365)
+        | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+          let* p = extract_policy cacert in
+          let* () =
+            Option.fold
+              ~none:(Ok ())
+              ~some:(fun p -> Vmm_core.Unikernel.fine_with_policy p u)
+              p
+          in
+          Ok (l_exts, 1)
+        | _ -> Ok (l_exts, 1)
       in
       let days = Option.value ~default:default_days days in
       Logs.app (fun m -> m "signing %a" (Vmm_commands.pp ~verbose:false) cmd);
@@ -64,7 +88,7 @@ let sign_csr dbname cacert key csr days =
       let extensions = s_exts in
       Ok (extensions, days)
   in
-  sign ~dbname extensions issuer key csr (Duration.of_day days)
+  sign ~dbname ~cacert extensions issuer key csr (Duration.of_day days)
 
 let sign_main _ db cacert cakey csrname days =
   Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
@@ -96,7 +120,7 @@ open Cmdliner
 open Albatross_cli
 
 let csr =
-  let doc = "signing request" in
+  let doc = "Signing request" in
   Arg.(required & pos 3 (some file) None & info [] ~doc ~docv:"CSR")
 
 let key =

@@ -54,6 +54,7 @@ let init_influx name data =
 type exit_status =
   | Success
   | Local_authentication_failed
+  | Chain_failure
   | Remote_authentication_failed
   | Communication_failed
   | Connect_failed
@@ -118,6 +119,18 @@ let setup_log style_renderer level =
 
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let ( let* ) = Result.bind in
+  let* () =
+    if String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
+      Ok ()
+    else
+      Error (`Msg "Bridge names must be a set")
+  in
+  let* () =
+    if String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) block_devices))) = List.length block_devices then
+      Ok ()
+    else
+      Error (`Msg "Block devices must be a set")
+  in
   let img_file = Fpath.v image in
   let* image = Bos.OS.File.read img_file in
   let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices (Cstruct.of_string image) in
@@ -151,10 +164,14 @@ let create_block size compression data =
     else
       Error (`Msg "data exceeds size")
 
-let policy vms memory cpus block bridges =
-  let bridges = String_set.of_list bridges
+let policy vms memory cpus block bridgesl =
+  let bridges = String_set.of_list bridgesl
   and cpuids = IS.of_list cpus
   in
+  if not (String_set.cardinal bridges = List.length bridgesl) then
+    Logs.warn (fun m -> m "Bridges is not a set");
+  if not (IS.cardinal cpuids = List.length cpus) then
+    Logs.warn (fun m -> m "CPUids is not a set");
   Policy.{ vms ; cpuids ; memory ; block ; bridges }
 
 open Cmdliner
@@ -497,6 +514,7 @@ let exit_status = function
    - 127 (bash) command not found
    - 255 OCaml abort
 *)
+let chain_failure = 116
 let remote_command_failed = 117
 let http_failed = 118
 let local_authentication_failed = 119
@@ -507,6 +525,7 @@ let connect_failed = 122
 let exit_status_to_int = function
   | Success -> Cmd.Exit.ok
   | Local_authentication_failed -> local_authentication_failed
+  | Chain_failure -> chain_failure
   | Remote_authentication_failed -> remote_authentication_failed
   | Communication_failed -> communication_failed
   | Connect_failed -> connect_failed
@@ -535,6 +554,9 @@ let auth_exits =
   [ Cmd.Exit.info ~doc:"on local authentication failure \
                          (certificate not accepted by remote)"
       local_authentication_failed ;
+    Cmd.Exit.info ~doc:"on certificate chain failure \
+                         (certificate chain couldn't be validated locally)"
+      chain_failure ;
     Cmd.Exit.info ~doc:"on remote authentication failure \
                          (couldn't validate trust anchor)"
       remote_authentication_failed ]

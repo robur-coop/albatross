@@ -29,6 +29,9 @@ let remove_policy _ key_type bits path =
 
 let add_policy _ key_type bits path vms memory cpus block bridges =
   let p = Albatross_cli.policy vms memory cpus block bridges in
+  let* () = Vmm_core.Policy.usable p in
+  if Vmm_core.String_set.is_empty p.bridges then
+    Logs.warn (fun m -> m "policy without any network access");
   jump key_type bits path (`Policy_cmd (`Policy_add p))
 
 let info_ _ key_type bits name =

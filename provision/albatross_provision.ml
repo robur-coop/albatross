@@ -33,7 +33,7 @@ let key_ids exts pub issuer =
   X509.Extension.(add Subject_key_id (false, X509.Public_key.id pub)
                     (add Authority_key_id (false, auth) exts))
 
-let sign ?dbname ?certname extensions issuer key csr delta =
+let sign ?dbname ?certname ?cacert extensions issuer key csr delta =
   let* certname =
     match certname with
     | Some x -> Ok x
@@ -63,7 +63,15 @@ let sign ?dbname ?certname extensions issuer key csr delta =
     | Some dbname ->
       append dbname (Printf.sprintf "%s %s\n" (Z.to_string (X509.Certificate.serial cert)) certname)
   in
-  let enc = X509.Certificate.encode_pem cert in
+  let chain =
+    let self_signed c =
+      X509.(Certificate.(Distinguished_name.equal (subject c) (issuer c)))
+    in
+    match cacert with
+    | Some c when not (self_signed c) -> [ cert ; c ]
+    | _ -> [ cert ]
+  in
+  let enc = X509.Certificate.encode_pem_multiple chain in
   Bos.OS.File.write Fpath.(v certname + "pem") (Cstruct.to_string enc)
 
 let priv_key typ bits name =
