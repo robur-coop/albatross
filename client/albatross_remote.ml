@@ -18,6 +18,47 @@ let read (fd, next) =
   | `Read -> loop ()
   | `End -> process fd
 
+let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) (cert, certs, key) ca =
+  Printexc.register_printer (function
+      | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
+      | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
+      | _ -> None) ;
+  let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
+  if not (key_eq (Private_key.public key) (Certificate.public_key cert)) then begin
+    Logs.err (fun m -> m "Public key of certificate doesn't match private key");
+    Lwt.return (Error Albatross_cli.Cli_failed)
+  end else
+    X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
+    match authenticator ~host:None [ cert ] with
+    | Error ve ->
+      Logs.err (fun m -> m "TLS validation error of provided certificate chain: %a"
+                   X509.Validation.pp_validation_error ve);
+      Lwt.return (Error Albatross_cli.Chain_failure)
+    | Ok _ ->
+      match host with
+      | "-" ->
+        Logs.app (fun m -> m "leaf cert:@.%s@.@.@.intermediate:@.%a@."
+                     (Cstruct.to_string (X509.Certificate.encode_pem cert))
+                     Fmt.(list ~sep:(any "@.@.") string)
+                     (List.map (fun c ->
+                          Cstruct.to_string (X509.Certificate.encode_pem c))
+                         certs));
+        Lwt.return (Error Albatross_cli.Connect_failed)
+      | _ ->
+        let certificates = `Single (cert :: certs, key) in
+        Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
+        | Error `Msg msg ->
+          Logs.err (fun m -> m "connect failed with %s" msg);
+          Lwt.return (Error Albatross_cli.Connect_failed)
+        | Ok ((ip, port), fd) ->
+          Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
+          let client = Tls.Config.client ~certificates ~authenticator () in
+          Lwt.catch (fun () ->
+              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
+              Logs.debug (fun m -> m "finished tls handshake") ;
+              Ok fd)
+            (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
+
 let key_ids exts pub issuer =
   let auth = (Some (Public_key.id issuer), General_name.empty, None) in
   Extension.(add Subject_key_id (false, (Public_key.id pub))
@@ -42,104 +83,90 @@ let extract_policy cert =
     | Ok (_, `Policy_cmd `Policy_add p) -> Ok (Some p)
     | Ok (_, _) -> Ok None
 
-let connect ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port) cert key ca key_type bits name (cmd : Vmm_commands.t) =
-  Printexc.register_printer (function
-      | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
-      | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
-      | _ -> None) ;
-  Vmm_lwt.read_from_file cert >>= fun cert_cs ->
-  Vmm_lwt.read_from_file key >>= fun key_cs ->
-  match Certificate.decode_pem cert_cs, Private_key.decode_pem key_cs with
-  | Error (`Msg e), _ ->
-    Lwt.fail_with ("couldn't parse certificate (" ^ cert ^ "): "  ^ e)
-  | _, Error (`Msg e) ->
-    Lwt.fail_with ("couldn't parse private key (" ^ key ^ "): "  ^ e)
-  | Ok cert, Ok key ->
-    let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
-    if not (key_eq (Private_key.public key) (Certificate.public_key cert)) then
-      Lwt.fail_with "Public key of certificate doesn't match private key"
+let ( let* ) = Result.bind
+
+let gen_cert (cert, certs, key) key_type bits name (cmd : Vmm_commands.t) =
+  let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
+  let* () =
+    if key_eq (Private_key.public key) (Certificate.public_key cert) then
+      Ok ()
     else
-      X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-      match authenticator ~host:None [ cert ] with
-      | Error ve ->
-        Lwt.fail_with ("TLS validation error of provided certificate chain: " ^
-                       Fmt.to_to_string X509.Validation.pp_validation_error ve)
-      | Ok _ ->
-        (match cmd with
-         | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
-           (match extract_policy cert with
-            | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
-            | Ok None -> Lwt.return_unit
-            | Ok Some p ->
-              (match Vmm_core.Unikernel.fine_with_policy p u with
-               | Ok () -> Lwt.return_unit
-               | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
-         | `Policy_cmd `Policy_add p ->
-           (match extract_policy cert with
-            | Error `Msg m -> Lwt.fail_with ("couldn't extract policy from cacert: " ^ m)
-            | Ok None -> Lwt.return_unit
-            | Ok Some super ->
-              (match Vmm_core.Policy.is_smaller ~sub:p ~super with
-               | Ok () -> Lwt.return_unit
-               | Error `Msg m -> Lwt.fail_with ("policy failure: " ^ m)))
-         | _ -> Lwt.return_unit) >>= fun () ->
-        let tmpkey = X509.Private_key.generate ~bits key_type in
-        let extensions =
-          let v = Vmm_asn.to_cert_extension cmd in
-          Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
-                       (add Basic_constraints (true, (false, None))
-                          (add Ext_key_usage (true, [ `Client_auth ])
-                             (singleton (Unsupported Vmm_asn.oid) (false, v)))))
-        in
-        match
-          let name =
-            [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
-          in
-          let extensions = Signing_request.Ext.(singleton Extensions extensions) in
-          Signing_request.create name ~extensions tmpkey
-        with
-        | Error `Msg m -> Lwt.fail_with m
-        | Ok csr ->
-          let valid_from, valid_until = timestamps 300 in
-          let extensions =
-            let capub = X509.Private_key.public key in
-            key_ids extensions Signing_request.((info csr).public_key) capub
-          in
-          let issuer = Certificate.subject cert in
-          match Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer with
-          | Error e ->
-            Lwt.fail_with (Fmt.to_to_string X509.Validation.pp_signature_error e)
-          | Ok mycert ->
-            match host with
-            | "-" ->
-              Logs.app (fun m -> m "leaf cert:@.%s@.@.@.intermediate:@.%s@."
-                           (Cstruct.to_string (X509.Certificate.encode_pem mycert))
-                           (Cstruct.to_string (X509.Certificate.encode_pem cert)));
-              Lwt.return (Error Albatross_cli.Connect_failed)
-            | _ ->
-              let certificates = `Single ([ mycert ; cert ], tmpkey) in
-              Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
-              | Error `Msg msg ->
-                Logs.err (fun m -> m "connect failed with %s" msg);
-                Lwt.return (Error Albatross_cli.Connect_failed)
-              | Ok ((ip, port), fd) ->
-                Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
-                let client = Tls.Config.client ~certificates ~authenticator () in
-                Lwt.catch (fun () ->
-                    Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
-                    Logs.debug (fun m -> m "finished tls handshake") ;
-                    Ok fd)
-                  (fun exn -> Lwt.return (Error (Albatross_tls_common.classify_tls_error exn)))
+      Error (`Msg "Public key of certificate doesn't match private key")
+  in
+  let* () =
+    match cmd with
+    | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+      let* p = extract_policy cert in
+      Option.fold
+        ~none:(Ok ())
+        ~some:(fun p -> Vmm_core.Unikernel.fine_with_policy p u)
+        p
+    | `Policy_cmd `Policy_add p ->
+      let* super = extract_policy cert in
+      Option.fold
+        ~none:(Ok ())
+        ~some:(fun super -> Vmm_core.Policy.is_smaller ~sub:p ~super)
+        super
+    | _ -> Ok()
+  in
+  let tmpkey = X509.Private_key.generate ~bits key_type in
+  let extensions =
+    let v = Vmm_asn.to_cert_extension cmd in
+    Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
+                 (add Basic_constraints (true, (false, None))
+                    (add Ext_key_usage (true, [ `Client_auth ])
+                       (singleton (Unsupported Vmm_asn.oid) (false, v)))))
+  in
+  let* csr =
+    let name =
+      [ Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
+    in
+    let extensions = Signing_request.Ext.(singleton Extensions extensions) in
+    Signing_request.create name ~extensions tmpkey
+  in
+  let valid_from, valid_until = timestamps 300 in
+  let extensions =
+    let capub = X509.Private_key.public key in
+    key_ids extensions Signing_request.((info csr).public_key) capub
+  in
+  let issuer = Certificate.subject cert in
+  let* mycert =
+    Result.map_error
+      (fun e -> `Msg (Fmt.to_to_string X509.Validation.pp_signature_error e))
+      (Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
+  in
+  Ok (mycert, cert :: certs, tmpkey)
+
+let read_cert_key cert key =
+  let* key =
+    let* key_data = Bos.OS.File.read (Fpath.v key) in
+    Private_key.decode_pem (Cstruct.of_string key_data)
+  in
+  let* certs =
+    let* cert_data = Bos.OS.File.read (Fpath.v cert) in
+    Certificate.decode_pem_multiple (Cstruct.of_string cert_data)
+  in
+  let cert, chain = match certs with
+    | [] -> assert false
+    | cert :: chain -> cert, chain
+  in
+  Ok (cert, chain, key)
 
 let jump endp cert key ca key_type bits name cmd =
+  let* cert, certs, key = read_cert_key cert key in
   Lwt_main.run (
     let _, next = Vmm_commands.endpoint cmd in
-    connect endp cert key ca key_type bits name cmd >>= function
-    | Error e -> Lwt.return (Ok e)
-    | Ok fd ->
-      read (fd, next) >>= fun r ->
-      Vmm_tls_lwt.close fd >|= fun () ->
-      Albatross_cli.exit_status r
+    match gen_cert (cert, certs, key) key_type bits name cmd with
+    | Error `Msg msg ->
+      Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
+      Lwt.return (Ok Albatross_cli.Cli_failed)
+    | Ok (cert, certs, key) ->
+      connect endp (cert, certs, key) ca >>= function
+      | Error e -> Lwt.return (Ok e)
+      | Ok fd ->
+        read (fd, next) >>= fun r ->
+        Vmm_tls_lwt.close fd >|= fun () ->
+        Albatross_cli.exit_status r
   )
 
 let info_policy _ endp cert key ca key_type bits path =
@@ -207,23 +234,53 @@ let block_destroy _ endp cert key ca key_type bits block_name =
   jump endp cert key ca key_type bits block_name (`Block_cmd `Block_remove)
 
 let update _ endp cert key ca key_type bits host dryrun level name =
-  let open Lwt_result.Infix in
+  let* cert, certs, key = read_cert_key cert key in
   Lwt_main.run (
     let happy_eyeballs = Happy_eyeballs_lwt.create () in
-    connect ~happy_eyeballs endp cert key ca key_type bits name (`Unikernel_cmd `Unikernel_info) >>= fun fd ->
-    Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
-    Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
-    Albatross_client_update.prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
-    connect ~happy_eyeballs endp cert key ca key_type bits name (`Unikernel_cmd cmd) >>= fun fd ->
-    Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
-    Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
-    match r with
-    | Ok w ->
-      Lwt.return Albatross_cli.(exit_status (output_result w))
-    | Error _ ->
-      Logs.err (fun m -> m "received error from albatross");
-      Lwt.return (Error Albatross_cli.Remote_command_failed)
-  ) |> function Ok a -> a | Error e -> e
+    match gen_cert (cert, certs, key) key_type bits name (`Unikernel_cmd `Unikernel_info) with
+    | Error `Msg msg ->
+      Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
+      Lwt.return (Ok Albatross_cli.Cli_failed)
+    | Ok (cert, certs, key) ->
+      connect ~happy_eyeballs endp (cert, certs, key) ca >>= function
+      | Error e -> Lwt.return (Ok e)
+      | Ok fd ->
+        Vmm_tls_lwt.read_tls fd >>= fun r ->
+        Vmm_tls_lwt.close fd >>= fun () ->
+        Albatross_client_update.prepare_update ~happy_eyeballs level host dryrun r >>= function
+        | Error e -> Lwt.return (Ok e)
+        | Ok cmd ->
+          match gen_cert (cert, certs, key) key_type bits name (`Unikernel_cmd cmd) with
+          | Error `Msg msg ->
+            Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
+            Lwt.return (Ok Albatross_cli.Cli_failed)
+          | Ok (cert, certs, key) ->
+            connect ~happy_eyeballs endp (cert, certs, key) ca >>= function
+            | Error e -> Lwt.return (Ok e)
+            | Ok fd ->
+              Vmm_tls_lwt.read_tls fd >>= fun r ->
+              Vmm_tls_lwt.close fd >>= fun () ->
+              match r with
+              | Ok w ->
+                Lwt.return Albatross_cli.(exit_status (output_result w))
+              | Error _ ->
+                Logs.err (fun m -> m "received error from albatross");
+                Lwt.return (Ok Albatross_cli.Remote_command_failed)
+  )
+
+let cert () dst server_ca cert key =
+  let* cert, certs, key = read_cert_key cert key in
+  Lwt_main.run
+    (connect dst (cert, certs, key) server_ca >>= function
+      | Error e -> Lwt.return (Ok e)
+      | Ok fd ->
+        let next = match Vmm_tls.wire_command_of_cert cert with
+          | Ok (_, cmd) -> snd (Vmm_commands.endpoint cmd)
+          | _ -> `Read
+        in
+        read (fd, next) >>= fun r ->
+        Vmm_tls_lwt.close fd >|= fun () ->
+        Albatross_cli.exit_status r)
 
 let help _ _ man_format cmds = function
   | None -> `Help (`Pager, None)
@@ -240,7 +297,7 @@ let exits = auth_exits @ exits
 
 let server_ca =
   let doc = "The certificate authority used to verify the remote server." in
-  Arg.(value & opt string "cacert.pem" & info [ "server-ca" ] ~doc)
+  Arg.(value & opt file "cacert.pem" & info [ "server-ca" ] ~doc)
 
 let pub_key_type =
   let doc = "Asymmetric key type to use" in
@@ -252,11 +309,11 @@ let key_bits =
 
 let ca_cert =
   let doc = "The certificate authority used to issue the certificate" in
-  Arg.(value & opt string "ca.pem" & info [ "ca" ] ~doc)
+  Arg.(value & opt file "ca.pem" & info [ "ca" ] ~doc)
 
 let ca_key =
   let doc = "The private key of the signing certificate authority" in
-  Arg.(value & opt string "ca.key" & info [ "ca-key" ] ~doc)
+  Arg.(value & opt file "ca.key" & info [ "ca-key" ] ~doc)
 
 let destination =
   let doc = "the destination hostname:port to connect to" in
@@ -449,8 +506,28 @@ let update_cmd =
      `P "Check and update a unikernel from the binary repository"]
   in
   let term =
-    Term.(const update $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ http_host $ dryrun $ compress_level 9 $ vm_name)
+    Term.(term_result (const update $ setup_log $ destination $ ca_cert $ ca_key $ server_ca $ pub_key_type $ key_bits $ http_host $ dryrun $ compress_level 9 $ vm_name))
   and info = Cmd.info "update" ~doc ~man ~exits
+  in
+  Cmd.v info term
+
+let client_cert =
+  let doc = "Use a client certificate chain" in
+  Arg.(required & pos 0 (some file) None & info [] ~doc ~docv:"CERT")
+
+let client_key =
+  let doc = "Use a client key" in
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"KEY")
+
+let cert_cmd =
+  let doc = "Establishes a TLS handshake which executes the command of the client certiicate" in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Establishes a TLS handshake to a remote albatross server, executes the command of the client certificate, and prints the result. "]
+  in
+  let term =
+    Term.(term_result (const cert $ setup_log $ destination $ server_ca $ client_cert $ client_key))
+  and info = Cmd.info "certificate" ~doc ~man ~exits
   in
   Cmd.v info term
 
@@ -466,7 +543,7 @@ let cmds = [ policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
              block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
              block_set_cmd ; block_dump_cmd ;
              console_cmd ; stats_cmd ;
-             update_cmd ]
+             update_cmd ; cert_cmd ]
 
 let () =
   let doc = "Albatross client and go to bistro" in
@@ -474,6 +551,6 @@ let () =
     `S "DESCRIPTION" ;
     `P "$(tname) executes the provided subcommand on a remote albatross" ]
   in
-  let info = Cmd.info "albatross-client-bistro" ~version ~doc ~man ~exits in
+  let info = Cmd.info "albatross-remote" ~version ~doc ~man ~exits in
   let group = Cmd.group ~default:help_cmd info cmds in
   exit (Cmd.eval_value group |> Albatross_cli.exit_status_of_result)

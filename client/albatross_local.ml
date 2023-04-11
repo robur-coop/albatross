@@ -473,6 +473,6 @@ let () =
     `S "DESCRIPTION" ;
     `P "$(tname) connects to albatrossd via a local socket" ]
   in
-  let info = Cmd.info "albatross-client-local" ~version ~doc ~man ~exits in
+  let info = Cmd.info "albatross-local" ~version ~doc ~man ~exits in
   let group = Cmd.group ~default:help_cmd info cmds in
   exit (Cmd.eval_value group |> Albatross_cli.exit_status_of_result)

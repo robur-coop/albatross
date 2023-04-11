@@ -68,10 +68,9 @@ certificate chain as the administrative domain. The policies are embedded in CA
 certificates, and the command is embedded in the leaf certificate.
 
 The following command-line applications for local and remote management are provided:
-- `albatross-client-local`: sends a command locally to the Unix domain sockets
-- `albatross-client-remote-tls`: connects to a remote TLS endpoint and sends a command
+- `albatross-local`: sends a command locally to the Unix domain sockets
+- `albatross-remote`: connects to a remote TLS endpoint to execute a command
 - `albatross-provision`: certificate authority operations and certificate signing request creation
-- `albatross-client-bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key locally)
 
 ## Albatross over TLS
 
@@ -91,7 +90,7 @@ are 4 entities:
 
 _Note_: there are 4 entities but depending on the security model some can exist
 on the same machine. For example, when **client** and **intermediate CA** can be
-combined, requests are automatically signed using `albatross-client-bistro` (see step 8).
+combined, requests are automatically signed using `albatross-remote` (see step 8).
 
 ## Setup
 
@@ -145,7 +144,7 @@ albatross-provision sign cacert.pem db ca.key user.req
 | _certificate signing request_ | |            |            | user.req        |        |
 
 5. **client:** the client wants to create an unikernel, instead of using the
-albatross-client-local command, it has to wrap the request in a
+albatross-local command, it has to wrap the request in a
 certificate signing request which will be submitted to the intermediate CA.
 
 ```
@@ -175,7 +174,7 @@ albatross-provision sign user.pem db user.key hello.req
 to form the full chain.
 
 ```
-albatross-client-remote-tls cacert.pem hello.pem hello.key <REMOTE_IP:PORT>`
+albatross-remote certificate cacert.pem hello.pem hello.key <REMOTE_IP:PORT>`
 ```
 
 8. Steps 5, 6, and 7 can be done in a single command - if there's no requirement
@@ -183,7 +182,7 @@ to retain the signing request and certificate, and the user keys are on the
 local machine.
 
 ```
-albatross-client-bistro create hello hello.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
+albatross-remote create hello hello.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 ## Installation

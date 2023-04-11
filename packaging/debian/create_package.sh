@@ -30,9 +30,8 @@ for f in albatrossd \
 do install $bdir/$f $libexecdir/$f; done
 
 # stage client binaries
-for f in albatross-client-local \
-             albatross-client-remote-tls \
-             albatross-client-bistro \
+for f in albatross-local \
+             albatross-remote \
              albatross-provision
 do install $bdir/$f $bindir/$f; done
 
