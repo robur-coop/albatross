@@ -201,21 +201,33 @@ type solo5_target = Spt | Hvt
 let solo5_image_target image =
   let* abi = Solo5_elftool.query_abi (owee_buf_of_cstruct image) in
   match abi.target with
-  | Solo5_elftool.Hvt -> Ok (Hvt, abi.version)
-  | Solo5_elftool.Spt -> Ok (Spt, abi.version)
+  | Solo5_elftool.Hvt -> Ok (Hvt, Int32.to_int abi.version)
+  | Solo5_elftool.Spt -> Ok (Spt, Int32.to_int abi.version)
   | x -> Error (`Msg (Fmt.str "unsupported solo5 target %a" Solo5_elftool.pp_abi_target x))
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
 
 let check_solo5_tender target version =
-  let cmd_name = solo5_tender target in
+  let cmd_names =
+    let base = solo5_tender target in
+    [ base ^ "." ^ string_of_int version ; base ]
+  in
+  let cmds =
+    List.concat_map (fun name ->
+        [ Bos.Cmd.(v (p Fpath.(!dbdir / name))) ; Bos.Cmd.v name ])
+      cmd_names
+  in
   let* cmd =
-    match
-      Bos.OS.Cmd.must_exist (Bos.Cmd.v cmd_name),
-      Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(!dbdir / cmd_name)))
-    with
-    | Ok cmd, _ | _, Ok cmd -> Ok cmd
-    | _ -> Error (`Msg (Fmt.str "%s does not exist" cmd_name))
+    Result.map_error
+      (fun _ ->
+         `Msg (Fmt.str "tender does not exist, looked for %a"
+                 Fmt.(list ~sep:(any ", ") string)
+                 (List.map Bos.Cmd.to_string cmds)))
+      (List.fold_left (fun acc cmd ->
+           match acc with
+           | Ok _ as cmd -> cmd
+           | Error _ -> Bos.OS.Cmd.must_exist cmd)
+          (Error (`Msg "")) cmds)
   in
   let* out =  Bos.OS.Cmd.(run_out Bos.Cmd.(cmd % "--version") |> out_string |> success) in
   match String.split_on_char '\n' out with
@@ -223,13 +235,13 @@ let check_solo5_tender target version =
     (match String.split_on_char ' ' abi with
      | "ABI" :: "version" :: num :: [] ->
        let* v' =
-         try Ok (Int32.of_int (int_of_string num)) with
+         try Ok (int_of_string num) with
            Failure _ -> Error (`Msg ("cannot decode solo5 ABI version: " ^ num))
        in
        if version = v' then
          Ok cmd
        else
-         Error (`Msg (Fmt.str "unexpected solo5 ABI version, expected %lu, got %lu"
+         Error (`Msg (Fmt.str "unexpected solo5 ABI version, expected %u, got %u"
                         version v'))
      | _ ->
        Error (`Msg (Fmt.str "couldn't decode tender ABI version in --version: %s"
