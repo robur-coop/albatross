@@ -18,14 +18,6 @@ let uname =
       | Ok s -> invalid_arg (Printf.sprintf "OS %s not supported" s)
       | Error (`Msg m) -> invalid_arg m)
 
-let check_solo5_cmd name =
-  match
-    Bos.OS.Cmd.must_exist (Bos.Cmd.v name),
-    Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(!dbdir / name)))
-  with
-  | Ok cmd, _ | _, Ok cmd -> Ok cmd
-  | _ -> Error (`Msg (Fmt.str "%s does not exist" name))
-
 (* Pure OCaml implementation of SystemD's sd_listen_fds.
  * Note: this implementation does not unset environment variables. *)
 let sd_listen_fds () =
@@ -209,11 +201,40 @@ type solo5_target = Spt | Hvt
 let solo5_image_target image =
   let* abi = Solo5_elftool.query_abi (owee_buf_of_cstruct image) in
   match abi.target with
-  | Solo5_elftool.Hvt -> Ok Hvt
-  | Solo5_elftool.Spt -> Ok Spt
+  | Solo5_elftool.Hvt -> Ok (Hvt, abi.version)
+  | Solo5_elftool.Spt -> Ok (Spt, abi.version)
   | x -> Error (`Msg (Fmt.str "unsupported solo5 target %a" Solo5_elftool.pp_abi_target x))
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
+
+let check_solo5_tender target version =
+  let cmd_name = solo5_tender target in
+  let* cmd =
+    match
+      Bos.OS.Cmd.must_exist (Bos.Cmd.v cmd_name),
+      Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(!dbdir / cmd_name)))
+    with
+    | Ok cmd, _ | _, Ok cmd -> Ok cmd
+    | _ -> Error (`Msg (Fmt.str "%s does not exist" cmd_name))
+  in
+  let* out =  Bos.OS.Cmd.(run_out Bos.Cmd.(cmd % "--version") |> out_string |> success) in
+  match String.split_on_char '\n' out with
+  | _tender :: abi :: _rest ->
+    (match String.split_on_char ' ' abi with
+     | "ABI" :: "version" :: num :: [] ->
+       let* v' =
+         try Ok (Int32.of_int (int_of_string num)) with
+           Failure _ -> Error (`Msg ("cannot decode solo5 ABI version: " ^ num))
+       in
+       if version = v' then
+         Ok cmd
+       else
+         Error (`Msg (Fmt.str "unexpected solo5 ABI version, expected %lu, got %lu"
+                        version v'))
+     | _ ->
+       Error (`Msg (Fmt.str "couldn't decode tender ABI version in --version: %s"
+                      abi)))
+  | _ -> Error (`Msg (Fmt.str "unexpected solo5 tender --version output: %s, expected ABI version in second line" out))
 
 let solo5_image_devices image =
   let* mft = Solo5_elftool.query_manifest (owee_buf_of_cstruct image) in
@@ -276,8 +297,8 @@ let prepare name (vm : Unikernel.config) =
   in
   let filename = Name.image_file name in
   let digest = Mirage_crypto.Hash.SHA256.digest image in
-  let* target = solo5_image_target image in
-  let* _ = check_solo5_cmd (solo5_tender target) in
+  let* target, version = solo5_image_target image in
+  let* _ = check_solo5_tender target version in
   let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices image in
   let* () = Bos.OS.File.write filename (Cstruct.to_string image) in
   let* () = bridges_exist vm.Unikernel.bridges in
@@ -349,7 +370,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   let* cpuset = cpuset config.Unikernel.cpuid in
-  let* target =
+  let* target, version =
     let* image =
       if config.Unikernel.compressed then
         match Vmm_compress.uncompress (Cstruct.to_string config.Unikernel.image) with
@@ -360,7 +381,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     in
     solo5_image_target image
   in
-  let* tender = check_solo5_cmd (solo5_tender target) in
+  let* tender = check_solo5_tender target version in
   let cmd =
     Bos.Cmd.(of_list cpuset %% tender % mem %%
              of_list net %% of_list macs %% of_list blocks %%
