@@ -223,14 +223,19 @@ let check_solo5_tender target version =
          `Msg (Fmt.str "tender does not exist, looked for %a"
                  Fmt.(list ~sep:(any ", ") string)
                  (List.map Bos.Cmd.to_string cmds)))
-      (List.fold_left (fun acc cmd ->
+      (List.fold_left (fun acc name ->
            match acc with
            | Ok _ as cmd -> cmd
-           | Error _ -> Bos.OS.Cmd.must_exist cmd)
-          (Error (`Msg "")) cmds)
+           | Error _ ->
+             let db_pre = Fpath.(!dbdir / name) in
+             if Bos.OS.File.is_executable db_pre then
+               Ok Bos.Cmd.(v (p db_pre))
+             else
+               Bos.OS.Cmd.must_exist (Bos.Cmd.v name))
+          (Error (`Msg "")) cmd_names)
   in
-  let* out =  Bos.OS.Cmd.(run_out Bos.Cmd.(cmd % "--version") |> out_string |> success) in
-  match String.split_on_char '\n' out with
+  let* out =  Bos.OS.Cmd.(run_out ~err:err_run_out Bos.Cmd.(cmd % "--version") |> out_lines |> success) in
+  match out with
   | _tender :: abi :: _rest ->
     (match String.split_on_char ' ' abi with
      | "ABI" :: "version" :: num :: [] ->
@@ -246,7 +251,8 @@ let check_solo5_tender target version =
      | _ ->
        Error (`Msg (Fmt.str "couldn't decode tender ABI version in --version: %s"
                       abi)))
-  | _ -> Error (`Msg (Fmt.str "unexpected solo5 tender --version output: %s, expected ABI version in second line" out))
+  | _ -> Error (`Msg (Fmt.str "unexpected solo5 tender --version output, expected ABI version in second line, got %s"
+                        (String.concat "\n" out)))
 
 let solo5_image_devices image =
   let* mft = Solo5_elftool.query_manifest (owee_buf_of_cstruct image) in
