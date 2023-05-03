@@ -256,9 +256,9 @@ let http_host =
   let doc = "Base-URL of binary unikernel repository." in
   Arg.(value & opt uri_c "https://builds.robur.coop" & info [ "http-host" ] ~doc)
 
-let compress_level default =
-  let doc = "Compression level (0 - 9), a higher value results in smaller data, but uses more CPU " in
-  Arg.(value & opt int default & info [ "compression-level" ] ~doc)
+let compress_level =
+  let doc = "Compression level (0 - 9), a higher value results in smaller data, but uses more CPU (defaults to 0 for local, 9 for remote)" in
+  Arg.(value & opt (some int) None & info [ "compression-level" ] ~doc)
 
 let force =
   let doc = "force VM creation." in

@@ -37,10 +37,7 @@ for f in albatrossd \
              albatross-stats
 do install -U $bdir/$f $libexecdir/$f; done
 
-for f in albatross-local \
-             albatross-remote \
-             albatross-provision
-do install -U $bdir/$f $sbindir/$f; done
+install -U $bdir/albatross-client $sbindir/$f
 
 # create +MANIFEST
 flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |

@@ -1,5 +1,0 @@
-(executable
-  (name albatross_provision)
-  (public_name albatross-provision)
-  (package albatross)
-  (libraries albatross.cli x509 mirage-crypto-rng.unix))

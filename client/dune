@@ -1,15 +1,6 @@
 (executable
- (name albatross_remote)
- (public_name albatross-remote)
+ (name albatross_client)
+ (public_name albatross-client)
  (package albatross)
- (modules albatross_remote)
  (libraries albatross.cli albatross albatross.tls albatross_tls_cli
    albatross_client_update happy-eyeballs-lwt))
-
-(executable
- (name albatross_local)
- (public_name albatross-local)
- (package albatross)
- (modules albatross_local)
- (libraries albatross.cli albatross albatross_client_update
-   happy-eyeballs-lwt))
