@@ -227,7 +227,10 @@ let check_solo5_tender target version =
            match acc with
            | Ok _ as cmd -> cmd
            | Error _ ->
+             (* The tender may be in <dbdir>/name or in PATH *)
              let db_pre = Fpath.(!dbdir / name) in
+             (* Bos.OS.Cmd.must_exist with a full path does not check whether
+                there is a file, neither whether it is executable. *)
              if Bos.OS.File.is_executable db_pre then
                Ok Bos.Cmd.(v (p db_pre))
              else
@@ -235,24 +238,19 @@ let check_solo5_tender target version =
           (Error (`Msg "")) cmd_names)
   in
   let* out =  Bos.OS.Cmd.(run_out ~err:err_run_out Bos.Cmd.(cmd % "--version") |> out_lines |> success) in
-  match out with
-  | _tender :: abi :: _rest ->
-    (match String.split_on_char ' ' abi with
-     | "ABI" :: "version" :: num :: [] ->
-       let* v' =
-         try Ok (int_of_string num) with
-           Failure _ -> Error (`Msg ("cannot decode solo5 ABI version: " ^ num))
-       in
-       if version = v' then
-         Ok cmd
-       else
-         Error (`Msg (Fmt.str "unexpected solo5 ABI version, expected %u, got %u"
-                        version v'))
-     | _ ->
-       Error (`Msg (Fmt.str "couldn't decode tender ABI version in --version: %s"
-                      abi)))
-  | _ -> Error (`Msg (Fmt.str "unexpected solo5 tender --version output, expected ABI version in second line, got %s"
-                        (String.concat "\n" out)))
+  (* The solo5 tender outputs multiple lines, with one being "ABI version YY" *)
+  if
+    List.exists (fun str ->
+        match String.split_on_char ' ' str with
+        | "ABI" :: "version" :: num :: [] ->
+          (try version = int_of_string num with Failure _ -> false)
+        | _ -> false)
+      out
+  then
+    Ok cmd
+  else
+    Error (`Msg (Fmt.str "unexpected solo5 tender --version output, expected one line with 'ABI version %u', got %s"
+                   version (String.concat "\n" out)))
 
 let solo5_image_devices image =
   let* mft = Solo5_elftool.query_manifest (owee_buf_of_cstruct image) in
