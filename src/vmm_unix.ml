@@ -18,14 +18,6 @@ let uname =
       | Ok s -> invalid_arg (Printf.sprintf "OS %s not supported" s)
       | Error (`Msg m) -> invalid_arg m)
 
-let check_solo5_cmd name =
-  match
-    Bos.OS.Cmd.must_exist (Bos.Cmd.v name),
-    Bos.OS.Cmd.must_exist Bos.Cmd.(v (p Fpath.(!dbdir / name)))
-  with
-  | Ok cmd, _ | _, Ok cmd -> Ok cmd
-  | _ -> Error (`Msg (Fmt.str "%s does not exist" name))
-
 (* Pure OCaml implementation of SystemD's sd_listen_fds.
  * Note: this implementation does not unset environment variables. *)
 let sd_listen_fds () =
@@ -209,11 +201,56 @@ type solo5_target = Spt | Hvt
 let solo5_image_target image =
   let* abi = Solo5_elftool.query_abi (owee_buf_of_cstruct image) in
   match abi.target with
-  | Solo5_elftool.Hvt -> Ok Hvt
-  | Solo5_elftool.Spt -> Ok Spt
+  | Solo5_elftool.Hvt -> Ok (Hvt, Int32.to_int abi.version)
+  | Solo5_elftool.Spt -> Ok (Spt, Int32.to_int abi.version)
   | x -> Error (`Msg (Fmt.str "unsupported solo5 target %a" Solo5_elftool.pp_abi_target x))
 
 let solo5_tender = function Spt -> "solo5-spt" | Hvt -> "solo5-hvt"
+
+let check_solo5_tender target version =
+  let cmd_names =
+    let base = solo5_tender target in
+    [ base ^ "." ^ string_of_int version ; base ]
+  in
+  let cmds =
+    List.concat_map (fun name ->
+        [ Bos.Cmd.(v (p Fpath.(!dbdir / name))) ; Bos.Cmd.v name ])
+      cmd_names
+  in
+  let* cmd =
+    Result.map_error
+      (fun _ ->
+         `Msg (Fmt.str "tender does not exist, looked for %a"
+                 Fmt.(list ~sep:(any ", ") string)
+                 (List.map Bos.Cmd.to_string cmds)))
+      (List.fold_left (fun acc name ->
+           match acc with
+           | Ok _ as cmd -> cmd
+           | Error _ ->
+             (* The tender may be in <dbdir>/name or in PATH *)
+             let db_pre = Fpath.(!dbdir / name) in
+             (* Bos.OS.Cmd.must_exist with a full path does not check whether
+                there is a file, neither whether it is executable. *)
+             if Bos.OS.File.is_executable db_pre then
+               Ok Bos.Cmd.(v (p db_pre))
+             else
+               Bos.OS.Cmd.must_exist (Bos.Cmd.v name))
+          (Error (`Msg "")) cmd_names)
+  in
+  let* out =  Bos.OS.Cmd.(run_out ~err:err_run_out Bos.Cmd.(cmd % "--version") |> out_lines |> success) in
+  (* The solo5 tender outputs multiple lines, with one being "ABI version YY" *)
+  if
+    List.exists (fun str ->
+        match String.split_on_char ' ' str with
+        | "ABI" :: "version" :: num :: [] ->
+          (try version = int_of_string num with Failure _ -> false)
+        | _ -> false)
+      out
+  then
+    Ok cmd
+  else
+    Error (`Msg (Fmt.str "unexpected solo5 tender --version output, expected one line with 'ABI version %u', got %s"
+                   version (String.concat "\n" out)))
 
 let solo5_image_devices image =
   let* mft = Solo5_elftool.query_manifest (owee_buf_of_cstruct image) in
@@ -276,8 +313,8 @@ let prepare name (vm : Unikernel.config) =
   in
   let filename = Name.image_file name in
   let digest = Mirage_crypto.Hash.SHA256.digest image in
-  let* target = solo5_image_target image in
-  let* _ = check_solo5_cmd (solo5_tender target) in
+  let* target, version = solo5_image_target image in
+  let* _ = check_solo5_tender target version in
   let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices image in
   let* () = Bos.OS.File.write filename (Cstruct.to_string image) in
   let* () = bridges_exist vm.Unikernel.bridges in
@@ -349,7 +386,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
   let* cpuset = cpuset config.Unikernel.cpuid in
-  let* target =
+  let* target, version =
     let* image =
       if config.Unikernel.compressed then
         match Vmm_compress.uncompress (Cstruct.to_string config.Unikernel.image) with
@@ -360,7 +397,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     in
     solo5_image_target image
   in
-  let* tender = check_solo5_cmd (solo5_tender target) in
+  let* tender = check_solo5_tender target version in
   let cmd =
     Bos.Cmd.(of_list cpuset %% tender % mem %%
              of_list net %% of_list macs %% of_list blocks %%
