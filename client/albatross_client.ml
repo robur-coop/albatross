@@ -57,7 +57,7 @@ let connect_remote ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port)
     Lwt.return (Error Albatross_cli.Cli_failed)
   end else
     X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
-    match authenticator ~host:None [ cert ] with
+    match authenticator ~host:None (cert :: certs) with
     | Error ve ->
       Logs.err (fun m -> m "TLS validation error of provided certificate chain: %a"
                    X509.Validation.pp_validation_error ve);
@@ -379,7 +379,7 @@ let jump cmd name d cert key ca key_type bits tmpdir =
       match cmd, Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
       | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name))
       | _, true, Some name -> Ok name
-      | _, _, None -> Error (`Msg "empty name")
+      | _, true, None -> Ok "."
       | _, _, _ -> Error (`Msg "non-empty path")
     in
     Lwt_main.run (
@@ -401,7 +401,7 @@ let jump cmd name d cert key ca key_type bits tmpdir =
         match cmd, Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
         | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name))
         | _, true, Some name -> Ok name
-        | _, _, None -> Error (`Msg "empty name")
+        | _, true, None -> Ok "."
         | _, _, _ -> Error (`Msg "non-empty path")
       in
       let* priv = priv_key key_type bits name in
@@ -623,13 +623,14 @@ let remote_host default_port =
   let parse s =
     let* host, port =
       match List.rev (String.split_on_char ':' s) with
+      | [] -> Error (`Msg "empty host")
+      | [_] -> Ok (s, default_port)
       | port :: host ->
         begin try
             Ok (String.concat ":" (List.rev host), int_of_string port)
           with
-            Not_found -> Error (`Msg "failed to parse port")
+            Failure _ -> Error (`Msg "failed to parse port")
         end
-      | _ -> Ok (s, default_port)
     in
     match
       Ipaddr.of_string host,
