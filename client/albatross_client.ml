@@ -322,8 +322,7 @@ let sign_csr dbname cacert key csr days =
   sign ~dbname ~cacert extensions issuer key csr Duration.(to_sec (of_day days))
 
 let sign_main _ db cacert cakey csrname days =
-  (Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
-   let* cacert = Bos.OS.File.read (Fpath.v cacert) in
+  (let* cacert = Bos.OS.File.read (Fpath.v cacert) in
    let* cacert = X509.Certificate.decode_pem (Cstruct.of_string cacert) in
    let* pk = Bos.OS.File.read (Fpath.v cakey) in
    let* cakey = X509.Private_key.decode_pem (Cstruct.of_string pk) in
@@ -337,8 +336,7 @@ let sign_main _ db cacert cakey csrname days =
     Albatross_cli.Cli_failed
 
 let generate _ name db days sname sdays key_type bits =
-  (Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
-   let* key = priv_key key_type bits name in
+  (let* key = priv_key key_type bits name in
    let name = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
    let* csr = X509.Signing_request.create name key in
    let* () = sign ~certname:"cacert" (d_exts ()) name key csr Duration.(to_sec (of_day days)) in
