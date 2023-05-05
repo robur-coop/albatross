@@ -53,21 +53,21 @@ let prepare_update ~happy_eyeballs level host dryrun = function
       can_update ~happy_eyeballs host hash >>= function
       | Error `Msg msg ->
         Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
-        Lwt.return (Error Albatross_cli.Http_error)
+        Lwt.return (Error Albatross_client_utils.Http_error)
       | Ok (_, old_uuid, new_uuid) when String.equal old_uuid new_uuid ->
         Logs.app (fun m -> m "already up to date");
-        Lwt.return (Error Albatross_cli.Success)
+        Lwt.return (Error Albatross_client_utils.Success)
       | Ok (_, old_uuid, new_uuid) when dryrun ->
         Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
-        Lwt.return (Error Albatross_cli.Success)
+        Lwt.return (Error Albatross_client_utils.Success)
       | Ok (job, old_uuid, new_uuid) ->
         Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
         http_get_binary ~happy_eyeballs host job new_uuid >>= function
         | Error `Msg msg ->
           Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
-          Lwt.return (Error Albatross_cli.Http_error)
+          Lwt.return (Error Albatross_client_utils.Http_error)
         | Ok unikernel ->
           let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
               (Cstruct.of_string unikernel)
@@ -75,7 +75,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
           match r with
           | Error `Msg msg ->
             Logs.err (fun m -> m "manifest failed: %s" msg);
-            Lwt.return (Error Albatross_cli.Internal_error)
+            Lwt.return (Error Albatross_client_utils.Internal_error)
           | Ok () ->
             let compressed, image =
               match level with
@@ -88,5 +88,5 @@ let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok w ->
     Logs.err (fun m -> m "unexpected reply: %a"
                  (Vmm_commands.pp_wire ~verbose:false) w);
-    Lwt.return (Error Albatross_cli.Communication_failed)
-  | Error _ -> Lwt.return (Error Albatross_cli.Communication_failed)
+    Lwt.return (Error Albatross_client_utils.Communication_failed)
+  | Error _ -> Lwt.return (Error Albatross_client_utils.Communication_failed)

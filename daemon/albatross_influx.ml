@@ -293,7 +293,6 @@ let run_client _ influx vm drop tmpdir =
   Lwt_main.run (client influx vm drop)
 
 open Cmdliner
-open Albatross_cli
 
 let drop_label =
   let doc = "Drop unikernel path" in
@@ -312,8 +311,8 @@ let cmd =
     `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
   in
   let term =
-    Term.(term_result (const run_client $ setup_log $ influx $ opt_vm_name $ drop_label $ tmpdir))
-  and info = Cmd.info "albatross-influx" ~version ~doc ~man
+    Term.(term_result (const run_client $ Albatross_cli.setup_log $ Albatrossd_utils.influx $ opt_vm_name $ drop_label $ Albatross_cli.tmpdir))
+  and info = Cmd.info "albatross-influx" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
 

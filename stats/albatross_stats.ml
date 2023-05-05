@@ -74,7 +74,7 @@ let jump _ systemd interval gather_bhyve influx tmpdir =
     else Vmm_lwt.service_socket `Stats
   in
   Lwt_main.run
-    (Albatross_cli.init_influx "albatross_stats" influx;
+    (Albatrossd_utils.init_influx "albatross_stats" influx;
      let vmmd_path = Vmm_core.socket_path `Vmmd in
      let addr = Lwt_unix.ADDR_UNIX vmmd_path in
      let rec vmmd_connect ?(wait = false) () =
@@ -115,7 +115,6 @@ let jump _ systemd interval gather_bhyve influx tmpdir =
      loop ())
 
 open Cmdliner
-open Albatross_cli
 
 let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in
@@ -127,8 +126,8 @@ let gather_bhyve =
 
 let cmd =
   let term =
-    Term.(term_result (const jump $ setup_log $ systemd_socket_activation $ interval $ gather_bhyve $ influx $ tmpdir))
-  and info = Cmd.info "albatross-stats" ~version
+    Term.(term_result (const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ interval $ gather_bhyve $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
+  and info = Cmd.info "albatross-stats" ~version:Albatross_cli.version
   in
   Cmd.v info term
 

@@ -46,7 +46,6 @@ let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd =
        loop ())
 
 open Cmdliner
-open Albatross_cli
 
 let ip_c = Arg.conv (Ipaddr.of_string, Ipaddr.pp)
 
@@ -61,12 +60,12 @@ let inetd =
 let cmd =
   let term =
     Term.(
-      const jump $ setup_log $ cacert $ cert $ key
+      const jump $ Albatross_cli.setup_log $ cacert $ cert $ key
       $ ip
-      $ port_or_socket ~default_port:1025
-      $ tmpdir
+      $ Albatrossd_utils.port_or_socket ~default_port:1025
+      $ Albatross_cli.tmpdir
       $ inetd)
-  and info = Cmd.info "albatross-tls-endpoint" ~version in
+  and info = Cmd.info "albatross-tls-endpoint" ~version:Albatross_cli.version in
   Cmd.v info term
 
 let () = exit (Cmd.eval cmd)

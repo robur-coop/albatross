@@ -101,25 +101,6 @@ let handle tls =
         (Vmm_commands.header ~version name, reply) >|= fun _ ->
       ()
 
-let classify_tls_error = function
-  | Tls_lwt.Tls_alert
-      (Tls.Packet.BAD_CERTIFICATE
-      | Tls.Packet.UNSUPPORTED_CERTIFICATE
-      | Tls.Packet.CERTIFICATE_REVOKED
-      | Tls.Packet.CERTIFICATE_EXPIRED
-      | Tls.Packet.CERTIFICATE_UNKNOWN) as exn ->
-    Logs.err (fun m -> m "local authentication failure %s"
-                 (Printexc.to_string exn));
-    Albatross_cli.Local_authentication_failed
-  | Tls_lwt.Tls_failure (`Error (`AuthenticationFailure _)) as exn ->
-    Logs.err (fun m -> m "remote authentication failure %s"
-                 (Printexc.to_string exn));
-    Albatross_cli.Remote_authentication_failed
-  | exn ->
-    Logs.err (fun m -> m "failed to establish TLS connection: %s"
-                 (Printexc.to_string exn));
-    Albatross_cli.Communication_failed
-
 open Cmdliner
 
 let cacert =

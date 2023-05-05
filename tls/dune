@@ -16,4 +16,4 @@
  (public_name albatross-tls-endpoint)
  (package albatross)
  (modules albatross_tls_endpoint)
- (libraries albatross_cli albatross_tls_cli albatross))
+ (libraries albatross_cli albatross_tls_cli albatrossd_utils albatross))
