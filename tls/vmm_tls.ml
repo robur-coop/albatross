@@ -1,12 +1,10 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open X509
-
 let ( let* ) = Result.bind
 
 (* we skip all non-albatross certificates *)
 let cert_name cert =
-  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
+  match X509.Extension.(find (Unsupported Vmm_asn.oid) (X509.Certificate.extensions cert)) with
   | None -> Ok None
   | Some (_, data) ->
     match X509.(Distinguished_name.common_name (Certificate.subject cert)) with
@@ -38,7 +36,7 @@ let separate_chain = function
   | leaf :: xs -> Ok (leaf, List.rev xs)
 
 let wire_command_of_cert cert =
-  match Extension.(find (Unsupported Vmm_asn.oid) (Certificate.extensions cert)) with
+  match X509.Extension.(find (Unsupported Vmm_asn.oid) (X509.Certificate.extensions cert)) with
   | None -> Error `Not_present
   | Some (_, data) ->
     let* v, wire = Vmm_asn.of_cert_extension data in
@@ -85,8 +83,8 @@ let handle chain =
     | Some x -> Vmm_core.Name.create path x
   in
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
-                 Vmm_core.Name.pp name Certificate.pp leaf
-                 Fmt.(list ~sep:(any " -> ") Certificate.pp) rest);
+                 Vmm_core.Name.pp name X509.Certificate.pp leaf
+                 Fmt.(list ~sep:(any " -> ") X509.Certificate.pp) rest);
   match wire_command_of_cert leaf with
   | Error `Msg p -> Error (`Msg p)
   | Error `Not_present ->
