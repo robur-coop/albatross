@@ -2,12 +2,4 @@
  (name albatross_tls)
  (public_name albatross.tls)
  (wrapped false)
- (modules vmm_tls vmm_tls_lwt)
  (libraries albatross tls tls-lwt x509))
-
-(executable
- (name albatross_tls_endpoint)
- (public_name albatross-tls-endpoint)
- (package albatross)
- (modules albatross_tls_endpoint)
- (libraries albatross_cli albatrossd_utils albatross.tls albatross tls-lwt))

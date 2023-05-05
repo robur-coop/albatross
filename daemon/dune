@@ -24,3 +24,17 @@
  (package albatross)
  (modules albatross_influx)
  (libraries albatross.cli albatrossd_utils albatross))
+
+(executable
+ (name albatross_tls_endpoint)
+ (public_name albatross-tls-endpoint)
+ (package albatross)
+ (modules albatross_tls_endpoint)
+ (libraries albatross_cli albatrossd_utils albatross.tls albatross tls-lwt))
+
+(executable
+ (name albatross_stats)
+ (public_name albatross-stats)
+ (package albatross)
+ (modules albatross_stats)
+ (libraries albatross.cli albatross.stats albatross albatrossd_utils))
