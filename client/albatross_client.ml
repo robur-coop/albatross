@@ -143,33 +143,32 @@ let prepare_update ~happy_eyeballs level host dryrun = function
       | Ok (_, old_uuid, new_uuid) when String.equal old_uuid new_uuid ->
         Logs.app (fun m -> m "already up to date");
         Lwt.return (Error Success)
-      | Ok (_, old_uuid, new_uuid) when dryrun ->
-        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
-                     host old_uuid new_uuid);
-        Lwt.return (Error Success)
       | Ok (job, old_uuid, new_uuid) ->
         Logs.app (fun m -> m "compare at %s/compare/%s/%s"
                      host old_uuid new_uuid);
-        http_get_binary ~happy_eyeballs host job new_uuid >>= function
-        | Error `Msg msg ->
-          Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
-          Lwt.return (Error Http_error)
-        | Ok unikernel ->
-          let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
-              (Cstruct.of_string unikernel)
-          in
-          match r with
+        if dryrun then
+          Lwt.return (Error Success)
+        else
+          http_get_binary ~happy_eyeballs host job new_uuid >>= function
           | Error `Msg msg ->
-            Logs.err (fun m -> m "manifest failed: %s" msg);
-            Lwt.return (Error Internal_error)
-          | Ok () ->
-            let compressed, image =
-              match level with
-              | 0 -> false, unikernel |> Cstruct.of_string
-              | _ -> true, Vmm_compress.compress ~level unikernel |> Cstruct.of_string
+            Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
+            Lwt.return (Error Http_error)
+          | Ok unikernel ->
+            let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
+                (Cstruct.of_string unikernel)
             in
-            let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; cpuid; memory ; block_devices ; bridges ; argv } in
-            Lwt.return (Ok (`Unikernel_force_create config))
+            match r with
+            | Error `Msg msg ->
+              Logs.err (fun m -> m "manifest failed: %s" msg);
+              Lwt.return (Error Internal_error)
+            | Ok () ->
+              let compressed, image =
+                match level with
+                | 0 -> false, unikernel |> Cstruct.of_string
+                | _ -> true, Vmm_compress.compress ~level unikernel |> Cstruct.of_string
+              in
+              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; cpuid; memory ; block_devices ; bridges ; argv } in
+              Lwt.return (Ok (`Unikernel_force_create config))
     end
   | Ok w ->
     Logs.err (fun m -> m "unexpected reply: %a"
@@ -346,6 +345,23 @@ let gen_key key_type =
   in
   X509.Private_key.generate ?bits key_type, key_type
 
+let l_exts =
+  X509.Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
+                    (add Basic_constraints (true, (false, None))
+                       (singleton Ext_key_usage (true, [ `Client_auth ]))))
+
+let d_exts ?len () =
+  let kus =
+    [ `Key_cert_sign ; `CRL_sign ; `Digital_signature ; `Content_commitment ]
+  in
+  X509.Extension.(add Basic_constraints (true, (true, len))
+                    (singleton Key_usage (true, kus)))
+
+let s_exts =
+  X509.Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
+                    (add Basic_constraints (true, (false, None))
+                       (singleton Ext_key_usage (true, [ `Server_auth ]))))
+
 let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
   let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
   let* () =
@@ -373,10 +389,7 @@ let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
   let tmpkey, _ = gen_key key_type in
   let extensions =
     let v = Vmm_asn.to_cert_extension cmd in
-    X509.Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
-                      (add Basic_constraints (true, (false, None))
-                         (add Ext_key_usage (true, [ `Client_auth ])
-                            (singleton (Unsupported Vmm_asn.oid) (false, v)))))
+    X509.Extension.(add (Unsupported Vmm_asn.oid) (false, v) l_exts)
   in
   let* csr =
     let name =
@@ -487,23 +500,6 @@ let priv_key typ name =
   end else
     let* s = Bos.OS.File.read file in
     X509.Private_key.decode_pem (Cstruct.of_string s)
-
-let l_exts =
-  X509.Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
-                    (add Basic_constraints (true, (false, None))
-                       (singleton Ext_key_usage (true, [ `Client_auth ]))))
-
-let d_exts ?len () =
-  let kus =
-    [ `Key_cert_sign ; `CRL_sign ; `Digital_signature ; `Content_commitment ]
-  in
-  X509.Extension.(add Basic_constraints (true, (true, len))
-                    (singleton Key_usage (true, kus)))
-
-let s_exts =
-  X509.Extension.(add Key_usage (true, [ `Digital_signature ; `Key_encipherment ])
-                    (add Basic_constraints (true, (false, None))
-                       (singleton Ext_key_usage (true, [ `Server_auth ]))))
 
 let albatross_extension csr =
   let req_exts =
@@ -704,6 +700,7 @@ let console () since count =
   jump (`Console_cmd (`Console_subscribe (since_count since count)))
 
 let stats_add () vmmdev pid bridge_taps =
+  let vmmdev = Option.value ~default:"" vmmdev in
   jump (`Stats_cmd (`Stats_add (vmmdev, pid, bridge_taps)))
 
 let stats_remove () = jump (`Stats_cmd `Stats_remove)
@@ -901,16 +898,16 @@ let bridge_tap_c =
   Arg.conv (parse, pp)
 
 let bridge_taps =
-  let doc = "Bridge and tap device names" in
+  let doc = "Bridge and tap device names (format is 'bridge:tap')." in
   Arg.(value & opt_all bridge_tap_c [] & info [ "bridge" ] ~doc)
 
-let pid_req1 =
-  let doc = "Process id" in
-  Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"PID")
+let pid_req0 =
+  let doc = "Process ID of the process to monitor." in
+  Arg.(required & pos 0 (some int) None & info [] ~doc ~docv:"PID")
 
-let vmm_dev_req0 =
-  let doc = "VMM device name" in
-  Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VMMDEV")
+let vmm_dev =
+  let doc = "VMM device name for gathering VMM statistics (/dev/vmm/<YYY>)." in
+  Arg.(value & opt (some string) None & info [ "vmmdev" ] ~doc)
 
 let uri_c =
   let parse s =
@@ -924,27 +921,27 @@ let uri_c =
 
 (* https://builds.robur.coop/ or https://builds.robur.coop *)
 let http_host =
-  let doc = "Base-URL of binary unikernel repository." in
+  let doc = "URL of binary unikernel repository running builder-web." in
   Arg.(value & opt uri_c "https://builds.robur.coop" & info [ "http-host" ] ~doc)
 
 let compress_level =
-  let doc = "Compression level (0 - 9), a higher value results in smaller data, but uses more CPU (defaults to 0 for local, 9 for remote)" in
+  let doc = "Compression level (0 - 9), a higher value results in smaller data, but uses more CPU (defaults to 0 for local (--socket / --csr), 9 for remote (--destination))" in
   Arg.(value & opt (some int) None & info [ "compression-level" ] ~doc)
 
 let force =
-  let doc = "force VM creation." in
+  let doc = "Force unikernel creation (if one with the same name already exists, it is destroyed)." in
   Arg.(value & flag & info [ "f" ; "force" ] ~doc)
 
 let dryrun =
-  let doc = "dry run - do not make any changes." in
-  Arg.(value & flag & info [ "dryrun" ] ~doc)
+  let doc = "Run dry, do not make any changes." in
+  Arg.(value & flag & info [ "dryrun" ; "dry-run" ] ~doc)
 
 let cpus =
-  let doc = "CPUids to allow" in
+  let doc = "CPUids to allow for this policy (argument may be repeated)." in
   Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
 
 let vms =
-  let doc = "Number of VMs to allow" in
+  let doc = "Number of unikernels to allow running at the same time." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"UNIKERNELS")
 
 let image =
@@ -952,7 +949,7 @@ let image =
   Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"UNIKERNEL-IMAGE")
 
 let block_size =
-  let doc = "Block size in MB." in
+  let doc = "Block storage (in MB)." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"BLOCK-SIZE")
 
 let data_c =
@@ -964,31 +961,31 @@ let data_c =
   Arg.conv (parse, pp)
 
 let block_data =
-  let doc = "Block device content." in
+  let doc = "Block device content (filename)." in
   Arg.(required & pos 1 (some data_c) None & info [] ~doc ~docv:"FILE")
 
 let opt_block_data =
-  let doc = "Block device content." in
+  let doc = "Block device content (filename)." in
   Arg.(value & opt (some data_c) None & info [ "data" ] ~doc ~docv:"FILE")
 
 let opt_block_size =
-  let doc = "Block storage to allow in MB" in
+  let doc = "Block storage to allow (in MB)." in
   Arg.(value & opt (some int) None & info [ "size" ] ~doc)
 
 let mem =
-  let doc = "Memory to allow in MB" in
+  let doc = "Memory to allow (in MB)." in
   Arg.(value & opt int 512 & info [ "mem" ] ~doc)
 
 let bridge =
-  let doc = "Bridges to allow" in
+  let doc = "Bridge names to allow (may be repeated)." in
   Arg.(value & opt_all string [] & info [ "bridge" ] ~doc)
 
 let cpu =
-  let doc = "CPUid to use" in
+  let doc = "CPUid to use." in
   Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
 
 let vm_mem =
-  let doc = "Assigned memory in MB" in
+  let doc = "Memory to assign (in MB)." in
   Arg.(value & opt int 32 & info [ "mem" ] ~doc)
 
 let args =
@@ -1033,7 +1030,7 @@ let block_c =
   Arg.conv (parse, pp)
 
 let block =
-  let doc = "Block device name (block[@sector-size] or name:block-device-name[@sector-size])" in
+  let doc = "Block device names (block[@sector-size] or name:block-device-name[@sector-size])." in
   Arg.(value & opt_all block_c [] & info [ "block" ] ~doc)
 
 let net_with_mac =
@@ -1055,15 +1052,15 @@ let net_with_mac =
   Arg.conv (parse, pp)
 
 let net =
-  let doc = "Network device names ([name:]bridge[@mac])" in
+  let doc = "Network device names ([name:]bridge[@mac])." in
   Arg.(value & opt_all net_with_mac [] & info [ "net" ] ~doc)
 
 let restart_on_fail =
-  let doc = "Restart on fail" in
-  Arg.(value & flag & info [ "restart-on-fail" ] ~doc)
+  let doc = "When the unikernel exits, restart it." in
+  Arg.(value & flag & info [  "restart" ; "restart-on-fail" ] ~doc)
 
 let exit_code =
-  let doc = "Exit code to restart on" in
+  let doc = "Exit codes to restart on (default: everything apart 1 (solo5 error), 60, 61, 62, 63, 64 (argument parsing errors)). Can be repeated." in
   Arg.(value & opt_all int [] & info [ "exit-code" ] ~doc)
 
 let timestamp_c =
@@ -1078,11 +1075,11 @@ let timestamp_c =
   Arg.conv (parse, Ptime.pp_rfc3339 ())
 
 let since =
-  let doc = "Receive data since a specified timestamp (RFC 3339 encoded)" in
+  let doc = "Receive all lines since timestamp (RFC 3339 encoded, example: '--since=2023-03-12T23:42:15Z')" in
   Arg.(value & opt (some timestamp_c) None & info [ "since" ] ~doc)
 
 let count =
-  let doc = "Receive N data records" in
+  let doc = "Receive the specified amount of lines." in
   Arg.(value & opt int 20 & info [ "count" ] ~doc)
 
 let path_c =
@@ -1141,7 +1138,7 @@ let remote_host default_port =
       Format.fprintf ppf "remote %s:%u" host port)
 
 let destination =
-  let doc = "The remote destination to connect to." in
+  let doc = "Remote destination to connect to." in
   Arg.(value & opt (some (remote_host 1025)) None & info [ "d" ; "destination" ] ~doc ~docs:s_destination ~docv:"HOST[:PORT]")
 
 let dst =
@@ -1190,7 +1187,7 @@ let ca_key =
   Arg.(value & opt file "ca.key" & info [ "ca-key" ] ~docs:s_keys ~doc)
 
 let destroy_cmd =
-  let doc = "destroys a unikernel" in
+  let doc = "Destroys a unikernel." in
   let man =
     [`S "DESCRIPTION";
      `P "Destroy a unikernel."]
@@ -1202,10 +1199,10 @@ let destroy_cmd =
   Cmd.v info term
 
 let restart_cmd =
-  let doc = "restarts a unikernel" in
+  let doc = "Restarts a unikernel." in
   let man =
     [`S "DESCRIPTION";
-     `P "Destroy a unikernel."]
+     `P "Restarts a unikernel."]
   in
   let term =
     Term.(term_result (const restart $ Albatross_cli.setup_log $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
@@ -1214,22 +1211,22 @@ let restart_cmd =
   Cmd.v info term
 
 let remove_policy_cmd =
-  let doc = "removes a policy" in
+  let doc = "Removes a policy." in
   let man =
     [`S "DESCRIPTION";
      `P "Removes a policy."]
   in
   let term =
     Term.(term_result (const remove_policy $ Albatross_cli.setup_log $ opt_path $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "remove_policy" ~doc ~man ~exits
+  and info = Cmd.info "remove-policy" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let info_cmd =
-  let doc = "information about VMs" in
+  let doc = "Retrieve information about unikernels." in
   let man =
     [`S "DESCRIPTION";
-     `P "Shows information about VMs."]
+     `P "Shows information about unikernels."]
   in
   let term =
     Term.(term_result (const info_ $ Albatross_cli.setup_log $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
@@ -1238,10 +1235,10 @@ let info_cmd =
   Cmd.v info term
 
 let get_cmd =
-  let doc = "retrieve a VM" in
+  let doc = "Download a running unikernel image to disk." in
   let man =
     [`S "DESCRIPTION";
-     `P "Downloads a VM."]
+     `P "Downloads a unikernel image from albatross to disk."]
   in
   let term =
     Term.(term_result (const get $ Albatross_cli.setup_log $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
@@ -1250,10 +1247,10 @@ let get_cmd =
   Cmd.v info term
 
 let policy_cmd =
-  let doc = "active policies" in
+  let doc = "Show active policies." in
   let man =
     [`S "DESCRIPTION";
-     `P "Shows information about policies."]
+     `P "Shows information about active policies."]
   in
   let term =
     Term.(term_result (const info_policy $ Albatross_cli.setup_log $ opt_path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
@@ -1262,19 +1259,19 @@ let policy_cmd =
   Cmd.v info term
 
 let add_policy_cmd =
-  let doc = "Add a policy" in
+  let doc = "Add a policy." in
   let man =
     [`S "DESCRIPTION";
      `P "Adds a policy."]
   in
   let term =
     Term.(term_result (const add_policy $ Albatross_cli.setup_log $ vms $ mem $ cpus $ opt_block_size $ bridge $ path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "add_policy" ~doc ~man ~exits
+  and info = Cmd.info "add-policy" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let create_cmd =
-  let doc = "creates a unikernel" in
+  let doc = "Creates a unikernel." in
   let man =
     [`S "DESCRIPTION";
      `P "Creates a unikernel."]
@@ -1286,10 +1283,10 @@ let create_cmd =
   Cmd.v info term
 
 let console_cmd =
-  let doc = "console of a VM" in
+  let doc = "Displays the console output of a unikernel." in
   let man =
     [`S "DESCRIPTION";
-     `P "Shows console output of a VM."]
+     `P "Shows console output of a unikernel."]
   in
   let term =
     Term.(term_result (const console $ Albatross_cli.setup_log $ since $ count $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
@@ -1298,10 +1295,10 @@ let console_cmd =
   Cmd.v info term
 
 let stats_subscribe_cmd =
-  let doc = "statistics of VMs" in
+  let doc = "Statistics of unikernel." in
   let man =
     [`S "DESCRIPTION";
-     `P "Shows statistics of VMs."]
+     `P "Shows statistics of unikernel."]
   in
   let term =
     Term.(term_result (const stats_subscribe $ Albatross_cli.setup_log $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
@@ -1310,31 +1307,31 @@ let stats_subscribe_cmd =
   Cmd.v info term
 
 let stats_remove_cmd =
-  let doc = "remove statistics of VM" in
+  let doc = "Remove statistics of unikernel." in
   let man =
     [`S "DESCRIPTION";
-     `P "Removes statistics of VM."]
+     `P "Removes statistics of unikernel."]
   in
   let term =
     Term.(term_result (const stats_remove $ Albatross_cli.setup_log $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "stats_remove" ~doc ~man ~exits
+  and info = Cmd.info "stats-remove" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let stats_add_cmd =
-  let doc = "Add VM to statistics gathering" in
+  let doc = "Add unikernel to statistics gathering." in
   let man =
     [`S "DESCRIPTION";
-     `P "Add VM to statistics gathering."]
+     `P "Add unikernel to statistics gathering."]
   in
   let term =
-    Term.(term_result (const stats_add $ Albatross_cli.setup_log $ vmm_dev_req0 $ pid_req1 $ bridge_taps $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "stats_add" ~doc ~man ~exits
+    Term.(term_result (const stats_add $ Albatross_cli.setup_log $ vmm_dev $ pid_req0 $ bridge_taps $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+  and info = Cmd.info "stats-add" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let block_info_cmd =
-  let doc = "Information about block devices" in
+  let doc = "Displays information about block devices." in
   let man =
     [`S "DESCRIPTION";
      `P "Block device information."]
@@ -1346,58 +1343,58 @@ let block_info_cmd =
   Cmd.v info term
 
 let block_create_cmd =
-  let doc = "Create a block device" in
+  let doc = "Create a block device." in
   let man =
     [`S "DESCRIPTION";
-     `P "Creation of a block device."]
+     `P "Create of a block device."]
   in
   let term =
     Term.(term_result (const block_create $ Albatross_cli.setup_log $ block_size $ compress_level $ opt_block_data $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "create_block" ~doc ~man ~exits
+  and info = Cmd.info "create-block" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let block_set_cmd =
-  let doc = "Set data to a block device" in
+  let doc = "Overwrite a block device with provided data." in
   let man =
     [`S "DESCRIPTION";
      `P "Set data to a block device."]
   in
   let term =
     Term.(term_result (const block_set $ Albatross_cli.setup_log $ compress_level $ block_data $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "set_block" ~doc ~man ~exits
+  and info = Cmd.info "set-block" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let block_dump_cmd =
-  let doc = "Dump data of a block device" in
+  let doc = "Dump data of a block device." in
   let man =
     [`S "DESCRIPTION";
      `P "Dump data of a block device."]
   in
   let term =
     Term.(term_result (const block_dump $ Albatross_cli.setup_log $ compress_level $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "dump_block" ~doc ~man ~exits
+  and info = Cmd.info "dump-block" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let block_destroy_cmd =
-  let doc = "Destroys a block device" in
+  let doc = "Destroy a block device." in
   let man =
     [`S "DESCRIPTION";
-     `P "Destroys a block device."]
+     `P "Destroy a block device."]
   in
   let term =
     Term.(term_result (const block_destroy $ Albatross_cli.setup_log $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "destroy_block" ~doc ~man ~exits
+  and info = Cmd.info "destroy-block" ~doc ~man ~exits
   in
   Cmd.v info term
 
 let update_cmd =
-  let doc = " Update a unikernel from the binary repository" in
+  let doc = "Update a unikernel from the binary repository." in
   let man =
     [`S "DESCRIPTION";
-     `P "Check and update a unikernel from the binary repository"]
+     `P "Check and update a unikernel from the binary repository."]
   in
   let term =
     Term.(const update $ Albatross_cli.setup_log $ http_host $ dryrun $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir)
@@ -1410,10 +1407,10 @@ let file =
   Arg.(value & opt (some string) None & info [ "file" ] ~doc)
 
 let inspect_dump_cmd =
-  let doc = " Inspects an albatross dump file" in
+  let doc = "Inspects an albatross dump file." in
   let man =
     [`S "DESCRIPTION";
-     `P "Inspects an albatross dump file"]
+     `P "Inspects an albatross dump file."]
   in
   let term = Term.(const inspect_dump $ Albatross_cli.setup_log $ file $ Albatross_cli.dbdir)
   and info = Cmd.info "inspect-dump" ~doc ~man ~exits
@@ -1421,18 +1418,18 @@ let inspect_dump_cmd =
   Cmd.v info term
 
 let client_cert =
-  let doc = "Use a client certificate chain" in
-  Arg.(required & pos 0 (some file) None & info [] ~doc ~docv:"CERT")
+  let doc = "Use this client certificate chain." in
+  Arg.(required & pos 0 (some file) None & info [] ~doc ~docs:s_keys ~docv:"CERT")
 
 let client_key =
-  let doc = "Use a client key" in
-  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"KEY")
+  let doc = "Use this client key." in
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docs:s_keys ~docv:"KEY")
 
 let cert_cmd =
-  let doc = "Establishes a TLS handshake which executes the command of the client certiicate" in
+  let doc = "Executes the command of the client certificate." in
   let man =
     [`S "DESCRIPTION";
-     `P "Establishes a TLS handshake to a remote albatross server, executes the command of the client certificate, and prints the result. "]
+     `P "Establishes a TLS handshake to a remote albatross server, executes the command of the client certificate, and outputs the result. "]
   in
   let term =
     Term.(term_result (const cert $ Albatross_cli.setup_log $ destination $ server_ca $ client_cert $ client_key))
@@ -1441,39 +1438,35 @@ let cert_cmd =
   Cmd.v info term
 
 let nam =
-  let doc = "Name to provision" in
+  let doc = "Name to provision." in
   Arg.(required & pos 0 (some string) None & info [] ~doc ~docv:"VM")
 
-let mem =
-  let doc = "Memory to provision" in
-  Arg.(required & pos 2 (some int) None & info [] ~doc ~docv:"MEM")
-
-let csr =
-  let doc = "Signing request" in
-  Arg.(required & pos 3 (some file) None & info [] ~doc ~docv:"CSR")
-
 let key =
-  let doc = "Private key" in
+  let doc = "Private key." in
   Arg.(required & pos 2 (some file) None & info [] ~doc ~docv:"KEY")
 
+let csr =
+  let doc = "Signing request." in
+  Arg.(required & pos 3 (some file) None & info [] ~doc ~docv:"CSR")
+
 let days =
-  let doc = "Number of days" in
+  let doc = "Number of days." in
   Arg.(value & opt int 3650 & info [ "days" ] ~doc)
 
 let db =
-  let doc = "Database" in
+  let doc = "Database file." in
   Arg.(required & pos 1 (some string) None & info [] ~doc ~docv:"DB")
 
 let sname =
-  let doc = "Server name" in
+  let doc = "Server name." in
   Arg.(value & opt string "server" & info [ "server" ] ~doc)
 
 let sday =
-  let doc = "Server validity" in
+  let doc = "Validity for server certificate in days." in
   Arg.(value & opt int 365 & info [ "server-days" ] ~doc)
 
 let generate_cmd =
-  let doc = "generates a certificate authority" in
+  let doc = "Generates a certificate authority." in
   let man =
     [`S "DESCRIPTION";
      `P "Generates a certificate authority."]
@@ -1485,15 +1478,15 @@ let generate_cmd =
   Cmd.v info term
 
 let days =
-  let doc = "Number of days" in
+  let doc = "Validity of certificate (in days)." in
   Arg.(value & opt (some int) None & info [ "days" ] ~doc)
 
 let cacert =
-  let doc = "cacert" in
+  let doc = "File name of CA certificate." in
   Arg.(required & pos 0 (some file) None & info [] ~doc ~docv:"CACERT")
 
 let sign_cmd =
-  let doc = "sign a request" in
+  let doc = "Sign a certificate signing request." in
   let man =
     [`S "DESCRIPTION";
      `P "Signs the certificate signing request."]
@@ -1523,7 +1516,7 @@ let cmds = [
 ]
 
 let () =
-  let doc = "VMM local client" in
+  let doc = "Albatross client" in
   let man = [
     `S "DESCRIPTION" ;
     `P "$(tname) executes a command by connecting to albatrossd or emitting a CSR. Connection can be either local (via a Unix domain socket) or remote (via TLS)." ]
