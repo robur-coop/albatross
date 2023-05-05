@@ -2,8 +2,39 @@
 
 open Lwt.Infix
 
+type exit_status =
+  | Success
+  | Local_authentication_failed
+  | Chain_failure
+  | Remote_authentication_failed
+  | Communication_failed
+  | Connect_failed
+  | Remote_command_failed
+  | Cli_failed
+  | Internal_error
+  | Http_error
+
+let classify_tls_error = function
+  | Tls_lwt.Tls_alert
+      (Tls.Packet.BAD_CERTIFICATE
+      | Tls.Packet.UNSUPPORTED_CERTIFICATE
+      | Tls.Packet.CERTIFICATE_REVOKED
+      | Tls.Packet.CERTIFICATE_EXPIRED
+      | Tls.Packet.CERTIFICATE_UNKNOWN) as exn ->
+    Logs.err (fun m -> m "local authentication failure %s"
+                 (Printexc.to_string exn));
+    Local_authentication_failed
+  | Tls_lwt.Tls_failure (`Error (`AuthenticationFailure _)) as exn ->
+    Logs.err (fun m -> m "remote authentication failure %s"
+                 (Printexc.to_string exn));
+    Remote_authentication_failed
+  | exn ->
+    Logs.err (fun m -> m "failed to establish TLS connection: %s"
+                 (Printexc.to_string exn));
+    Communication_failed
+
 let exit_status = function
-  | Ok () -> Ok Albatross_client_utils.Success
+  | Ok () -> Ok Success
   | Error e -> Ok e
 
 let output_result ((hdr, reply) as wire) =
@@ -49,11 +80,102 @@ let output_result ((hdr, reply) as wire) =
     Ok ()
   | `Failure _ ->
     Logs.warn (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
-    Error Albatross_client_utils.Remote_command_failed
+    Error Remote_command_failed
   | `Command _ ->
     Logs.err (fun m -> m "received unexpected command %a"
                  (Vmm_commands.pp_wire ~verbose) wire);
-    Error Albatross_client_utils.Internal_error
+    Error Internal_error
+
+let job_and_build loc =
+  match String.split_on_char '/' loc with
+  | "" :: "job" :: jobname :: "build" :: uuid :: [] -> Ok (jobname, uuid)
+  | _ -> Error (`Msg ("expected '/job/<jobname>/build/<uuid>', got: " ^ loc))
+
+let http_get_redirect ~happy_eyeballs uri =
+  let body_f _ () _ = Lwt.return_unit in
+  Http_lwt_client.request ~happy_eyeballs ~follow_redirect:false uri body_f () >|= function
+  | Error _ as e -> e
+  | Ok (resp, ()) ->
+    match resp.Http_lwt_client.status with
+    | #Http_lwt_client.Status.redirection ->
+      (match Http_lwt_client.Headers.get resp.Http_lwt_client.headers "location" with
+       | None -> Error (`Msg "no Location header received in HTTP reply")
+       | Some loc -> Ok loc)
+    | _ ->
+      Logs.warn (fun m -> m "received HTTP reply: %a" Http_lwt_client.pp_response resp);
+      Error (`Msg "unexpected HTTP reply")
+
+let retrieve_build ~happy_eyeballs host hash =
+   let uri = host ^ "/hash?sha256=" ^ hash in
+   Lwt_result.bind_result (http_get_redirect ~happy_eyeballs uri) job_and_build
+
+let retrieve_latest_build ~happy_eyeballs host jobname =
+  let uri = host ^ "/job/" ^ jobname ^ "/build/latest" in
+  Lwt_result.bind_result (http_get_redirect ~happy_eyeballs uri) job_and_build
+
+let can_update ~happy_eyeballs host hash =
+  let open Lwt_result.Infix in
+  retrieve_build ~happy_eyeballs host hash >>= fun (job, build) ->
+  retrieve_latest_build ~happy_eyeballs host job >|= fun (_, build') ->
+  job, build, build'
+
+let http_get_binary ~happy_eyeballs host job build =
+  let uri = host ^ "/job/" ^ job ^ "/build/" ^ build ^ "/main-binary" in
+  let body_f _ acc data = Lwt.return (acc ^ data) in
+  Http_lwt_client.request ~happy_eyeballs uri body_f "" >|= function
+  | Error _ as e -> e
+  | Ok (resp, body) ->
+    match resp.Http_lwt_client.status with
+    | #Http_lwt_client.Status.successful when String.length body > 0 -> Ok body
+    | _ ->
+      Logs.warn (fun m -> m "received HTTP reply: %a" Http_lwt_client.pp_response resp);
+      Error (`Msg "unexpected HTTP reply")
+
+let prepare_update ~happy_eyeballs level host dryrun = function
+  | Ok (_hdr, `Success (`Unikernel_info
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->
+    begin
+      let `Hex hash = Hex.of_cstruct digest in
+      can_update ~happy_eyeballs host hash >>= function
+      | Error `Msg msg ->
+        Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
+        Lwt.return (Error Http_error)
+      | Ok (_, old_uuid, new_uuid) when String.equal old_uuid new_uuid ->
+        Logs.app (fun m -> m "already up to date");
+        Lwt.return (Error Success)
+      | Ok (_, old_uuid, new_uuid) when dryrun ->
+        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
+                     host old_uuid new_uuid);
+        Lwt.return (Error Success)
+      | Ok (job, old_uuid, new_uuid) ->
+        Logs.app (fun m -> m "compare at %s/compare/%s/%s"
+                     host old_uuid new_uuid);
+        http_get_binary ~happy_eyeballs host job new_uuid >>= function
+        | Error `Msg msg ->
+          Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
+          Lwt.return (Error Http_error)
+        | Ok unikernel ->
+          let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
+              (Cstruct.of_string unikernel)
+          in
+          match r with
+          | Error `Msg msg ->
+            Logs.err (fun m -> m "manifest failed: %s" msg);
+            Lwt.return (Error Internal_error)
+          | Ok () ->
+            let compressed, image =
+              match level with
+              | 0 -> false, unikernel |> Cstruct.of_string
+              | _ -> true, Vmm_compress.compress ~level unikernel |> Cstruct.of_string
+            in
+            let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; cpuid; memory ; block_devices ; bridges ; argv } in
+            Lwt.return (Ok (`Unikernel_force_create config))
+    end
+  | Ok w ->
+    Logs.err (fun m -> m "unexpected reply: %a"
+                 (Vmm_commands.pp_wire ~verbose:false) w);
+    Lwt.return (Error Communication_failed)
+  | Error _ -> Lwt.return (Error Communication_failed)
 
 let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let ( let* ) = Result.bind in
@@ -113,8 +235,8 @@ let policy vms memory cpus block bridgesl =
   Vmm_core.Policy.{ vms ; cpuids ; memory ; block ; bridges }
 
 let to_exit_code = function
-  | Error `Eof -> Error Albatross_client_utils.Success
-  | Error _ -> Error Albatross_client_utils.Communication_failed
+  | Error `Eof -> Error Success
+  | Error _ -> Error Communication_failed
   | Ok wire -> output_result wire
 
 let process_local fd = Vmm_lwt.read_wire fd >|= to_exit_code
@@ -141,18 +263,18 @@ let connect_local opt_socket name (cmd : Vmm_commands.t) =
   | Some "-" ->
     let data = Vmm_asn.wire_to_cstruct wire in
     Logs.app (fun m -> m "out: %a" Cstruct.hexdump_pp data);
-    Lwt.return (Error Albatross_client_utils.Communication_failed)
+    Lwt.return (Error Communication_failed)
   | _ ->
     let sockaddr = Lwt_unix.ADDR_UNIX (Option.value ~default:(Vmm_core.socket_path sock) opt_socket) in
     Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
     | None ->
       Logs.err (fun m -> m "couldn't connect to %a"
                    Vmm_lwt.pp_sockaddr sockaddr);
-      Lwt.return (Error Albatross_client_utils.Connect_failed)
+      Lwt.return (Error Connect_failed)
     | Some fd ->
       Vmm_lwt.write_wire fd wire >>= function
       | Error `Exception ->
-        Lwt.return (Error Albatross_client_utils.Communication_failed)
+        Lwt.return (Error Communication_failed)
       | Ok () ->
         Lwt.return (Ok (fd, next))
 
@@ -164,20 +286,20 @@ let connect_remote ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port)
   let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
   if not (key_eq (X509.Private_key.public key) (X509.Certificate.public_key cert)) then begin
     Logs.err (fun m -> m "Public key of certificate doesn't match private key");
-    Lwt.return (Error Albatross_client_utils.Cli_failed)
+    Lwt.return (Error Cli_failed)
   end else
     X509_lwt.authenticator (`Ca_file ca) >>= fun authenticator ->
     match authenticator ~host:None (cert :: certs) with
     | Error ve ->
       Logs.err (fun m -> m "TLS validation error of provided certificate chain: %a"
                    X509.Validation.pp_validation_error ve);
-      Lwt.return (Error Albatross_client_utils.Chain_failure)
+      Lwt.return (Error Chain_failure)
     | Ok _ ->
       let certificates = `Single (cert :: certs, key) in
       Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
       | Error `Msg msg ->
         Logs.err (fun m -> m "connect failed with %s" msg);
-        Lwt.return (Error Albatross_client_utils.Connect_failed)
+        Lwt.return (Error Connect_failed)
       | Ok ((ip, port), fd) ->
         Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
         let client = Tls.Config.client ~certificates ~authenticator () in
@@ -185,7 +307,7 @@ let connect_remote ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port)
             Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
             Logs.debug (fun m -> m "finished tls handshake") ;
             Ok fd)
-          (fun exn -> Lwt.return (Error (Albatross_client_utils.classify_tls_error exn)))
+          (fun exn -> Lwt.return (Error (classify_tls_error exn)))
 
 let timestamps validity =
   let now = Ptime_clock.now () in
@@ -440,10 +562,10 @@ let sign_main _ db cacert cakey csrname days =
    let* csr = X509.Signing_request.decode_pem (Cstruct.of_string enc) in
    sign_csr (Fpath.v db) cacert cakey csr days)
   |> function
-  | Ok () -> Albatross_client_utils.Success
+  | Ok () -> Success
   | Error `Msg msg ->
     Logs.err (fun m -> m "error while signing: %s" msg);
-    Albatross_client_utils.Cli_failed
+    Cli_failed
 
 let generate _ name db days sname sdays key_type bits =
   (let* key = priv_key key_type bits name in
@@ -455,10 +577,10 @@ let generate _ name db days sname sdays key_type bits =
    let* csr = X509.Signing_request.create sname skey in
    sign ~dbname:(Fpath.v db) s_exts name key csr Duration.(to_sec (of_day sdays)))
   |> function
-  | Ok () -> Albatross_client_utils.Success
+  | Ok () -> Success
   | Error `Msg msg ->
     Logs.err (fun m -> m "error while generating: %s" msg);
-    Albatross_client_utils.Cli_failed
+    Cli_failed
 
 let csr priv name cmd =
   let ext =
@@ -495,7 +617,7 @@ let jump cmd name d cert key ca key_type bits tmpdir =
       match gen_cert (cert, certs, key) key_type bits name cmd with
       | Error `Msg msg ->
         Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
-        Lwt.return (Ok Albatross_client_utils.Cli_failed)
+        Lwt.return (Ok Cli_failed)
       | Ok (cert, certs, key) ->
         connect_remote endp (cert, certs, key) ca >>= function
         | Error e -> Lwt.return (Ok e)
@@ -541,7 +663,7 @@ let add_policy () vms memory cpus block bridges path d cert key ca key_type bits
   match Vmm_core.Policy.usable p with
   | Error `Msg msg ->
     Logs.err (fun m -> m "%s" msg);
-    Ok Albatross_client_utils.Cli_failed
+    Ok Cli_failed
   | Ok () ->
     if Vmm_core.String_set.is_empty p.bridges then
       Logs.warn (fun m -> m "policy without any network access");
@@ -605,14 +727,14 @@ let update () host dryrun compression name d cert key ca key_type bits tmpdir =
   match read_cert_key cert key with
   | Error `Msg msg ->
     Logs.err (fun m -> m "error reading certs or keys: %s" msg);
-    Albatross_client_utils.Cli_failed
+    Cli_failed
   | Ok (cert, certs, key) ->
     Lwt_main.run (
       let happy_eyeballs = Happy_eyeballs_lwt.create () in
       let connect cmd = match d with
         | `Csr ->
           Logs.err (fun m -> m "update with CSR not supported");
-          Lwt.return (Error Albatross_client_utils.Cli_failed)
+          Lwt.return (Error Cli_failed)
         | `Local opt_sock ->
           connect_local opt_sock name cmd >>= fun (fd, _next) ->
           Lwt_result.ok (Vmm_lwt.read_wire fd) >>= fun r ->
@@ -624,7 +746,7 @@ let update () host dryrun compression name d cert key ca key_type bits tmpdir =
             (match gen_cert (cert, certs, key) key_type bits name cmd with
              | Error `Msg msg ->
                Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
-               Lwt.return (Error Albatross_client_utils.Cli_failed)
+               Lwt.return (Error Cli_failed)
              | Ok (cert, certs, key) ->
                connect_remote ~happy_eyeballs endp (cert, certs, key) ca >>= fun fd ->
                Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
@@ -632,21 +754,21 @@ let update () host dryrun compression name d cert key ca key_type bits tmpdir =
                Lwt.return (Ok r))
           | _, None ->
             Logs.err (fun m -> m "empty name: %a" Vmm_core.Name.pp name);
-            Lwt.return (Error Albatross_client_utils.Cli_failed)
+            Lwt.return (Error Cli_failed)
           | _, _ ->
             Logs.err (fun m -> m "non-empty path: %a" Vmm_core.Name.pp name);
-            Lwt.return (Error Albatross_client_utils.Cli_failed)
+            Lwt.return (Error Cli_failed)
       in
       connect (`Unikernel_cmd `Unikernel_info) >>= fun r ->
       let level = compress_default compression d in
-      Albatross_client_update.prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
+      prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
       connect (`Unikernel_cmd cmd) >>= fun r ->
       match r with
       | Ok w ->
         Lwt.return (exit_status (output_result w))
       | Error _ ->
         Logs.err (fun m -> m "received error from albatross");
-        Lwt.return (Error Albatross_client_utils.Remote_command_failed)
+        Lwt.return (Error Remote_command_failed)
     ) |> function Ok a -> a | Error e -> e
 
 let inspect_dump _ name dbdir =
@@ -654,14 +776,14 @@ let inspect_dump _ name dbdir =
   match Vmm_unix.restore ?name () with
   | Error `NoFile ->
     Logs.err (fun m -> m "dump file not found");
-    Albatross_client_utils.Cli_failed
+    Cli_failed
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while reading dump file: %s" msg);
-    Albatross_client_utils.Cli_failed
+    Cli_failed
   | Ok data -> match Vmm_asn.unikernels_of_cstruct data with
     | Error (`Msg msg) ->
       Logs.err (fun m -> m "couldn't parse dump file: %s" msg);
-      Albatross_client_utils.Cli_failed
+      Cli_failed
     | Ok unikernels ->
       let all = Vmm_trie.all unikernels in
       Logs.app (fun m -> m "parsed %d unikernels:" (List.length all));
@@ -669,7 +791,7 @@ let inspect_dump _ name dbdir =
           Logs.app (fun m -> m "%a: %a" Vmm_core.Name.pp name
                        Vmm_core.Unikernel.pp_config unik))
         all;
-      Albatross_client_utils.Success
+      Success
 
 let cert () dst server_ca cert key =
   let* dst =
@@ -694,7 +816,7 @@ let help () man_format cmds = function
   | Some x ->
     print_endline ("unknown command '" ^ x ^ "', available commands:");
     List.iter print_endline cmds;
-    `Ok Albatross_client_utils.Cli_failed
+    `Ok Cli_failed
 
 open Cmdliner
 open Vmm_core
@@ -718,7 +840,7 @@ let communication_failed = 121
 let connect_failed = 122
 
 let exit_status_to_int = function
-  | Albatross_client_utils.Success -> Cmd.Exit.ok
+  | Success -> Cmd.Exit.ok
   | Local_authentication_failed -> local_authentication_failed
   | Chain_failure -> chain_failure
   | Remote_authentication_failed -> remote_authentication_failed
