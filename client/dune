@@ -3,4 +3,4 @@
  (public_name albatross-client)
  (package albatross)
  (libraries albatross.cli albatross albatross.tls albatross_tls_cli
-   albatross_client_update happy-eyeballs-lwt))
+   happy-eyeballs-lwt http-lwt-client))
