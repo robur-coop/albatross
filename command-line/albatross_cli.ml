@@ -542,6 +542,15 @@ let exit_status_of_result = function
   | Error `Exn -> Cmd.Exit.internal_error
 
 let exits =
+  Cmd.Exit.info ~doc:"on local authentication failure \
+                      (certificate not accepted by remote)"
+    local_authentication_failed ::
+  Cmd.Exit.info ~doc:"on certificate chain failure \
+                      (certificate chain couldn't be validated locally)"
+    chain_failure ::
+  Cmd.Exit.info ~doc:"on remote authentication failure \
+                      (couldn't validate trust anchor)"
+    remote_authentication_failed ::
   Cmd.Exit.info ~doc:"on communication (read or write) failure"
     communication_failed ::
   Cmd.Exit.info ~doc:"on connection failure" connect_failed ::
@@ -549,14 +558,3 @@ let exits =
     remote_command_failed ::
   Cmd.Exit.info ~doc:"on HTTP interaction failure" http_failed ::
   Cmd.Exit.defaults
-
-let auth_exits =
-  [ Cmd.Exit.info ~doc:"on local authentication failure \
-                         (certificate not accepted by remote)"
-      local_authentication_failed ;
-    Cmd.Exit.info ~doc:"on certificate chain failure \
-                         (certificate chain couldn't be validated locally)"
-      chain_failure ;
-    Cmd.Exit.info ~doc:"on remote authentication failure \
-                         (couldn't validate trust anchor)"
-      remote_authentication_failed ]
