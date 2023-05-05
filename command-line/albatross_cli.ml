@@ -7,10 +7,12 @@ let setup_log style_renderer level =
 
 open Cmdliner
 
+let s_logging = "LOGGING OPTIONS"
+
 let setup_log =
   Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
+        $ Fmt_cli.style_renderer ~docs:s_logging ()
+        $ Logs_cli.level ~docs:s_logging ())
 
 let version =
   Fmt.str "version %%VERSION%% protocol version %a"
@@ -28,6 +30,8 @@ let uname =
   | Ok s -> Fmt.invalid_arg "OS %s not supported" s
   | Error (`Msg e) -> invalid_arg e
 
+let s_dir = "DIRECTORY OPTIONS"
+
 let default_tmpdir =
   match uname with
   | FreeBSD | Darwin -> "/var/run/albatross"
@@ -35,7 +39,7 @@ let default_tmpdir =
 
 let tmpdir =
   let doc = "Albatross temporary directory" in
-  Arg.(value & opt dir default_tmpdir & info [ "tmpdir" ] ~doc)
+  Arg.(value & opt dir default_tmpdir & info [ "tmpdir" ] ~docs:s_dir ~doc)
 
 let set_tmpdir path =
   match Fpath.of_string path with
@@ -49,7 +53,7 @@ let default_dbdir =
 
 let dbdir =
   let doc = "Albatross database directory" in
-  Arg.(value & opt dir default_dbdir & info [ "dbdir" ] ~doc)
+  Arg.(value & opt dir default_dbdir & info [ "dbdir" ] ~docs:s_dir ~doc)
 
 let set_dbdir path =
   match Fpath.of_string path with
