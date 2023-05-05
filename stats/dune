@@ -10,15 +10,7 @@
    (:standard)
    (:include c_flags.sexp)))
  (c_library_flags
-  (:include c_library_flags.sexp))
- (modules albatross_stats_pure))
-
-(executable
- (name albatross_stats)
- (public_name albatross-stats)
- (package albatross)
- (modules albatross_stats)
- (libraries albatross.cli albatross.stats albatross))
+  (:include c_library_flags.sexp)))
 
 (rule
  (targets c_flags.sexp c_library_flags.sexp)

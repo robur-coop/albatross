@@ -67,11 +67,8 @@ above. It enforces client authentication, and uses the common names of the clien
 certificate chain as the administrative domain. The policies are embedded in CA
 certificates, and the command is embedded in the leaf certificate.
 
-The following command-line applications for local and remote management are provided:
-- `albatross-client-local`: sends a command locally to the Unix domain sockets
-- `albatross-client-remote-tls`: connects to a remote TLS endpoint and sends a command
-- `albatross-provision`: certificate authority operations and certificate signing request creation
-- `albatross-client-bistro`: command line utility to execute a command remotely: request, sign, remote (do not use in production, requires CA key locally)
+The `albatross-client` is provided for both local and remote management. It executes the provided command, and can also prepare certificate signing requests (`--csr`) to send the certificate at a later point.
+It also includes functionality for generating an initial CA (and server certificate), and signing certificate signing requests.
 
 ## Albatross over TLS
 
@@ -91,7 +88,7 @@ are 4 entities:
 
 _Note_: there are 4 entities but depending on the security model some can exist
 on the same machine. For example, when **client** and **intermediate CA** can be
-combined, requests are automatically signed using `albatross-client-bistro` (see step 8).
+combined, requests are automatically signed using `albatross-client --destination` (see step 8).
 
 ## Setup
 
@@ -101,7 +98,7 @@ belong. Filename is in **bold** when it's created by the current step.
 1. Generate the root CA certificate and server keypair
 
 ```
-albatross-provision generate ca db
+albatross-client generate ca db
 ```
 
 
@@ -121,7 +118,7 @@ user. The user generates a signing request to allow a memory of 1024MB to run
 16 unikernels on CPU IDs 0 and 1.
 
 ```
-albatross-provision add_policy user 16 --mem 1024 --cpu 0 --cpu 1
+albatross-client add_policy user 16 --mem 1024 --cpu 0 --cpu 1 --csr
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client |
@@ -135,7 +132,7 @@ certificate containing the restriction policies (limited memory, cpu), which in
 turn will be used to sign user requests.
 
 ```
-albatross-provision sign cacert.pem db ca.key user.req
+albatross-client sign cacert.pem db ca.key user.req
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client |
@@ -144,12 +141,11 @@ albatross-provision sign cacert.pem db ca.key user.req
 | _public certificate_          | | server.pem | cacert.pem | **user.pem**    |        |
 | _certificate signing request_ | |            |            | user.req        |        |
 
-5. **client:** the client wants to create an unikernel, instead of using the
-albatross-client-local command, it has to wrap the request in a
+5. **client:** the client wants to create an unikernel, it has to wrap the request in a
 certificate signing request which will be submitted to the intermediate CA.
 
 ```
-albatross-provision create hello hello-key.hvt [--arg='--hello=albatross-hi'] [--cpu=1]
+albatross-client create hello hello-key.hvt --csr [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client        |
@@ -161,7 +157,7 @@ albatross-provision create hello hello-key.hvt [--arg='--hello=albatross-hi'] [-
 6. **intermediate CA:** the intermediate CA signs the request
 
 ```
-albatross-provision sign user.pem db user.key hello.req
+albatross-client sign user.pem db user.key hello.req
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client        |
@@ -171,11 +167,11 @@ albatross-provision sign user.pem db user.key hello.req
 | _certificate signing request_ | |            |            | user.req        | hello.req     |
 
 7. **client:** client sends the signed request to the server,
-`albatross-provision` appended the intermediate CA certificate to `hello.pem`
+`albatross-client sign` appended the intermediate CA certificate to `hello.pem`
 to form the full chain.
 
 ```
-albatross-client-remote-tls cacert.pem hello.pem hello.key <REMOTE_IP:PORT>`
+albatross-client certificate cacert.pem hello.pem hello.key --destination <REMOTE_IP:PORT>`
 ```
 
 8. Steps 5, 6, and 7 can be done in a single command - if there's no requirement
@@ -183,7 +179,7 @@ to retain the signing request and certificate, and the user keys are on the
 local machine.
 
 ```
-albatross-client-bistro create hello hello.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
+albatross-client create hello hello.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem --destination <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 ## Installation

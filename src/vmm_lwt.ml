@@ -173,28 +173,3 @@ let write_wire s wire =
   Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.length data)) ;
   let buf = Cstruct.(to_bytes (append dlen data)) in
   write_raw s buf
-
-let read_from_file file =
-  Lwt.catch (fun () ->
-      Lwt_unix.stat file >>= fun stat ->
-      let size = stat.Lwt_unix.st_size in
-      Lwt_unix.openfile file Lwt_unix.[O_RDONLY] 0 >>= fun fd ->
-      Lwt.catch (fun () ->
-          let buf = Bytes.create size in
-          let rec read off =
-            Lwt_unix.read fd buf off (size - off) >>= fun bytes ->
-            if bytes + off = size then
-              Lwt.return_unit
-            else
-              read (bytes + off)
-          in
-          read 0 >>= fun () ->
-          safe_close fd >|= fun () ->
-          Cstruct.of_bytes buf)
-        (fun e ->
-           Logs.err (fun m -> m "exception %s while reading %s" (Printexc.to_string e) file) ;
-           safe_close fd >|= fun () ->
-           Cstruct.empty))
-    (fun e ->
-       Logs.err (fun m -> m "exception %s while reading %s" (Printexc.to_string e) file) ;
-       Lwt.return Cstruct.empty)

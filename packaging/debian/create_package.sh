@@ -29,12 +29,8 @@ for f in albatrossd \
              albatross-stats
 do install $bdir/$f $libexecdir/$f; done
 
-# stage client binaries
-for f in albatross-client-local \
-             albatross-client-remote-tls \
-             albatross-client-bistro \
-             albatross-provision
-do install $bdir/$f $bindir/$f; done
+# stage client binary
+install $bdir/albatross-client $bindir/$f
 
 # stage systemd scripts
 for f in albatross_stats \

@@ -165,7 +165,7 @@ let jump _ systemd influx tmpdir =
     else Vmm_lwt.service_socket `Console
   in
   Lwt_main.run
-    (Albatross_cli.init_influx "albatross_console" influx;
+    (Albatrossd_utils.init_influx "albatross_console" influx;
      socket () >>= fun s ->
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
@@ -177,12 +177,10 @@ let jump _ systemd influx tmpdir =
 
 open Cmdliner
 
-open Albatross_cli
-
 let cmd =
   let term =
-    Term.(term_result (const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir))
-  and info = Cmd.info "albatross-console" ~version
+    Term.(term_result (const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
+  and info = Cmd.info "albatross-console" ~version:Albatross_cli.version
   in
   Cmd.v info term
 

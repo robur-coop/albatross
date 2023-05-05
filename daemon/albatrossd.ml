@@ -1,7 +1,5 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-open Albatross_cli
-
 open Vmm_core
 
 open Lwt.Infix
@@ -179,7 +177,7 @@ let jump _ systemd influx tmpdir dbdir =
          | Some x -> x
          | None ->
            failwith ("Failed to connect to " ^ console_path ^ ", is albatross-console started?")) >>= fun c ->
-       init_influx "albatross" influx;
+       Albatrossd_utils.init_influx "albatross" influx;
        let listen_socket () =
          if systemd then Vmm_lwt.systemd_socket ()
          else Vmm_lwt.service_socket `Vmmd
@@ -240,7 +238,7 @@ open Cmdliner
 
 let cmd =
   let term =
-    Term.(const jump $ setup_log $ systemd_socket_activation $ influx $ tmpdir $ dbdir)
+    Term.(const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version
   in
   Cmd.v info term
