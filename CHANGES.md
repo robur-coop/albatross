@@ -1,3 +1,30 @@
+# v2.0.0 (2023-05-14)
+
+This is a breaking release since the binaries to be installed have been revised
+and merged. The `albatross-client-local` is now `albatross-client [--socket]`,
+`albatross-provision-ca` is now `albatross-client sign` or `albatross-client
+generate`. The `albatross-client-remote` is now `albatross-client certificate`.
+The `albatross-client-bistro` is now `albatross-client <command>
+--destination <host> --ca ca.pem --ca-key ca.pem --server-ca cacert.pem`.
+
+And finally, `albatross-tls-inetd` is now `albatross-tls-endpoint --inetd`.
+
+- Document TLS usage (#155, #156 @TheLortex @hannesm)
+- Improve TLS experience by providing more reasonable error messages and apply
+  more checks before establishing a TLS session (#157 @hannesm @reynir)
+- Slim down binaries:
+  - remove albatross-stat-client binary (#161 @hannesm)
+  - move X509 parts out of Albatross_cli (#158 @reynir)
+  - merge albatross-tls-inetd with albatross-tls-endpoint (#160 @hannesm)
+  - merge albatross-client-inspect-dump into albatross-client (#161 @hannesm)
+  - merge albatross-provision-ca and albatross-provision-request into
+    albatross-client (#159 @reynir @hannesm)
+  - merge albatross-client-remote and albatross-client-bistro and
+    albatross-client-local into albatross-client (#162 @hannesm)
+- Check solo5 ABI tender version, allow multiple solo5 tenders to exist (named
+  as solo5-{s,h}vt.<ABI> (#163 @hannesm)
+- Improve documentation and manpages (#164 @hannesm)
+
 # v1.5.6 (2023-02-19)
 
 - Update to tls 0.16 packaging (#154 @hannesm)
