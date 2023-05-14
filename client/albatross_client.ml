@@ -1518,9 +1518,13 @@ let cmds = [
 let () =
   let doc = "Albatross client" in
   let man = [
-    `S "DESCRIPTION" ;
-    `P "$(tname) executes a command by connecting to albatrossd or emitting a CSR. Connection can be either local (via a Unix domain socket) or remote (via TLS)." ]
-  in
+    `S "DESCRIPTION";
+    `P "$(tname) interacts with the albatross daemons. It executes a unikernel
+      command (such as create, console, ...) by connecting to a local (--socket,
+      default) or remote (--destination with --ca, --ca-key, --server-ca, and
+      --key-type) albatross daemon, or by creating a CSR (--csr and the above
+      certificate options) for future use (once albatross-client sign'ed).";
+  ] in
   let info = Cmd.info "albatross-client" ~version:Albatross_cli.version ~doc ~man ~exits in
   let group = Cmd.group ~default:help_cmd info cmds in
   exit (Cmd.eval_value group |> exit_status_of_result)

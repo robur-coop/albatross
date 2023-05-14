@@ -125,9 +125,19 @@ let gather_bhyve =
   Arg.(value & flag & info [ "gather-bhyve-stats" ] ~doc)
 
 let cmd =
+  let doc = "Statistics collection of unikernels" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "$(tname) gathers statistics about unikernels. Upon start it requests the
+        list of running unikernels, together with PID and used tap devices, from
+        albatross-daemon. The it starts collecting data periodically, preserving
+        the latest data point. Data collection uses network interface
+        statistics, resource usage (using getrusage), and VMM API debug counters
+        (only supported on FreeBSD)."
+  ] in
   let term =
     Term.(term_result (const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ interval $ gather_bhyve $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
-  and info = Cmd.info "albatross-stats" ~version:Albatross_cli.version
+  and info = Cmd.info "albatross-stats" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
 

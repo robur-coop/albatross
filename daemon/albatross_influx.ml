@@ -307,9 +307,10 @@ let opt_vm_name =
 let cmd =
   let doc = "Albatross Influx connector" in
   let man = [
-    `S "DESCRIPTION" ;
-    `P "$(tname) connects to a albatross stats socket, pulls statistics and pushes them via TCP to influxdb" ]
-  in
+    `S "DESCRIPTION";
+    `P "$(tname) connects to a albatross-stats socket, periodically pulls
+        statistics and pushes them via TCP to influxdb";
+  ] in
   let term =
     Term.(term_result (const run_client $ Albatross_cli.setup_log $ Albatrossd_utils.influx $ opt_vm_name $ drop_label $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-influx" ~version:Albatross_cli.version ~doc ~man

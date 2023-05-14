@@ -237,9 +237,28 @@ let jump _ systemd influx tmpdir dbdir =
 open Cmdliner
 
 let cmd =
+  let doc = "Albatross daemon" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "$(tname) orchestrates MirageOS unikernels. It takes care of unikernel
+      resources on the host system, such as creating tap devices and attaching
+      these to bridges, creating and assigning block devices, redirecting the
+      console output, restarting the unikernel upon failure. It persists the
+      created unikernels on disk - a restart of albatross will respawn all
+      running unikernels.";
+    `P "$(tname) design is to avoid resource leakage (file descriptors, memory,
+      disk space), and ease unikernel deployments. The busywork to create tap
+      devices and attach them to bridges is automatically done by $(tname).
+      Host system resources (memory, bridge names, block device storage, CPUs,
+      number of unikernels) can be limited by policies to allow multi-tenant
+      that, when albtross-tls-endpoint is deployed, do not need local system
+      access. The daemons run under the least privilege in terms of user --
+      only $(tname) is run as root to allow unikernel creation and tap device
+      creation and attaching tap devices to bridges."
+  ] in
   let term =
     Term.(const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir)
-  and info = Cmd.info "albatrossd" ~version:Albatross_cli.version
+  and info = Cmd.info "albatrossd" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
 

@@ -167,6 +167,15 @@ let inetd =
   Arg.(value & flag & info [ "inetd" ] ~doc)
 
 let cmd =
+  let doc = "Remote albatross access" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "$(tname) opens a TCP socket (or using systemd or inetd) where incomfing
+        mutually authenticated TLS sessions are expected. When an authenticated
+        TLS client certificate is received, the contained albatross command is
+        forwarded to the respective albatross daemon. The reply is sent back to
+        the TLS client."
+  ] in
   let term =
     Term.(
       const jump $ Albatross_cli.setup_log $ cacert $ cert $ key
@@ -174,7 +183,7 @@ let cmd =
       $ Albatrossd_utils.port_or_socket ~default_port:1025
       $ Albatross_cli.tmpdir
       $ inetd)
-  and info = Cmd.info "albatross-tls-endpoint" ~version:Albatross_cli.version in
+  and info = Cmd.info "albatross-tls-endpoint" ~version:Albatross_cli.version ~doc ~man in
   Cmd.v info term
 
 let () = exit (Cmd.eval cmd)

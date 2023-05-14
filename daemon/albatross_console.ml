@@ -178,9 +178,20 @@ let jump _ systemd influx tmpdir =
 open Cmdliner
 
 let cmd =
+  let doc = "Albatross console" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "$(tname) reads the console output of a unikernel and preserves the
+        latest 1000 lines in a ring buffer in memory for clients. Each unikernel
+        may only have a single subscribed client, which is sent to until the
+        client closes the connection (each new line is sent as new message on
+        the stream). The albatross-daemon informs albatross-console when a new
+        unikernel is created, and albatross-console starts reading from the
+        fifo the unikernel is writing to.";
+  ] in
   let term =
     Term.(term_result (const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
-  and info = Cmd.info "albatross-console" ~version:Albatross_cli.version
+  and info = Cmd.info "albatross-console" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
 
