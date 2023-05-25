@@ -1,5 +1,5 @@
 {
-  inputs.nixpkgs.url = "nixpkgs";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   inputs.opam-nix = {
     url = "github:tweag/opam-nix";
     inputs.nixpkgs.follows = "nixpkgs";
@@ -10,7 +10,6 @@
   };
   inputs.flake-utils = {
     url = "github:numtide/flake-utils";
-    inputs.nixpkgs.follows = "nixpkgs";
   };
   inputs.opam-repository = {
     url = "github:ocaml/opam-repository";
