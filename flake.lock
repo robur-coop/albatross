@@ -72,15 +72,11 @@
         "flake-utils": [
           "flake-utils"
         ],
-        "mirage-opam-overlays": [
-          "mirage-opam-overlays"
-        ],
+        "mirage-opam-overlays": "mirage-opam-overlays",
         "nixpkgs": [
           "nixpkgs"
         ],
-        "opam-overlays": [
-          "opam-overlays"
-        ],
+        "opam-overlays": "opam-overlays",
         "opam-repository": [
           "opam-repository"
         ],
@@ -156,10 +152,8 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "mirage-opam-overlays": "mirage-opam-overlays",
         "nixpkgs": "nixpkgs",
         "opam-nix": "opam-nix",
-        "opam-overlays": "opam-overlays",
         "opam-repository": "opam-repository"
       }
     },
