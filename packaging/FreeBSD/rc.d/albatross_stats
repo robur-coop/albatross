@@ -63,7 +63,7 @@ albatross_stats_precmd() {
 
 albatross_stats_start () {
     echo "Starting ${name}."
-    /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_stats_user}" \
+    /usr/sbin/daemon -S -r -P "${pidfile}" -u "${albatross_stats_user}" \
 		     "${procname}" ${albatross_stats_flags}
 }
 

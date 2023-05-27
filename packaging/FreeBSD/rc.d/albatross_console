@@ -33,7 +33,7 @@ procname="/usr/local/libexec/albatross/albatross-console"
 
 albatross_console_start () {
     echo "Starting ${name}."
-    /usr/sbin/daemon -S -p "${pidfile}" -u "${albatross_console_user}" \
+    /usr/sbin/daemon -S -r -P "${pidfile}" -u "${albatross_console_user}" \
 		     "${procname}" ${albatross_console_flags}
 }
 
