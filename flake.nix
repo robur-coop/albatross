@@ -1,27 +1,16 @@
 {
-  inputs.nixpkgs.url = "nixpkgs";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   inputs.opam-nix = {
     url = "github:tweag/opam-nix";
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.flake-utils.follows = "flake-utils";
     inputs.opam-repository.follows = "opam-repository";
-    inputs.opam-overlays.follows = "opam-overlays";
-    inputs.mirage-opam-overlays.follows = "mirage-opam-overlays";
   };
   inputs.flake-utils = {
     url = "github:numtide/flake-utils";
-    inputs.nixpkgs.follows = "nixpkgs";
   };
   inputs.opam-repository = {
     url = "github:ocaml/opam-repository";
-    flake = false;
-  };
-  inputs.opam-overlays = {
-    url = "github:dune-universe/opam-overlays";
-    flake = false;
-  };
-  inputs.mirage-opam-overlays = {
-    url = "github:dune-universe/mirage-opam-overlays";
     flake = false;
   };
 
