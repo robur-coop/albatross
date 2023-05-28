@@ -37,7 +37,7 @@ for f in albatrossd \
              albatross-stats
 do install -U $bdir/$f $libexecdir/$f; done
 
-install -U $bdir/albatross-client $sbindir/$f
+install -U $bdir/albatross-client $sbindir/albatross-client
 
 # create +MANIFEST
 flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |

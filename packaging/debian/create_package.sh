@@ -30,7 +30,7 @@ for f in albatrossd \
 do install $bdir/$f $libexecdir/$f; done
 
 # stage client binary
-install $bdir/albatross-client $bindir/$f
+install $bdir/albatross-client $bindir/albatross-client
 
 # stage systemd scripts
 for f in albatross_stats \
