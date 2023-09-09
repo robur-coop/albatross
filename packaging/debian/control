@@ -4,9 +4,9 @@ Section: unknown
 Priority: optional
 Maintainer: Robur Team <team@robur.coop>
 Standards-Version: 4.4.1
-Homepage: https://github.com/roburio/albatross
-Vcs-Browser: https://github.com/roburio/albatross
-Vcs-Git: https://github.com/roburio/albatross.git
+Homepage: https://github.com/robur-coop/albatross
+Vcs-Browser: https://github.com/robur-coop/albatross
+Vcs-Git: https://github.com/robur-coop/albatross.git
 Architecture: all
 Depends: libgmp10, libnl-3-200, libnl-route-3-200
 Description: Albatross - orchestrate and manage MirageOS unikernels with Solo5

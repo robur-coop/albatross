@@ -1,9 +1,9 @@
 opam-version: "2.0"
 maintainer: "Hannes Mehnert <hannes@mehnert.org>"
 authors: ["Hannes Mehnert <hannes@mehnert.org>"]
-homepage: "https://github.com/roburio/albatross"
-dev-repo: "git+https://github.com/roburio/albatross.git"
-bug-reports: "https://github.com/roburio/albatross/issues"
+homepage: "https://github.com/robur-coop/albatross"
+dev-repo: "git+https://github.com/robur-coop/albatross.git"
+bug-reports: "https://github.com/robur-coop/albatross/issues"
 license: "ISC"
 
 depends: [
