@@ -39,6 +39,7 @@ depends: [
   "happy-eyeballs-lwt"
   "solo5-elftool" {>= "0.3"}
   "owee" {>= "0.4"}
+  "fpath" {>= "0.7.3"}
   "alcotest" {with-test}
 ]
 build: [
