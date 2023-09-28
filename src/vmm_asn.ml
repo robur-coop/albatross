@@ -588,8 +588,7 @@ let wire_command =
 
 let data =
   let f = function
-    | `C1 (timestamp, data) ->
-      let timestamp = match timestamp with `C1 n | `C2 n -> n in
+    | `C1 ((`C1 timestamp | `C2 timestamp), data) ->
       `Console_data (timestamp, data)
     | `C2 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
     | `C3 () -> Asn.S.parse_error "support for log was dropped"
