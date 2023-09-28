@@ -139,8 +139,7 @@ let my_explicit : ?cls:Asn.S.cls -> int -> ?label:string -> 'a Asn.S.t -> 'a Asn
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
-    | `C2 `C1 ts ->
-      let ts = match ts with `C1 n | `C2 n -> n in
+    | `C2 `C1 (`C1 ts | `C2 ts) ->
       `Console_subscribe (`Since ts)
     | `C2 `C2 c -> `Console_subscribe (`Count c)
   and g = function
