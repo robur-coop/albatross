@@ -465,7 +465,8 @@ let resource_add_remove_vm () =
       cmd = Array.make 0 "";
       pid = 0 ;
       taps = [] ;
-      digest = Cstruct.empty
+      digest = Cstruct.empty ;
+      started = Ptime.epoch ;
     }
   in
   (match Vmm_resources.remove_vm r1 (n_o_s "alpha:beta") with
@@ -496,7 +497,7 @@ let resource_vm_with_block () =
   let uc3 = { uc2 with block_devices = [ "block", Some "b", None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
     Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc3);
-  let u = Unikernel.{ config = uc2; cmd = Array.make 0 "" ; pid = 0 ; taps = [] ; digest = Cstruct.empty } in
+  let u = Unikernel.{ config = uc2; cmd = Array.make 0 "" ; pid = 0 ; taps = [] ; digest = Cstruct.empty ; started = Ptime.epoch ; } in
   let r3 = Vmm_resources.insert_vm r2 (n_o_s "alpha:bar") u in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device already in use"))
     Vmm_resources.(check_vm r3 (n_o_s "alpha:bar2") uc2);

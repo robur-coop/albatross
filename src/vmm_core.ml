@@ -366,6 +366,7 @@ module Unikernel = struct
     pid : int ;
     taps : string list ;
     digest : Cstruct.t ;
+    started : Ptime.t ;
   }
 
   let pp ppf vm =
@@ -386,18 +387,20 @@ module Unikernel = struct
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
     digest : Cstruct.t ;
+    started : Ptime.t ;
   }
 
   let info t =
     let cfg = t.config in
     { typ = cfg.typ ; fail_behaviour = cfg.fail_behaviour ; cpuid = cfg.cpuid ;
       memory = cfg.memory ; block_devices = cfg.block_devices ;
-      bridges = cfg.bridges ; argv = cfg.argv ; digest = t.digest }
+      bridges = cfg.bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
 
   let pp_info ppf (info : info) =
     let `Hex hex_digest = Hex.of_cstruct info.digest in
-    Fmt.pf ppf "typ %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ digest %s"
+    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ digest %s"
       pp_typ info.typ
+      (Ptime.pp_rfc3339 ()) info.started
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
       Fmt.(list ~sep:(any ", ") pp_block) info.block_devices

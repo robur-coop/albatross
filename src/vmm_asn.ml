@@ -615,16 +615,17 @@ let data =
 
 let unikernel_info =
   let open Unikernel in
-  let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, argv))))))) =
+  let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started)))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
+    and started = Option.value ~default:Ptime.epoch started
     in
-    { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest }
+    { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
   and g (vm : info) =
     let bridges = match vm.bridges with [] -> None | xs -> Some xs
     and blocks = match vm.block_devices with [] -> None | xs -> Some xs
     in
-    (vm.typ, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (vm.digest, (blocks, (bridges, vm.argv)))))))
+    (vm.typ, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (vm.digest, (blocks, (bridges, (vm.argv, Some vm.started))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -644,7 +645,8 @@ let unikernel_info =
                                    (required ~label:"net-name" utf8_string)
                                    (optional ~label:"bridge-name" utf8_string)
                                    (optional ~label:"mac" mac_addr)))))
-        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+         @ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string)))
+        -@ (optional ~label:"started" (my_explicit 3 generalized_time)))
 
 let header name =
   let f (version, sequence, name) = { version ; sequence ; name }
