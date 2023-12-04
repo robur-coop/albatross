@@ -101,6 +101,8 @@ let http_get_redirect ~happy_eyeballs uri =
       (match Http_lwt_client.Headers.get resp.Http_lwt_client.headers "location" with
        | None -> Error (`Msg "no Location header received in HTTP reply")
        | Some loc -> Ok loc)
+    | `Not_found ->
+      Error (`Msg "couldn't find the unikernel in the repository")
     | _ ->
       Logs.warn (fun m -> m "received HTTP reply: %a" Http_lwt_client.pp_response resp);
       Error (`Msg "unexpected HTTP reply")
