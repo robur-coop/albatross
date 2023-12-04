@@ -129,6 +129,7 @@ module Unikernel : sig
     pid : int;
     taps : string list;
     digest : Cstruct.t;
+    started : Ptime.t;
   }
 
   val pp : t Fmt.t
@@ -142,6 +143,7 @@ module Unikernel : sig
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
     digest : Cstruct.t ;
+    started : Ptime.t;
   }
 
   val info : t -> info

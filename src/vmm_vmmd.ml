@@ -258,8 +258,8 @@ let handle_policy_cmd t id =
     Ok (t, `End (`Success (`Policies policies)))
 
 let handle_unikernel_cmd t id = function
-  | `Old_unikernel_info ->
-    Logs.debug (fun m -> m "old info %a" Name.pp id) ;
+  | `Old_unikernel_info1 ->
+    Logs.debug (fun m -> m "old info1 %a" Name.pp id) ;
     let empty_image vm = { vm.Unikernel.config with image = Cstruct.empty } in
     let vms =
       match Name.name id with
@@ -278,6 +278,18 @@ let handle_unikernel_cmd t id = function
       | Some u ->
         Ok (t, `End (`Success (`Old_unikernels [ (id, u.Unikernel.config) ])))
     end
+  | `Old_unikernel_info2 ->
+    Logs.debug (fun m -> m "old info2 %a" Name.pp id) ;
+    let infos =
+      match Name.name id with
+      | None ->
+        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
+          (fun id vm vms -> (id, Unikernel.info vm) :: vms) []
+      | Some _ ->
+        Option.fold ~none:[] ~some:(fun vm -> [ id, Unikernel.info vm ])
+          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
+    in
+    Ok (t, `End (`Success (`Old_unikernel_info infos)))
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let infos =
