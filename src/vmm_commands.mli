@@ -36,7 +36,8 @@ type unikernel_cmd = [
   | `Unikernel_restart
   | `Unikernel_destroy
   | `Unikernel_get of int
-  | `Old_unikernel_info
+  | `Old_unikernel_info1
+  | `Old_unikernel_info2
   | `Old_unikernel_get
 ]
 
@@ -84,6 +85,7 @@ type success = [
   | `String of string
   | `Policies of (Name.t * Policy.t) list
   | `Old_unikernels of (Name.t * Unikernel.config) list
+  | `Old_unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * Cstruct.t
   | `Block_devices of (Name.t * int * bool) list
