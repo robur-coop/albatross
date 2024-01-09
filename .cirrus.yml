@@ -1,5 +1,5 @@
 pkg_install_task_template: &PKG_INSTALL_TASK_TEMPLATE
-  pkg_install_script: pkg install -y ocaml-opam gmp gmake pkgconf bash
+  pkg_install_script: pkg install -y ocaml-opam gmp gmake pkgconf bash ca_root_nss
 
 regular_task_template: &REGULAR_TASK_TEMPLATE
   dependencies_script: eval `opam env` && opam install -y -t --deps-only .
