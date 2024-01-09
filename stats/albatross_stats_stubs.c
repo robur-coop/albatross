@@ -135,7 +135,13 @@ CAMLprim value vmmanage_vmmapi_stats (value octx) {
   const char *desc;
   struct vmctx *ctx = (struct vmctx*)octx;
 
+#if __FreeBSD_version >= 1400000
+  struct vcpu *vcpu;
+  vcpu = vm_vcpu_open(ctx, 0);
+  stats = vm_get_stats(vcpu, NULL, &num_stats);
+#else
   stats = vm_get_stats(ctx, 0, NULL, &num_stats);
+#endif
   if (stats != NULL) {
     for (i = 0; i < num_stats; i++) {
       tmp = caml_alloc(2, 0);
