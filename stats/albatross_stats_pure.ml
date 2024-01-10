@@ -13,12 +13,14 @@ external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
 type vmctx
 
-external vmmapi_open : string -> vmctx = "vmmanage_vmmapi_open"
-external vmmapi_close : vmctx -> unit = "vmmanage_vmmapi_close"
-external vmmapi_stats : vmctx -> (string * int64) list = "vmmanage_vmmapi_stats"
+type vcpu
+
+external vmmapi_open : string -> (vmctx * vcpu) = "vmmanage_vmmapi_open"
+external vmmapi_close : vmctx -> vcpu -> unit = "vmmanage_vmmapi_close"
+external vmmapi_stats : vmctx -> vcpu -> (string * int64) list = "vmmanage_vmmapi_stats"
 
 type 'a t = {
-  pid_nic : ((vmctx, int) result * string * (string * int * string) list) IM.t ;
+  pid_nic : ((vmctx * vcpu, int) result * string * (string * int * string) list) IM.t ;
   vmid_pid : int Vmm_trie.t ;
   name_sockets : 'a Vmm_trie.t ;
 }
@@ -51,7 +53,7 @@ let remove_vmid t vmid =
   | Some pid ->
     Logs.info (fun m -> m "removing pid %d" pid) ;
     (match IM.find_opt pid t.pid_nic with
-     | Some (Ok vmctx, _, _) -> ignore (wrap vmmapi_close vmctx) ; vmmapi `Close
+     | Some (Ok (vmctx, vcpu), _, _) -> ignore (wrap (vmmapi_close vmctx) vcpu) ; vmmapi `Close
      | _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
     and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
@@ -204,7 +206,7 @@ let gather pid vmctx nics =
   ru, mem,
   (match vmctx with
    | Error _ -> None
-   | Ok vmctx -> wrap vmmapi_stats vmctx),
+   | Ok (vmctx, vcpu) -> wrap (vmmapi_stats vmctx) vcpu),
   List.fold_left (fun ifd (bridge, nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
