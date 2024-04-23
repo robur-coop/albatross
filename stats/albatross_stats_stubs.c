@@ -110,32 +110,52 @@ CAMLprim value vmmanage_vmmapi_open (value name) {
   CAMLparam1(name);
   struct vmctx *ctx;
   const char *devname;
+  CAMLlocal1(res);
 
   if (! caml_string_is_c_safe(name)) caml_raise_not_found();
 
   devname = String_val(name);
   ctx = vm_open(devname);
   if (ctx == NULL) uerror("vm_open", Nothing);
-  CAMLreturn((value)ctx);
+  struct vcpu *vcpu;
+#if __FreeBSD_version >= 1400000
+  vcpu = vm_vcpu_open(ctx, 0);
+#else
+  vcpu = NULL;
+#endif
+  res = caml_alloc(2, 0);
+  Store_field (res, 1, (value)ctx);
+  Store_field (res, 0, (value)vcpu);
+  CAMLreturn(res);
 }
 
-CAMLprim value vmmanage_vmmapi_close (value octx) {
+CAMLprim value vmmanage_vmmapi_close (value octx, value ovcpu) {
   struct vmctx *ctx = (struct vmctx*)octx;
+  struct vcpu *vcpu = (struct vcpu*)ovcpu;
+
+#if __FreeBSD_version >= 1400000
+  vm_vcpu_close(vcpu);
+#endif
 
   close(vm_get_device_fd(ctx));
   free(ctx);
   return Val_unit;
 }
 
-CAMLprim value vmmanage_vmmapi_stats (value octx) {
+CAMLprim value vmmanage_vmmapi_stats (value octx, value ovcpu) {
   CAMLparam0();
   CAMLlocal3(res, tmp, pair);
   int i, num_stats;
   uint64_t *stats;
   const char *desc;
   struct vmctx *ctx = (struct vmctx*)octx;
+  struct vcpu *vcpu = (struct vcpu*)ovcpu;
 
+#if __FreeBSD_version >= 1400000
+  stats = vm_get_stats(vcpu, NULL, &num_stats);
+#else
   stats = vm_get_stats(ctx, 0, NULL, &num_stats);
+#endif
   if (stats != NULL) {
     for (i = 0; i < num_stats; i++) {
       tmp = caml_alloc(2, 0);
