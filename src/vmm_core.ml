@@ -370,7 +370,7 @@ module Unikernel = struct
   }
 
   let pp ppf vm =
-    let `Hex hex_digest = Hex.of_cstruct vm.digest in
+    let hex_digest = Ohex.encode (Cstruct.to_string vm.digest) in
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       vm.pid
       Fmt.(list ~sep:(any ", ") string) vm.taps
@@ -397,7 +397,7 @@ module Unikernel = struct
       bridges = cfg.bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
 
   let pp_info ppf (info : info) =
-    let `Hex hex_digest = Hex.of_cstruct info.digest in
+    let hex_digest = Ohex.encode (Cstruct.to_string info.digest) in
     Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ digest %s"
       pp_typ info.typ
       (Ptime.pp_rfc3339 ()) info.started

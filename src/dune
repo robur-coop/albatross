@@ -7,7 +7,7 @@
  (modules vmm_core vmm_commands vmm_compress vmm_trie vmm_trie vmm_ring vmm_asn vmm_resources)
  (libraries logs ipaddr ptime duration cstruct bigstringaf
    decompress.de decompress.zl asn1-combinators fpath
-   metrics mirage-crypto hex))
+   metrics mirage-crypto ohex))
 
 (library
  (name albatross_unix)

@@ -34,7 +34,7 @@ depends: [
   "metrics-lwt" {>= "0.2.0"}
   "metrics-influx" {>= "0.2.0"}
   "metrics-rusage"
-  "hex"
+  "ohex" {>= "0.2.0"}
   "http-lwt-client" {>= "0.2.0"}
   "happy-eyeballs-lwt"
   "solo5-elftool" {>= "0.3"}
