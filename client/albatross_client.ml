@@ -137,7 +137,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->
     begin
-      let `Hex hash = Hex.of_cstruct digest in
+      let hash = Ohex.encode (Cstruct.to_string digest) in
       can_update ~happy_eyeballs host hash >>= function
       | Error `Msg msg ->
         Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
