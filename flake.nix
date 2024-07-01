@@ -1,3 +1,8 @@
+# Run these two commands to update the inputs and run the tests:
+#
+#   nix flake update
+#   nix build
+#
 {
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   inputs.opam-nix = {
