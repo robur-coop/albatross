@@ -118,7 +118,7 @@ user. The user generates a signing request to allow a memory of 1024MB to run
 16 unikernels on CPU IDs 0 and 1.
 
 ```
-albatross-client add_policy user 16 --mem 1024 --cpu 0 --cpu 1 --csr
+albatross-client add-policy user 16 --mem 1024 --cpu 0 --cpu 1 --csr
 ```
 
 | description                   | | server     |  CA        | intermediate CA | client |
