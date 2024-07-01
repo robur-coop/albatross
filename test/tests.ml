@@ -550,7 +550,7 @@ let console_subscribe_v4 () =
       (Vmm_commands.header ~version:`AV4 (n_o_s "foo"))
       hdr;
     match cmd with
-    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console_subscribe, got %a"
              (Vmm_commands.pp_wire ~verbose:true) w
 
@@ -569,7 +569,7 @@ let console_subscribe_v4_2 () =
       (Vmm_commands.header ~version:`AV4 (n_o_s "foo.bar"))
       hdr;
     match cmd with
-    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console_subscribe, got %a"
              (Vmm_commands.pp_wire ~verbose:true) w
 
@@ -588,7 +588,7 @@ let console_subscribe_v5 () =
       (Vmm_commands.header ~version:`AV5 (n_o_s "foo"))
       hdr;
     match cmd with
-    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console_subscribe, got %a"
              (Vmm_commands.pp_wire ~verbose:true) w
 
@@ -607,7 +607,7 @@ let console_subscribe_v5_2 () =
       (Vmm_commands.header ~version:`AV5 (n_o_s "foo.bar"))
       hdr;
     match cmd with
-    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console_subscribe, got %a"
              (Vmm_commands.pp_wire ~verbose:true) w
 
@@ -643,7 +643,7 @@ HUBeGB+KSdPOX8zc8taDCQ==
     Alcotest.check test_version "version is 4" `AV4 version;
     Alcotest.(check bool "pols is empty" true (pols = []));
     match command with
-    | `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
@@ -676,7 +676,7 @@ HUBeGB+KSdPOX8zc8taDCQ==
     Alcotest.check test_version "version is 4" `AV4 version;
     Alcotest.(check bool "pols is empty" true (pols = []));
     match command with
-    | `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
@@ -714,7 +714,7 @@ s2bwQQncdiUHfYEPbuMIo7WxjT0WBw==
     let path, _pol = List.hd pols in
     Alcotest.check test_path "path is sub" (p_o_s "sub") path;
     match command with
-    | `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
@@ -747,7 +747,7 @@ HUBeGB+KSdPOX8zc8taDCQ==
     Alcotest.check test_version "version is 5" `AV5 version;
     Alcotest.(check bool "pols is empty" true (pols = []));
     match command with
-    | `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
@@ -780,7 +780,7 @@ HUBeGB+KSdPOX8zc8taDCQ==
     Alcotest.check test_version "version is 5" `AV5 version;
     Alcotest.(check bool "pols is empty" true (pols = []));
     match command with
-    | `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
@@ -818,7 +818,7 @@ BgMrZXADQQAZXTUICXOZCD1lFuRKi+zT0qQ2n0+AjluPM4Q+PUVjmqfLqau/2KHc
     let path, _pol = List.hd pols in
     Alcotest.check test_path "path is subv5" (p_o_s "subv5") path;
     match command with
-    | `Console_cmd `Console_subscribe `Count 20 -> ()
+    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 

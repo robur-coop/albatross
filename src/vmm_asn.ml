@@ -139,20 +139,27 @@ let my_explicit : ?cls:Asn.S.cls -> int -> ?label:string -> 'a Asn.S.t -> 'a Asn
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
-    | `C2 `C1 (`C1 ts | `C2 ts) ->
-      `Console_subscribe (`Since ts)
-    | `C2 `C2 c -> `Console_subscribe (`Count c)
+    | `C2 `C1 ts -> `Old_console_subscribe (`Since ts)
+    | `C2 `C2 c -> `Old_console_subscribe (`Count c)
+    | `C3 `C1 ts -> `Console_subscribe (`Since ts)
+    | `C3 `C2 c -> `Console_subscribe (`Count c)
   and g = function
     | `Console_add -> `C1 ()
-    | `Console_subscribe `Since ts -> `C2 (`C1 (`C2 ts))
-    | `Console_subscribe `Count c -> `C2 (`C2 c)
+    | `Old_console_subscribe `Since ts -> `C2 (`C1 ts)
+    | `Old_console_subscribe `Count c -> `C2 (`C2 c)
+    | `Console_subscribe `Since ts -> `C3 (`C1 ts)
+    | `Console_subscribe `Count c -> `C3 (`C2 c)
   in
   Asn.S.map f g @@
-  Asn.S.(choice2
+  Asn.S.(choice3
            (my_explicit 0 ~label:"add" null)
-           (my_explicit 1 ~label:"subscribe"
+           (my_explicit 1 ~label:"old-subscribe"
               (choice2
-                 (my_explicit 0 ~label:"since" (choice2 utc_time generalized_time))
+                 (my_explicit 0 ~label:"since" utc_time)
+                 (my_explicit 1 ~label:"count" int)))
+           (my_explicit 2 ~label:"subscribe"
+              (choice2
+                 (my_explicit 0 ~label:"since" generalized_time)
                  (my_explicit 1 ~label:"count" int))))
 
 (* TODO is this good? *)
@@ -589,19 +596,20 @@ let wire_command =
 
 let data =
   let f = function
-    | `C1 ((`C1 timestamp | `C2 timestamp), data) ->
-      `Console_data (timestamp, data)
+    | `C1 (timestamp, data) -> `Utc_console_data (timestamp, data)
     | `C2 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
     | `C3 () -> Asn.S.parse_error "support for log was dropped"
+    | `C4 (timestamp, data) -> `Console_data (timestamp, data)
   and g = function
-    | `Console_data (timestamp, data) -> `C1 (`C2 timestamp, data)
+    | `Utc_console_data (timestamp, data) -> `C1 (timestamp, data)
+    | `Console_data (timestamp, data) -> `C4 (timestamp, data)
     | `Stats_data (ru, mem, ifs, vmm) -> `C2 (ru, vmm, ifs, mem)
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
-           (my_explicit 0 ~label:"console"
+  Asn.S.(choice4
+           (my_explicit 0 ~label:"utc-console"
               (sequence2
-                 (required ~label:"timestamp" (choice2 utc_time generalized_time))
+                 (required ~label:"timestamp" utc_time)
                  (required ~label:"data" utf8_string)))
            (my_explicit 1 ~label:"statistics"
               (sequence4
@@ -612,7 +620,11 @@ let data =
                                     (required ~label:"key" utf8_string)
                                     (required ~label:"value" int64))))
                  (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
-           (my_explicit 2 ~label:"log" null))
+           (my_explicit 2 ~label:"log" null)
+           (my_explicit 3 ~label:"console"
+              (sequence2
+                 (required ~label:"timestamp" generalized_time)
+                 (required ~label:"data" utf8_string))))
 
 let old_unikernel_info =
   let open Unikernel in
