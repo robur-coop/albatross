@@ -33,8 +33,11 @@ let init_influx name data =
         | Some socket ->
           let tag = process name in
           let datas = Metrics.SM.fold (fun src (tags, data) acc ->
-              let name = Metrics.Src.name src in
-              Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
+              match Metrics.Data.fields data with
+              | [] -> acc
+              | _ ->
+                let name = Metrics.Src.name src in
+                Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
               (get_cache ()) []
           in
           let datas = String.concat "" datas in

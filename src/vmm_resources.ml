@@ -79,7 +79,9 @@ let unikernel_metrics =
 
 let report_vms t name =
   let rec doit path =
-    let str = Name.path_to_string path in
+    let str =
+      if Name.is_root_path path then ":" else Name.path_to_string path
+    in
     Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, path));
     if Name.is_root_path path then () else doit (Name.parent_path path)
   in
