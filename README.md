@@ -142,7 +142,7 @@ albatross-client sign cacert.pem db ca.key user.req
 | _certificate signing request_ | |            |            | user.req        |        |
 
 5. **client:** the client wants to create an unikernel, it has to wrap the request in a
-certificate signing request which will be submitted to the intermediate CA.
+certificate signing request which will be submitted to the intermediate CA. Note: you can [download hello-key.hvt](https://builds.robur.coop/job/hello/build/latest/f/bin/hello-key.hvt).
 
 ```
 albatross-client create hello hello-key.hvt --csr [--arg='--hello=albatross-hi'] [--cpu=1]
@@ -179,7 +179,7 @@ to retain the signing request and certificate, and the user keys are on the
 local machine.
 
 ```
-albatross-client create hello hello.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem --destination <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
+albatross-client create hello hello-key.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem --destination <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 ## Installation
