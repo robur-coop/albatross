@@ -32,11 +32,13 @@ let pp_since_count ppf = function
 type console_cmd = [
   | `Console_add
   | `Console_subscribe of since_count
+  | `Old_console_subscribe of since_count
 ]
 
 let pp_console_cmd ppf = function
   | `Console_add -> Fmt.string ppf "console add"
   | `Console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
+  | `Old_console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
 
 type stats_cmd = [
   | `Stats_add of string * int * (string * string) list
@@ -130,11 +132,14 @@ let pp ~verbose ppf = function
 
 type data = [
   | `Console_data of Ptime.t * string
+  | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
 ]
 
 let pp_data ppf = function
   | `Console_data (ts, line) ->
+    Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
+  | `Utc_console_data (ts, line) ->
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
 

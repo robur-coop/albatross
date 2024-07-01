@@ -27,9 +27,15 @@ let read_console id name ring fd =
         Vmm_ring.write ring (t, line) ;
         (match Vmm_core.String_map.find_opt name !active with
          | None -> Lwt.return_unit
-         | Some (version, fd) ->
+         | Some (version, utc, fd) ->
            let header = Vmm_commands.header ~version id in
-           Vmm_lwt.write_wire fd (header, `Data (`Console_data (t, line))) >>= function
+           let data =
+             if utc then
+               `Data (`Utc_console_data (t, line))
+             else
+               `Data (`Console_data (t, line))
+           in
+           Vmm_lwt.write_wire fd (header, data) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
              active := Vmm_core.String_map.remove name !active
@@ -83,21 +89,21 @@ let add_fifo id =
     Lwt.async (fun () -> read_console id name ring f >|= fun () -> fifos `Close) ;
     Ok ()
 
-let subscribe s version id =
+let subscribe s version ~utc id =
   let name = Vmm_core.Name.to_string id in
   Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp id) ;
   match Vmm_core.String_map.find_opt name !t with
   | None ->
-    active := Vmm_core.String_map.add name (version, s) !active ;
+    active := Vmm_core.String_map.add name (version, utc, s) !active ;
     Lwt.return (None, "waiting for VM")
   | Some r ->
     (match Vmm_core.String_map.find_opt name !active with
      | None -> Lwt.return_unit
-     | Some (_, s) -> Vmm_lwt.safe_close s) >|= fun () ->
-    active := Vmm_core.String_map.add name (version, s) !active ;
+     | Some (_, _, s) -> Vmm_lwt.safe_close s) >|= fun () ->
+    active := Vmm_core.String_map.add name (version, utc, s) !active ;
     (Some r, "subscribed")
 
-let send_history s version r id since =
+let send_history s version ~utc r id since =
   let entries =
     match since with
     | `Count n -> Vmm_ring.read_last r n
@@ -106,7 +112,13 @@ let send_history s version r id since =
   Logs.debug (fun m -> m "%a found %d history" Vmm_core.Name.pp id (List.length entries)) ;
   Lwt_list.iter_s (fun (i, v) ->
       let header = Vmm_commands.header ~version id in
-      Vmm_lwt.write_wire s (header, `Data (`Console_data (i, v))) >>= function
+      let data =
+        if utc then
+          `Data (`Utc_console_data (i, v))
+        else
+          `Data (`Console_data (i, v))
+      in
+      Vmm_lwt.write_wire s (header, data) >>= function
       | Ok () -> Lwt.return_unit
       | Error _ -> Vmm_lwt.safe_close s)
     entries
@@ -135,16 +147,30 @@ let handle s addr =
             Logs.err (fun m -> m "error while writing") ;
             Lwt.return_unit
           end
+        | `Old_console_subscribe ts ->
+          begin
+            subscribe s header.Vmm_commands.version ~utc:true name >>= fun (ring, res) ->
+            Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+            | Error _ -> Vmm_lwt.safe_close s
+            | Ok () ->
+              (match ring with
+               | None -> Lwt.return_unit
+               | Some r -> send_history s header.Vmm_commands.version ~utc:true r name ts) >>= fun () ->
+              (* now we wait for the next read and terminate*)
+              Vmm_lwt.read_wire s >|= fun _ -> ()
+          end
         | `Console_subscribe ts ->
-          subscribe s header.Vmm_commands.version name >>= fun (ring, res) ->
-          Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-          | Error _ -> Vmm_lwt.safe_close s
-          | Ok () ->
-            (match ring with
-             | None -> Lwt.return_unit
-             | Some r -> send_history s header.Vmm_commands.version r name ts) >>= fun () ->
-            (* now we wait for the next read and terminate*)
-            Vmm_lwt.read_wire s >|= fun _ -> ()
+          begin
+            subscribe s header.Vmm_commands.version ~utc:false name >>= fun (ring, res) ->
+            Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+            | Error _ -> Vmm_lwt.safe_close s
+            | Ok () ->
+              (match ring with
+               | None -> Lwt.return_unit
+               | Some r -> send_history s header.Vmm_commands.version ~utc:false r name ts) >>= fun () ->
+              (* now we wait for the next read and terminate*)
+              Vmm_lwt.read_wire s >|= fun _ -> ()
+          end
       end
     | Ok wire ->
       Logs.err (fun m -> m "unexpected wire %a"
