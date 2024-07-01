@@ -17,7 +17,7 @@ task:
   << : *REGULAR_TASK_TEMPLATE
   name: FreeBSD 13.2
   freebsd_instance:
-    image_family: freebsd-13-2
+    image_family: freebsd-13-3
 
 task:
   << : *PKG_INSTALL_TASK_TEMPLATE
