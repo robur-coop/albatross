@@ -104,13 +104,14 @@ module P = struct
       Int64.to_float (fst mem.start) +. (float_of_int (snd mem.start) /. 1_000_000.)
     in
     let uptime = now -. started in
+    let uint v = Printf.sprintf "%ui" v in
     let fields =
       [ "vsize", i64 mem.vsize ;
         "rss", i64 mem.rss ;
         "tsize", i64 mem.tsize ;
         "dsize", i64 mem.dsize ;
         "ssize", i64 mem.ssize ;
-        "cow_faults", string_of_int mem.cow ;
+        "cow_faults", uint mem.cow ;
         "runtime", i64 mem.runtime ;
         "uptime", Printf.sprintf "%f" uptime ;
       ]
