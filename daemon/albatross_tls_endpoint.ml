@@ -106,10 +106,12 @@ let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd =
   Albatross_cli.set_tmpdir tmpdir;
   let handle config fd =
     Lwt.catch
-      (fun () -> Tls_lwt.Unix.server_of_fd config fd)
+      (fun () -> Tls_lwt.Unix.server_of_fd config fd >|= fun t -> Ok t)
       (fun exn ->
          Vmm_lwt.safe_close fd >>= fun () ->
-         Lwt.fail exn) >>= fun t ->
+         Logs.err (fun m -> m "error establishing TLS connection: %s" (Printexc.to_string exn));
+         Lwt.return (Error ())) >>= function
+    | Ok t ->
     Lwt.catch
       (fun () ->
          handle t >>= fun () ->
@@ -117,6 +119,7 @@ let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd =
       (fun e ->
          Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
          Vmm_tls_lwt.close t)
+    | Error () -> Lwt.return_unit
   in
   Lwt_main.run
     (tls_config cacert cert priv_key >>= fun config ->
