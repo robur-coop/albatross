@@ -188,5 +188,5 @@ Binary packages are available for Debian, Ubuntu and FreeBSD. [How to install](h
 
 For other operating systems / distributions, run `opam install albatross`.
 
-Also read [the blog article](https://hannes.nqsb.io/Posts/Albatross)
+Also read [the blog article](https://hannes.robur.coop/Posts/Albatross)
 for the motivation behind albatross and an overview of its functionality.
