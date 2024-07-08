@@ -1,6 +1,6 @@
 [Unit]
 Description=Albatross tls endpoint
-requires=albatross_daemon.socket albatross_tls_endpoint.socket
+Requires=albatross_daemon.socket albatross_tls_endpoint.socket
 After=syslog.target network.target
 
 [Service]
