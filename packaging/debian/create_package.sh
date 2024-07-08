@@ -43,9 +43,9 @@ done
 install -m 0644 $basedir/packaging/Linux/albatross_influx.service \
         $systemddir/albatross_influx.service
 install -m 0644 $basedir/packaging/Linux/albatross_tls_endpoint.service \
-	$examplesdir/albatross_tls_endpoint.service
+	$systemddir/albatross_tls_endpoint.service
 install -m 0644 $basedir/packaging/Linux/albatross_tls_endpoint.socket \
-	$examplesdir/albatross_tls_endpoint.socket
+	$systemddir/albatross_tls_endpoint.socket
 
 # install debian metadata
 install -m 0644 $basedir/packaging/debian/control $debiandir/control
