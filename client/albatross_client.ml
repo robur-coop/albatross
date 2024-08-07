@@ -731,7 +731,13 @@ let block_set () compression block_data name dst =
 
 let block_destroy () = jump (`Block_cmd `Block_remove)
 
-let one_jump = function
+let one_jump :
+  [ `Local of string option | `Remote of string * int ] ->
+  [< Vmm_commands.t > `Unikernel_cmd ] ->
+  Vmm_core.Name.t ->
+  string -> string -> string ->
+  _ -> string -> _
+  = function
   | `Local opt_sock ->
     fun cmd name _cert _key _ca _key_type tmpdir ->
       Albatross_cli.set_tmpdir tmpdir;
@@ -774,28 +780,29 @@ let one_jump = function
           Vmm_tls_lwt.read_tls fd >>= fun r ->
           Vmm_tls_lwt.close fd >|= fun () ->
           r)
-  | `Csr -> 
-    fun _ _ _ _ _ _ _ ->
-      Logs.err (fun m -> m "update with CSR not supported");
-      Lwt.return (Error (`Connect Cli_failed))
 
 let update () host dryrun compression name d cert key ca key_type tmpdir =
   let open Lwt_result.Syntax in
-  Lwt_main.run
-    begin
-      one_jump d (`Unikernel_cmd `Unikernel_info) name cert key ca key_type tmpdir >>= fun r ->
-      let happy_eyeballs = Happy_eyeballs_lwt.create () in
-      let level = compress_default compression d in
-      let* cmd = prepare_update ~happy_eyeballs level host dryrun r in
-      one_jump d (`Unikernel_cmd cmd) name cert key ca key_type tmpdir >>= fun r ->
-      match r with
-      | Ok w ->
-        Lwt.return (exit_status (output_result w))
-      | Error _ ->
-        Logs.err (fun m -> m "received error from albatross");
-        Lwt.return (Error Remote_command_failed)
-    end
-  |> Result.fold ~ok:Fun.id ~error:Fun.id
+  match d with
+  | `Csr ->
+    Logs.err (fun m -> m "update with CSR not supported");
+    Cli_failed
+  | `Local _ | `Remote _ as d ->
+    Lwt_main.run
+      begin
+        one_jump d (`Unikernel_cmd `Unikernel_info) name cert key ca key_type tmpdir >>= fun r ->
+        let happy_eyeballs = Happy_eyeballs_lwt.create () in
+        let level = compress_default compression d in
+        let* cmd = prepare_update ~happy_eyeballs level host dryrun r in
+        one_jump d (`Unikernel_cmd cmd) name cert key ca key_type tmpdir >>= fun r ->
+        match r with
+        | Ok w ->
+          Lwt.return (exit_status (output_result w))
+        | Error _ ->
+          Logs.err (fun m -> m "received error from albatross");
+          Lwt.return (Error Remote_command_failed)
+      end
+    |> Result.fold ~ok:Fun.id ~error:Fun.id
 
 let inspect_dump _ name dbdir =
   Albatross_cli.set_dbdir dbdir;
