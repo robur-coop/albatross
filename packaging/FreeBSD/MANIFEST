@@ -78,7 +78,7 @@ messages [
 
         blackjack  stream  tcp     nowait  albatross \
           /usr/local/libexec/albatross/albatross-tls-endpoint \
-          albatross-tls-endpoint --inetd \
+          albatross-tls-endpoint --inetd --syslog \
           /usr/local/etc/albatross/cacert.pem \
           /usr/local/etc/albatross/server.pem \
           /usr/local/etc/albatross/server.key
