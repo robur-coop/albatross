@@ -731,55 +731,78 @@ let block_set () compression block_data name dst =
 
 let block_destroy () = jump (`Block_cmd `Block_remove)
 
-let update () host dryrun compression name d cert key ca key_type tmpdir =
-  let open Lwt_result.Infix in
-  Albatross_cli.set_tmpdir tmpdir;
-  match read_cert_key cert key with
-  | Error `Msg msg ->
-    Logs.err (fun m -> m "error reading certs or keys: %s" msg);
-    Cli_failed
-  | Ok (cert, certs, key) ->
-    Lwt_main.run (
-      let happy_eyeballs = Happy_eyeballs_lwt.create () in
-      let connect cmd = match d with
-        | `Csr ->
-          Logs.err (fun m -> m "update with CSR not supported");
-          Lwt.return (Error Cli_failed)
-        | `Local opt_sock ->
-          connect_local opt_sock name cmd >>= fun (fd, _next) ->
-          Lwt_result.ok (Vmm_lwt.read_wire fd) >>= fun r ->
-          Lwt_result.ok (Vmm_lwt.safe_close fd) >>= fun () ->
-          Lwt.return (Ok r)
-        | `Remote endp ->
-          match Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
-          | true, Some name ->
-            (match gen_cert (cert, certs, key) key_type name cmd with
-             | Error `Msg msg ->
-               Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
-               Lwt.return (Error Cli_failed)
-             | Ok (cert, certs, key) ->
-               connect_remote ~happy_eyeballs endp (cert, certs, key) ca >>= fun fd ->
-               Lwt_result.ok (Vmm_tls_lwt.read_tls fd) >>= fun r ->
-               Lwt_result.ok (Vmm_tls_lwt.close fd) >>= fun () ->
-               Lwt.return (Ok r))
-          | _, None ->
-            Logs.err (fun m -> m "empty name: %a" Vmm_core.Name.pp name);
-            Lwt.return (Error Cli_failed)
-          | _, _ ->
-            Logs.err (fun m -> m "non-empty path: %a" Vmm_core.Name.pp name);
-            Lwt.return (Error Cli_failed)
+let one_jump :
+  [ `Local of string option | `Remote of string * int ] ->
+  [< Vmm_commands.t > `Unikernel_cmd ] ->
+  Vmm_core.Name.t ->
+  string -> string -> string ->
+  _ -> string -> _
+  = function
+  | `Local opt_sock ->
+    fun cmd name _cert _key _ca _key_type tmpdir ->
+      Albatross_cli.set_tmpdir tmpdir;
+      connect_local opt_sock name cmd >>= (function
+        | Error e -> Lwt.return (Error (`Connect e))
+        | Ok (fd, `End) ->
+          Vmm_lwt.read_wire fd >>= fun r ->
+          Vmm_lwt.safe_close fd >|= fun () ->
+          r
+        | Ok (_fd, `Read) ->
+          assert false)
+  | `Remote endp ->
+    fun cmd name cert key ca key_type _tmpdir ->
+      let open Lwt_result.Syntax in
+      let* (cert, certs, key) = Lwt.return (read_cert_key cert key) in
+      let* name =
+        match cmd,
+              Vmm_core.Name.is_root_path (Vmm_core.Name.path name),
+              Vmm_core.Name.name name
+        with
+         | `Policy_cmd _, _, _ ->
+           Lwt.return (Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name)))
+         | _, true, Some name ->
+           Lwt.return (Ok name)
+         | _, true, None ->
+           Lwt.return (Ok ".")
+         | _, _, _ ->
+           Lwt.return (Error (`Msg "non-empty path"))
       in
-      connect (`Unikernel_cmd `Unikernel_info) >>= fun r ->
-      let level = compress_default compression d in
-      prepare_update ~happy_eyeballs level host dryrun r >>= fun cmd ->
-      connect (`Unikernel_cmd cmd) >>= fun r ->
-      match r with
-      | Ok w ->
-        Lwt.return (exit_status (output_result w))
-      | Error _ ->
-        Logs.err (fun m -> m "received error from albatross");
-        Lwt.return (Error Remote_command_failed)
-    ) |> function Ok a -> a | Error e -> e
+      let _, next = Vmm_commands.endpoint cmd in
+      assert (next = `End);
+      (match gen_cert (cert, certs, key) key_type name cmd with
+      | Error `Msg msg ->
+        Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
+        Lwt.return (Error (`Connect Cli_failed))
+      | Ok (cert, certs, key) ->
+        connect_remote endp (cert, certs, key) ca >>= function
+        | Error e -> Lwt.return (Error (`Connect e))
+        | Ok fd ->
+          Vmm_tls_lwt.read_tls fd >>= fun r ->
+          Vmm_tls_lwt.close fd >|= fun () ->
+          r)
+
+let update () host dryrun compression name d cert key ca key_type tmpdir =
+  let open Lwt_result.Syntax in
+  match d with
+  | `Csr ->
+    Logs.err (fun m -> m "update with CSR not supported");
+    Cli_failed
+  | `Local _ | `Remote _ as d ->
+    Lwt_main.run
+      begin
+        one_jump d (`Unikernel_cmd `Unikernel_info) name cert key ca key_type tmpdir >>= fun r ->
+        let happy_eyeballs = Happy_eyeballs_lwt.create () in
+        let level = compress_default compression d in
+        let* cmd = prepare_update ~happy_eyeballs level host dryrun r in
+        one_jump d (`Unikernel_cmd cmd) name cert key ca key_type tmpdir >>= fun r ->
+        match r with
+        | Ok w ->
+          Lwt.return (exit_status (output_result w))
+        | Error _ ->
+          Logs.err (fun m -> m "received error from albatross");
+          Lwt.return (Error Remote_command_failed)
+      end
+    |> Result.fold ~ok:Fun.id ~error:Fun.id
 
 let inspect_dump _ name dbdir =
   Albatross_cli.set_dbdir dbdir;
