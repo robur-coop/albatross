@@ -77,7 +77,7 @@ messages [
      and server.key into /usr/local/etc/albatross, add this to /etc/inetd.conf:
 
         blackjack  stream  tcp     nowait  albatross \
-          /usr/local/libexec/albatross/alabtross-tls-endpoint \
+          /usr/local/libexec/albatross/albatross-tls-endpoint \
           albatross-tls-endpoint --inetd \
           /usr/local/etc/albatross/cacert.pem \
           /usr/local/etc/albatross/server.pem \

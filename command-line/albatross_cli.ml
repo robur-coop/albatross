@@ -1,16 +1,24 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
+let setup_log syslog style_renderer level =
   Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
+  if syslog then
+    match Logs_syslog_unix.unix_reporter () with
+    | Ok reporter -> Logs.set_reporter reporter
+    | Error msg ->
+      print_endline ("ERROR: couldn't install syslog reporter: " ^ msg);
+      exit 2
+  else
+    (Fmt_tty.setup_std_outputs ?style_renderer ();
+     Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ()))
 
 open Cmdliner
 
 let s_logging = "LOGGING OPTIONS"
 
-let setup_log =
+let setup_log syslog =
   Term.(const setup_log
+        $ syslog
         $ Fmt_cli.style_renderer ~docs:s_logging ()
         $ Logs_cli.level ~docs:s_logging ())
 

@@ -257,7 +257,7 @@ let cmd =
       creation and attaching tap devices to bridges."
   ] in
   let term =
-    Term.(const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir)
+    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term

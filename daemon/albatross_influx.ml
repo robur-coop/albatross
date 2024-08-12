@@ -313,7 +313,7 @@ let cmd =
         statistics and pushes them via TCP to influxdb";
   ] in
   let term =
-    Term.(term_result (const run_client $ Albatross_cli.setup_log $ Albatrossd_utils.influx $ opt_vm_name $ drop_label $ Albatross_cli.tmpdir))
+    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_vm_name $ drop_label $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-influx" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term

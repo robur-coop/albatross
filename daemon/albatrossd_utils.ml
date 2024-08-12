@@ -69,6 +69,10 @@ let systemd_socket_activation =
     let doc = "Pass this flag when systemd socket activation is being used" in
     Arg.(value & flag & info [ "systemd-socket-activation" ] ~doc)
 
+let syslog =
+  let doc = "Pass this flag when syslog should be used for logging" in
+  Arg.(value & flag & info [ "syslog" ] ~doc)
+
 let port_or_socket ~default_port =
   let open Term in
   let port =

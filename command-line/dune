@@ -3,4 +3,4 @@
  (public_name albatross.cli)
  (wrapped false)
  (modules albatross_cli)
- (libraries albatross albatross.unix cmdliner logs.fmt logs.cli fmt fmt.cli fmt.tty))
+ (libraries albatross albatross.unix cmdliner logs.fmt logs.cli fmt fmt.cli fmt.tty logs-syslog.unix))
