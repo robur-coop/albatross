@@ -1,3 +1,29 @@
+# v2.1.0 (2024-08-15)
+
+* BUGFIX install tls_endpoint as systemd service (not only as example), fix typo
+  (#183 @PizieDust)
+* BUGFIX albatross-influx: use "cow_faults" (fixed typo in #182) as unsigned
+  integer (b9695dd9c267f5e59f18154a632adba0481f9d72, @hannesm)
+* BUGFIX albatross-influx: avoid empty measurement (#182 @hannesm)
+* BUGFIX tls-endpoint: don't fail if a bad client connects (#180 @hannesm)
+* FEATURE tls-endpoint: add syslog support (esp. useful for inetd) (#185 @hannesm)
+* FEATURE Update to FreeBSD 14 (#172, @hannesm)
+* BUGFIX update command: make usable with local client (#184, @reynir)
+* BUGFIX update command: handle HTTP not found explicitly
+  (fixes #147, #171 @hannesm)
+* FEATURE Albatross: record start timestamp via info (fixes #168, #169 @hannesm)
+* BUGFIX Albatross: store timestamp as generalized time instead of utc time
+  (#167 @hannesm @reynir, adjusted by #181 for backwards compatibility
+   @PizieDust)
+* BUGFIX FreeBSD: restart services when they terminate
+  (@hannesm, 64f28fbd88504ec33d6bfde5211684e0ba1bc193)
+* BUGFIX packaging: install albatross-client as albatross-client
+  (@hannesm, 23acb8b3edbe0153e1bd24a1736b80e73a27e33f)
+* update nix inputs (#175, #179 @Julow)
+* use ohex instead of hex (#174 @hannesm)
+* fix README (#177 @PizieDust, 2a1c3d898b586946ce7c4f3171ea5eb856f4ade8,
+  107c235eb94e83d6a077c42ee8b527c207af4ba7)
+
 # v2.0.0 (2023-05-14)
 
 This is a breaking release since the binaries to be installed have been revised
