@@ -6,7 +6,8 @@
   integer (b9695dd9c267f5e59f18154a632adba0481f9d72, @hannesm)
 * BUGFIX albatross-influx: avoid empty measurement (#182 @hannesm)
 * BUGFIX tls-endpoint: don't fail if a bad client connects (#180 @hannesm)
-* FEATURE tls-endpoint: add syslog support (esp. useful for inetd) (#185 @hannesm)
+* FEATURE tls-endpoint: add syslog support (esp. useful for inetd) (fixes #176,
+  #185 @hannesm)
 * FEATURE Update to FreeBSD 14 (#172, @hannesm)
 * BUGFIX update command: make usable with local client (#184, @reynir)
 * BUGFIX update command: handle HTTP not found explicitly
@@ -19,10 +20,15 @@
   (@hannesm, 64f28fbd88504ec33d6bfde5211684e0ba1bc193)
 * BUGFIX packaging: install albatross-client as albatross-client
   (@hannesm, 23acb8b3edbe0153e1bd24a1736b80e73a27e33f)
-* update nix inputs (#175, #179 @Julow)
+* update nix inputs (#165, #175, #179 @Julow)
 * use ohex instead of hex (#174 @hannesm)
 * fix README (#177 @PizieDust, 2a1c3d898b586946ce7c4f3171ea5eb856f4ade8,
   107c235eb94e83d6a077c42ee8b527c207af4ba7)
+* fix opam file (@hannesm 2f316d2e49866fe08b9e12c12194062bbbaa2329)
+* update cirrus (@hannesm 6e9e45fe397f48468f1c154379d728233673a115
+  24adebe6c3456c8910cb6c9561db68cc0ad3e033
+  ec8a7017c03bdccbb996a4ecfcdd88a00de7ec80
+  40360d00df2e0b95bf7b6a71958b2f9fd451df25)
 
 # v2.0.0 (2023-05-14)
 
