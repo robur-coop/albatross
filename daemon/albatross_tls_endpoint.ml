@@ -101,7 +101,12 @@ let handle tls =
         (Vmm_commands.header ~version name, reply) >|= fun _ ->
       ()
 
-let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd =
+let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd syslog =
+  if inetd then
+    if syslog || Logs.level () = None then
+      ()
+    else
+      exit 3;
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   let handle config fd =
@@ -166,7 +171,7 @@ let ip =
   Arg.(value & opt ip_c Ipaddr.(V6 V6.unspecified) & info [ "ip" ] ~doc)
 
 let inetd =
-  let doc = "Inetd mode" in
+  let doc = "Inetd mode. Be sure to use `--syslog` (or `--quiet` to disable logging)" in
   Arg.(value & flag & info [ "inetd" ] ~doc)
 
 let cmd =
@@ -181,11 +186,11 @@ let cmd =
   ] in
   let term =
     Term.(
-      const jump $ Albatross_cli.setup_log $ cacert $ cert $ key
+      const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ cacert $ cert $ key
       $ ip
       $ Albatrossd_utils.port_or_socket ~default_port:1025
       $ Albatross_cli.tmpdir
-      $ inetd)
+      $ inetd $ Albatrossd_utils.syslog)
   and info = Cmd.info "albatross-tls-endpoint" ~version:Albatross_cli.version ~doc ~man in
   Cmd.v info term
 

@@ -62,7 +62,8 @@ write their standard output to.
 from all running unikernels.
 
 `Albatross-tls-endpoint` listens on a TCP port, or uses systemd socket activation, or
-via inetd, and proxies requests from remote clients to the respective daemons described
+via inetd (remember to add `--syslog` when using `--inetd` to log via syslog),
+and proxies requests from remote clients to the respective daemons described
 above. It enforces client authentication, and uses the common names of the client
 certificate chain as the administrative domain. The policies are embedded in CA
 certificates, and the command is embedded in the leaf certificate.

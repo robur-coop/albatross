@@ -216,7 +216,7 @@ let cmd =
         fifo the unikernel is writing to.";
   ] in
   let term =
-    Term.(term_result (const jump $ Albatross_cli.setup_log $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
+    Term.(term_result (const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-console" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term

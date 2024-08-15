@@ -36,7 +36,7 @@ let jump () =
 open Cmdliner
 
 let cmd =
-  let term = Term.(term_result (const jump $ Albatross_cli.setup_log))
+  let term = Term.(term_result (const jump $ (Albatross_cli.setup_log (const false))))
   and info = Cmd.info "albatross-client-gen" ~version:Albatross_cli.version
   in
   Cmd.v info term

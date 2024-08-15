@@ -1218,7 +1218,7 @@ let destroy_cmd =
      `P "Destroy a unikernel."]
   in
   let term =
-    Term.(term_result (const destroy $ Albatross_cli.setup_log $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const destroy $ (Albatross_cli.setup_log (const false)) $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "destroy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1230,7 +1230,7 @@ let restart_cmd =
      `P "Restarts a unikernel."]
   in
   let term =
-    Term.(term_result (const restart $ Albatross_cli.setup_log $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1242,7 +1242,7 @@ let remove_policy_cmd =
      `P "Removes a policy."]
   in
   let term =
-    Term.(term_result (const remove_policy $ Albatross_cli.setup_log $ opt_path $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const remove_policy $ (Albatross_cli.setup_log (const false)) $ opt_path $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "remove-policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1254,7 +1254,7 @@ let info_cmd =
      `P "Shows information about unikernels."]
   in
   let term =
-    Term.(term_result (const info_ $ Albatross_cli.setup_log $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const info_ $ (Albatross_cli.setup_log (const false)) $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "info" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1266,7 +1266,7 @@ let get_cmd =
      `P "Downloads a unikernel image from albatross to disk."]
   in
   let term =
-    Term.(term_result (const get $ Albatross_cli.setup_log $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const get $ (Albatross_cli.setup_log (const false)) $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "get" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1278,7 +1278,7 @@ let policy_cmd =
      `P "Shows information about active policies."]
   in
   let term =
-    Term.(term_result (const info_policy $ Albatross_cli.setup_log $ opt_path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const info_policy $ (Albatross_cli.setup_log (const false)) $ opt_path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1290,7 +1290,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   let term =
-    Term.(term_result (const add_policy $ Albatross_cli.setup_log $ vms $ mem $ cpus $ opt_block_size $ bridge $ path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const add_policy $ (Albatross_cli.setup_log (const false)) $ vms $ mem $ cpus $ opt_block_size $ bridge $ path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "add-policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1302,7 +1302,7 @@ let create_cmd =
      `P "Creates a unikernel."]
   in
   let term =
-    Term.(term_result (const create $ Albatross_cli.setup_log $ force $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "create" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1314,7 +1314,7 @@ let console_cmd =
      `P "Shows console output of a unikernel."]
   in
   let term =
-    Term.(term_result (const console $ Albatross_cli.setup_log $ since $ count $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const console $ (Albatross_cli.setup_log (const false)) $ since $ count $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "console" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1326,7 +1326,7 @@ let stats_subscribe_cmd =
      `P "Shows statistics of unikernel."]
   in
   let term =
-    Term.(term_result (const stats_subscribe $ Albatross_cli.setup_log $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_subscribe $ (Albatross_cli.setup_log (const false)) $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1338,7 +1338,7 @@ let stats_remove_cmd =
      `P "Removes statistics of unikernel."]
   in
   let term =
-    Term.(term_result (const stats_remove $ Albatross_cli.setup_log $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_remove $ (Albatross_cli.setup_log (const false)) $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats-remove" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1350,7 +1350,7 @@ let stats_add_cmd =
      `P "Add unikernel to statistics gathering."]
   in
   let term =
-    Term.(term_result (const stats_add $ Albatross_cli.setup_log $ vmm_dev $ pid_req0 $ bridge_taps $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_add $ (Albatross_cli.setup_log (const false)) $ vmm_dev $ pid_req0 $ bridge_taps $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats-add" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1362,7 +1362,7 @@ let block_info_cmd =
      `P "Block device information."]
   in
   let term =
-    Term.(term_result (const block_info $ Albatross_cli.setup_log $ opt_block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const block_info $ (Albatross_cli.setup_log (const false)) $ opt_block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "block" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1374,7 +1374,7 @@ let block_create_cmd =
      `P "Create of a block device."]
   in
   let term =
-    Term.(term_result (const block_create $ Albatross_cli.setup_log $ block_size $ compress_level $ opt_block_data $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const block_create $ (Albatross_cli.setup_log (const false)) $ block_size $ compress_level $ opt_block_data $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "create-block" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1386,7 +1386,7 @@ let block_set_cmd =
      `P "Set data to a block device."]
   in
   let term =
-    Term.(term_result (const block_set $ Albatross_cli.setup_log $ compress_level $ block_data $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const block_set $ (Albatross_cli.setup_log (const false)) $ compress_level $ block_data $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "set-block" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1398,7 +1398,7 @@ let block_dump_cmd =
      `P "Dump data of a block device."]
   in
   let term =
-    Term.(term_result (const block_dump $ Albatross_cli.setup_log $ compress_level $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const block_dump $ (Albatross_cli.setup_log (const false)) $ compress_level $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "dump-block" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1410,7 +1410,7 @@ let block_destroy_cmd =
      `P "Destroy a block device."]
   in
   let term =
-    Term.(term_result (const block_destroy $ Albatross_cli.setup_log $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const block_destroy $ (Albatross_cli.setup_log (const false)) $ block_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "destroy-block" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1422,7 +1422,7 @@ let update_cmd =
      `P "Check and update a unikernel from the binary repository."]
   in
   let term =
-    Term.(const update $ Albatross_cli.setup_log $ http_host $ dryrun $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir)
+    Term.(const update $ (Albatross_cli.setup_log (const false)) $ http_host $ dryrun $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir)
   and info = Cmd.info "update" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1437,7 +1437,7 @@ let inspect_dump_cmd =
     [`S "DESCRIPTION";
      `P "Inspects an albatross dump file."]
   in
-  let term = Term.(const inspect_dump $ Albatross_cli.setup_log $ file $ Albatross_cli.dbdir)
+  let term = Term.(const inspect_dump $ (Albatross_cli.setup_log (const false)) $ file $ Albatross_cli.dbdir)
   and info = Cmd.info "inspect-dump" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1457,7 +1457,7 @@ let cert_cmd =
      `P "Establishes a TLS handshake to a remote albatross server, executes the command of the client certificate, and outputs the result. "]
   in
   let term =
-    Term.(term_result (const cert $ Albatross_cli.setup_log $ destination $ server_ca $ client_cert $ client_key))
+    Term.(term_result (const cert $ (Albatross_cli.setup_log (const false)) $ destination $ server_ca $ client_cert $ client_key))
   and info = Cmd.info "certificate" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1497,7 +1497,7 @@ let generate_cmd =
      `P "Generates a certificate authority."]
   in
   let term =
-    Term.(const generate $ Albatross_cli.setup_log $ nam $ db $ days $ sname $ sday $ pub_key_type)
+    Term.(const generate $ (Albatross_cli.setup_log (const false)) $ nam $ db $ days $ sname $ sday $ pub_key_type)
   and info = Cmd.info "generate" ~doc ~man
   in
   Cmd.v info term
@@ -1517,7 +1517,7 @@ let sign_cmd =
      `P "Signs the certificate signing request."]
   in
   let term =
-    Term.(const sign_main $ Albatross_cli.setup_log $ db $ cacert $ key $ csr $ days)
+    Term.(const sign_main $ (Albatross_cli.setup_log (const false)) $ db $ cacert $ key $ csr $ days)
   and info = Cmd.info "sign" ~doc ~man
   in
   Cmd.v info term
@@ -1527,7 +1527,7 @@ let help_cmd =
     let doc = "The topic to get help on. `topics' lists the topics." in
     Arg.(value & pos 0 (some string) None & info [] ~docv:"TOPIC" ~doc)
   in
-  Term.(ret (const help $ Albatross_cli.setup_log $ Arg.man_format $ Term.choice_names $ topic))
+  Term.(ret (const help $ (Albatross_cli.setup_log (const false)) $ Arg.man_format $ Term.choice_names $ topic))
 
 let cmds = [
   policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
