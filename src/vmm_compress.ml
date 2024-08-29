@@ -37,9 +37,3 @@ let uncompress input =
   match Zl.Higher.uncompress ~allocate ~refill ~flush i o with
   | Ok () -> Ok (Buffer.contents b)
   | Error _ as e -> e
-
-let compress_cs level data =
-  Cstruct.to_string data |> compress ~level |> Cstruct.of_string
-
-let uncompress_cs data =
-  Result.map Cstruct.of_string (Cstruct.to_string data |> uncompress)

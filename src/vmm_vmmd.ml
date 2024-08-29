@@ -44,7 +44,7 @@ let dump_unikernels t =
       fst @@ Vmm_trie.insert name unik.Unikernel.config t)
       Vmm_trie.empty unikernels
   in
-  let data = Vmm_asn.unikernels_to_cstruct trie in
+  let data = Vmm_asn.unikernels_to_str trie in
   match Vmm_unix.dump data with
   | Error (`Msg msg) -> Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
   | Ok () -> Logs.info (fun m -> m "dumped current state")
@@ -141,7 +141,7 @@ let restore_unikernels () =
     Ok Vmm_trie.empty
   | Error (`Msg msg) -> Error (`Msg ("while reading state: " ^ msg))
   | Ok data ->
-    match Vmm_asn.unikernels_of_cstruct data with
+    match Vmm_asn.unikernels_of_str data with
     | Error (`Msg msg) -> Error (`Msg ("couldn't parse state: " ^ msg))
     | Ok unikernels ->
       Logs.info (fun m -> m "restored %d unikernels" (List.length (Vmm_trie.all unikernels))) ;
@@ -260,7 +260,7 @@ let handle_policy_cmd t id =
 let handle_unikernel_cmd t id = function
   | `Old_unikernel_info1 ->
     Logs.debug (fun m -> m "old info1 %a" Name.pp id) ;
-    let empty_image vm = { vm.Unikernel.config with image = Cstruct.empty } in
+    let empty_image vm = { vm.Unikernel.config with image = "" } in
     let vms =
       match Name.name id with
       | None ->
@@ -314,13 +314,13 @@ let handle_unikernel_cmd t id = function
             if compress_level > 0 then
               Ok (true, img)
             else
-              let* blob = Vmm_compress.uncompress_cs img in
+              let* blob = Vmm_compress.uncompress img in
               Ok (false, blob)
           else
           if compress_level = 0 then
             Ok (false, img)
           else
-            Ok (true, Vmm_compress.compress_cs compress_level img)
+            Ok (true, Vmm_compress.compress ~level:compress_level img)
         in
         let r = `Unikernel_image (compress, img) in
         Ok (t, `End (`Success r))
@@ -382,7 +382,7 @@ let handle_block_cmd t id = function
       Logs.debug (fun m -> m "insert block %a: %dMB (data: %a)"
                      Name.pp id size
                      Fmt.(option ~none:(any "none provided") int)
-                     (Option.map Cstruct.length data));
+                     (Option.map String.length data));
       match Vmm_resources.find_block t.resources id with
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
@@ -393,12 +393,12 @@ let handle_block_cmd t id = function
           | Some img ->
             let* img =
               if compressed then
-                Vmm_compress.uncompress_cs img
+                Vmm_compress.uncompress img
               else
                 Ok img
             in
             let* size_in_bytes = Vmm_unix.bytes_of_mb size in
-            if size_in_bytes >= Cstruct.length img then
+            if size_in_bytes >= String.length img then
               Ok (Some img)
             else
               Error (`Msg "data exceeds block size")
@@ -414,13 +414,13 @@ let handle_block_cmd t id = function
       | Some (size, false) ->
         let* data =
           if compressed then
-            Vmm_compress.uncompress_cs data
+            Vmm_compress.uncompress data
           else
             Ok data
         in
         let* size_in_bytes = Vmm_unix.bytes_of_mb size in
         let* () =
-          if size_in_bytes >= Cstruct.length data then
+          if size_in_bytes >= String.length data then
             Ok ()
           else
             Error (`Msg "data exceeds block size")
@@ -439,7 +439,7 @@ let handle_block_cmd t id = function
           if level = 0 then
             false, data
           else
-            true, Vmm_compress.compress_cs level data
+            true, Vmm_compress.compress ~level data
         in
         Ok (t, `End (`Success (`Block_device_image (compress, data))))
     end

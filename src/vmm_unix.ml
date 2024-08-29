@@ -124,12 +124,12 @@ let dump, restore =
          Bos.OS.U.(error_to_msg @@ rename state_file bak)
        end else Ok ()
      in
-     Bos.OS.File.write state_file (Cstruct.to_string data)),
+     Bos.OS.File.write state_file data),
   (fun ?name () ->
      let state_file = state_file ?name () in
      let* exists = Bos.OS.File.exists state_file in
      if exists then
-       Result.map Cstruct.of_string (Bos.OS.File.read state_file)
+       Bos.OS.File.read state_file
      else Error `NoFile)
 
 let block_sub = "block"
@@ -189,17 +189,17 @@ let destroy_tap tap =
   in
   Bos.OS.Cmd.run cmd
 
-let owee_buf_of_cstruct cs =
-  let buf = Bigarray.Array1.create Bigarray.Int8_unsigned Bigarray.c_layout (Cstruct.length cs) in
-  for i = 0 to Cstruct.length cs - 1 do
-    buf.{i} <- Cstruct.get_uint8 cs i
+let owee_buf_of_str b =
+  let buf = Bigarray.Array1.create Bigarray.Int8_unsigned Bigarray.c_layout (String.length b) in
+  for i = 0 to String.length b - 1 do
+    buf.{i} <- String.get_uint8 b i
   done;
   buf
 
 type solo5_target = Spt | Hvt
 
 let solo5_image_target image =
-  let* abi = Solo5_elftool.query_abi (owee_buf_of_cstruct image) in
+  let* abi = Solo5_elftool.query_abi (owee_buf_of_str image) in
   match abi.target with
   | Solo5_elftool.Hvt -> Ok (Hvt, Int32.to_int abi.version)
   | Solo5_elftool.Spt -> Ok (Spt, Int32.to_int abi.version)
@@ -253,7 +253,7 @@ let check_solo5_tender target version =
                    version (String.concat "\n" out)))
 
 let solo5_image_devices image =
-  let* mft = Solo5_elftool.query_manifest (owee_buf_of_cstruct image) in
+  let* mft = Solo5_elftool.query_manifest (owee_buf_of_str image) in
   Ok (List.fold_left
         (fun (block_devices, networks) -> function
            | Solo5_elftool.Dev_block_basic name -> name :: block_devices, networks
@@ -305,18 +305,18 @@ let prepare name (vm : Unikernel.config) =
     match vm.Unikernel.typ with
     | `Solo5 ->
       if vm.Unikernel.compressed then
-        match Vmm_compress.uncompress (Cstruct.to_string vm.Unikernel.image) with
-        | Ok blob -> Ok (Cstruct.of_string blob)
+        match Vmm_compress.uncompress vm.Unikernel.image with
+        | Ok blob -> Ok blob
         | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
       else
         Ok vm.Unikernel.image
   in
   let filename = Name.image_file name in
-  let digest = Mirage_crypto.Hash.SHA256.digest image in
+  let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
   let* target, version = solo5_image_target image in
   let* _ = check_solo5_tender target version in
   let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices image in
-  let* () = Bos.OS.File.write filename (Cstruct.to_string image) in
+  let* () = Bos.OS.File.write filename image in
   let* () = bridges_exist vm.Unikernel.bridges in
   let fifo = Name.fifo_file name in
   let* () =
@@ -389,8 +389,8 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let* target, version =
     let* image =
       if config.Unikernel.compressed then
-        match Vmm_compress.uncompress (Cstruct.to_string config.Unikernel.image) with
-        | Ok blob -> Ok (Cstruct.of_string blob)
+        match Vmm_compress.uncompress config.Unikernel.image with
+        | Ok blob -> Ok blob
         | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
       else
         Ok config.Unikernel.image
@@ -444,8 +444,8 @@ let create_block ?data name size =
     let dir = block_dir () in
     let* dir_exists = Bos.OS.Path.exists dir in
     let* _ = (if dir_exists then Ok true else Bos.OS.Dir.create ~mode:0o700 dir) in
-    let data = Option.value ~default:Cstruct.empty data in
-    let* () = Bos.OS.File.write ~mode:0o600 block_name (Cstruct.to_string data) in
+    let data = Option.value ~default:"" data in
+    let* () = Bos.OS.File.write ~mode:0o600 block_name data in
     let* size' = bytes_of_mb size in
     Bos.OS.File.truncate block_name size'
 
@@ -458,7 +458,7 @@ let dump_block name =
   if not block_exists then
     Error (`Msg "file does not exist")
   else
-    Result.map Cstruct.of_string (Bos.OS.File.read block_name)
+    Bos.OS.File.read block_name
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then

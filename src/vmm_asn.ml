@@ -15,8 +15,8 @@
    --use-version command-line flag - so new clients can talk to old servers).
 
    It should be ensured that old unikernels dumped to disk (a) can be read by
-   new albatross daemons. The functions unikernels_to_cstruct and
-   unikernels_of_cstruct are used for dump and restore, each an explicit choice.
+   new albatross daemons. The functions unikernels_to_str and
+   unikernels_of_str are used for dump and restore, each an explicit choice.
    They use the trie of unikernel_config, dump always uses the latest version in
    the explicit choice. There's no version field involved.
 
@@ -56,15 +56,15 @@ let version =
   in
   Asn.S.map f g Asn.S.int
 
-let decode_seq_len cs =
-  (* we assume a ASN.1 DER/BER encoded sequence starting in cs:
+let decode_seq_len buf =
+  (* we assume a ASN.1 DER/BER encoded sequence starting in buf:
      - 0x30
      - length (definite length field - not 0x80)
      - <data> (of length length)
   *)
-  let* () = guard (Cstruct.length cs > 2) (`Msg "buffer too short") in
-  let* () = guard (Cstruct.get_uint8 cs 0 = 0x30) (`Msg "not a sequence") in
-  let l1 = Cstruct.get_uint8 cs 1 in
+  let* () = guard (String.length buf > 2) (`Msg "buffer too short") in
+  let* () = guard (String.get_uint8 buf 0 = 0x30) (`Msg "not a sequence") in
+  let l1 = String.get_uint8 buf 1 in
   let* (off, l) =
     if l1 < 0x80 then
       Ok (2, l1)
@@ -72,27 +72,27 @@ let decode_seq_len cs =
       Error (`Msg "indefinite length")
     else
       let octets = l1 land 0x7F in
-      let* () = guard (Cstruct.length cs > octets + 2) (`Msg "data too short") in
+      let* () = guard (String.length buf - 2 > octets) (`Msg "data too short") in
       let rec go off acc =
         if off = octets then
           Ok (2 + octets, acc)
         else
-          go (succ off) (Cstruct.get_uint8 cs (off + 2) + acc lsl 8)
+          go (succ off) (String.get_uint8 buf (off + 2) + acc lsl 8)
       in
       go 0 0
   in
-  let* () = guard (Cstruct.length cs >= l + off) (`Msg "buffer too small") in
+  let* () = guard (String.length buf - off >= l) (`Msg "buffer too small") in
   Ok (off, l)
 
-let seq_hd cs =
-  let* (off, l) = decode_seq_len cs in
-  Ok (Cstruct.sub cs off l)
+let seq_hd buf =
+  let* (off, l) = decode_seq_len buf in
+  Ok (String.sub buf off l)
 
-let decode_wire_version cs =
-  let* cs = seq_hd cs in (* from wire, sequence2 (header, payload) *)
-  let* cs = seq_hd cs in (* from header, sequence3 (version ,__) *)
+let decode_wire_version buf =
+  let* buf = seq_hd buf in (* from wire, sequence2 (header, payload) *)
+  let* buf = seq_hd buf in (* from header, sequence3 (version ,__) *)
   let c = Asn.codec Asn.der version in
-  match Asn.decode c cs with
+  match Asn.decode c buf with
   | Ok (a, _) -> Ok a
   | Error (`Parse msg) -> Error (`Msg msg)
 
@@ -101,10 +101,10 @@ open Vmm_commands
 
 let oid = Asn.OID.(base 1 3 <| 6 <| 1 <| 4 <| 1 <| 49836 <| 42)
 
-let decode_strict codec cs =
-  match Asn.decode codec cs with
-  | Ok (a, cs) ->
-    let* () = guard (Cstruct.length cs = 0) (`Msg "trailing bytes") in
+let decode_strict codec buf =
+  match Asn.decode codec buf with
+  | Ok (a, rest) ->
+    let* () = guard (String.length rest = 0) (`Msg "trailing bytes") in
     Ok a
   | Error (`Parse msg) -> Error (`Msg msg)
 
@@ -164,20 +164,20 @@ let console_cmd =
 
 (* TODO is this good? *)
 let int64 =
-  let f cs = Cstruct.BE.get_uint64 cs 0
+  let f buf = String.get_int64_be buf 0
   and g data =
-    let buf = Cstruct.create 8 in
-    Cstruct.BE.set_uint64 buf 0 data ;
-    buf
+    let buf = Bytes.create 8 in
+    Bytes.set_int64_be buf 0 data ;
+    Bytes.unsafe_to_string buf
   in
   Asn.S.map f g Asn.S.octet_string
 
 let mac_addr =
   let f cs =
-    Result.fold (Macaddr.of_octets (Cstruct.to_string cs))
+    Result.fold (Macaddr.of_octets cs)
       ~ok:Fun.id
       ~error:(function `Msg e -> Asn.S.parse_error "bad mac address: %s" e)
-  and g mac = Cstruct.of_string (Macaddr.to_octets mac)
+  and g mac = Macaddr.to_octets mac
   in
   Asn.S.map f g Asn.S.octet_string
 
@@ -792,15 +792,15 @@ let wire name =
            (required ~label:"header" (header name))
            (required ~label:"payload" (payload name)))
 
-let wire_of_cstruct, wire_to_cstruct =
+let wire_of_str, wire_to_str =
   let dec, enc = projections_of (wire name)
   and dec_old, enc_old = projections_of (wire old_name)
   in
-  (fun cs ->
-    let* version = decode_wire_version cs in
+  (fun buf ->
+    let* version = decode_wire_version buf in
     match version with
-    | `AV3 | `AV4 -> dec_old cs
-    | `AV5 -> dec cs),
+    | `AV3 | `AV4 -> dec_old buf
+    | `AV5 -> dec buf),
   (fun (header, payload) ->
     match header.version with
     | `AV3 | `AV4 -> enc_old (header, payload)
@@ -850,7 +850,7 @@ let unikernels =
            (my_explicit 2 ~label:"unikernel-OLD2" version2_unikernels)
            (my_explicit 3 ~label:"unikernel" version3_unikernels))
 
-let unikernels_of_cstruct, unikernels_to_cstruct =
+let unikernels_of_str, unikernels_to_str =
   projections_of unikernels
 
 let cert_extension =

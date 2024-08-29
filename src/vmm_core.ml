@@ -305,7 +305,7 @@ module Unikernel = struct
   type config = {
     typ : typ ;
     compressed : bool ;
-    image : Cstruct.t ;
+    image : string ;
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
@@ -347,7 +347,7 @@ module Unikernel = struct
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
       pp_typ vm.typ
       vm.compressed
-      (Cstruct.length vm.image)
+      (String.length vm.image)
       pp_fail_behaviour vm.fail_behaviour
       vm.cpuid vm.memory
       Fmt.(list ~sep:(any ", ") pp_block) vm.block_devices
@@ -365,12 +365,12 @@ module Unikernel = struct
     cmd : string array ;
     pid : int ;
     taps : string list ;
-    digest : Cstruct.t ;
+    digest : string ;
     started : Ptime.t ;
   }
 
   let pp ppf vm =
-    let hex_digest = Ohex.encode (Cstruct.to_string vm.digest) in
+    let hex_digest = Ohex.encode vm.digest in
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       vm.pid
       Fmt.(list ~sep:(any ", ") string) vm.taps
@@ -386,7 +386,7 @@ module Unikernel = struct
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
-    digest : Cstruct.t ;
+    digest : string ;
     started : Ptime.t ;
   }
 
@@ -397,7 +397,7 @@ module Unikernel = struct
       bridges = cfg.bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
 
   let pp_info ppf (info : info) =
-    let hex_digest = Ohex.encode (Cstruct.to_string info.digest) in
+    let hex_digest = Ohex.encode info.digest in
     Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ digest %s"
       pp_typ info.typ
       (Ptime.pp_rfc3339 ()) info.started

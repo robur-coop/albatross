@@ -13,10 +13,10 @@ val set_dbdir : Fpath.t -> unit
 val check_commands : unit -> (unit, [> `Msg of string ]) result
 
 val prepare : Name.t -> Unikernel.config ->
-  ((string * string * Macaddr.t option) list * Cstruct.t, [> `Msg of string ]) result
+  ((string * string * Macaddr.t option) list * string, [> `Msg of string ]) result
 
 val exec : Name.t -> Unikernel.config -> (string * string * Macaddr.t option) list ->
-  (string * Name.t * int option) list -> Cstruct.t -> (Unikernel.t, [> `Msg of string ]) result
+  (string * Name.t * int option) list -> string -> (Unikernel.t, [> `Msg of string ]) result
 
 val free_system_resources : Name.t -> string list -> (unit, [> `Msg of string ]) result
 
@@ -26,20 +26,20 @@ val bytes_of_mb : int -> (int, [> `Msg of string ]) result
 
 val close_no_err : Unix.file_descr -> unit
 
-val create_block : ?data:Cstruct.t -> Name.t -> int -> (unit, [> `Msg of string ]) result
+val create_block : ?data:string -> Name.t -> int -> (unit, [> `Msg of string ]) result
 
 val destroy_block : Name.t -> (unit, [> `Msg of string ]) result
 
-val dump_block : Name.t -> (Cstruct.t, [> `Msg of string ]) result
+val dump_block : Name.t -> (string, [> `Msg of string ]) result
 
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 
-val dump : ?name:string -> Cstruct.t -> (unit, [> `Msg of string ]) result
+val dump : ?name:string -> string -> (unit, [> `Msg of string ]) result
 
-val restore : ?name:string -> unit -> (Cstruct.t, [> `Msg of string | `NoFile ]) result
+val restore : ?name:string -> unit -> (string, [> `Msg of string | `NoFile ]) result
 
 val vm_device : Unikernel.t -> (string, [> `Msg of string ]) result
 
 val manifest_devices_match : bridges:(string * string option * Macaddr.t option) list ->
-  block_devices:(string * string option * int option) list -> Cstruct.t ->
+  block_devices:(string * string option * int option) list -> string ->
   (unit, [> `Msg of string]) result

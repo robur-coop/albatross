@@ -255,7 +255,7 @@ let unikernel_config_eq =
   in
   fun (a : config) (b : config) ->
     a.typ = b.typ && a.compressed = b.compressed &&
-    Cstruct.equal a.image b.image &&
+    String.equal a.image b.image &&
     (match a.fail_behaviour, b.fail_behaviour with
      | `Quit, `Quit
      | `Restart None, `Restart None -> true
@@ -268,7 +268,7 @@ let unikernel_config_eq =
 
 let unikernel_eq (a : Unikernel.t) (b : Unikernel.t) =
   unikernel_config_eq a.Unikernel.config b.Unikernel.config &&
-  Cstruct.equal a.digest b.digest
+  String.equal a.digest b.digest
 
 let block_eq (s, a) (s', a') = s = s' && a = a'
 
@@ -285,7 +285,7 @@ let test_resources =
 
 let u =
   Unikernel.{
-    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    typ = `Solo5 ; compressed = false ; image = "" ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", None, None ] ;
@@ -465,7 +465,7 @@ let resource_add_remove_vm () =
       cmd = Array.make 0 "";
       pid = 0 ;
       taps = [] ;
-      digest = Cstruct.empty ;
+      digest = "" ;
       started = Ptime.epoch ;
     }
   in
@@ -497,7 +497,7 @@ let resource_vm_with_block () =
   let uc3 = { uc2 with block_devices = [ "block", Some "b", None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
     Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc3);
-  let u = Unikernel.{ config = uc2; cmd = Array.make 0 "" ; pid = 0 ; taps = [] ; digest = Cstruct.empty ; started = Ptime.epoch ; } in
+  let u = Unikernel.{ config = uc2; cmd = Array.make 0 "" ; pid = 0 ; taps = [] ; digest = "" ; started = Ptime.epoch ; } in
   let r3 = Vmm_resources.insert_vm r2 (n_o_s "alpha:bar") u in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device already in use"))
     Vmm_resources.(check_vm r3 (n_o_s "alpha:bar2") uc2);
@@ -538,12 +538,12 @@ let test_header =
 let console_subscribe_v4 () =
   (* output of "albatross-client-local console foo --socket -" *)
   let data =
-    Cstruct.of_hex {|
+    Ohex.decode {|
 30 21 30 14 02 01 04 04  08 00 00 00 00 00 00 00
 00 30 05 0c 03 66 6f 6f  a0 09 a0 07 a1 05 a1 03
 02 01 14|}
   in
-  match Vmm_asn.wire_of_cstruct data with
+  match Vmm_asn.wire_of_str data with
   | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
   | Ok ((hdr, cmd) as w) ->
     Alcotest.check test_header "header is equal"
@@ -557,12 +557,12 @@ let console_subscribe_v4 () =
 let console_subscribe_v4_2 () =
   (* output of "albatross-client-local console foo.bar --socket -" *)
   let data =
-    Cstruct.of_hex {|
+    Ohex.decode {|
 30 26 30 19 02 01 04 04  08 00 00 00 00 00 00 00
 00 30 0a 0c 03 66 6f 6f  0c 03 62 61 72 a0 09 a0
 07 a1 05 a1 03 02 01 14|}
   in
-  match Vmm_asn.wire_of_cstruct data with
+  match Vmm_asn.wire_of_str data with
   | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
   | Ok ((hdr, cmd) as w) ->
     Alcotest.check test_header "header is equal"
@@ -576,12 +576,12 @@ let console_subscribe_v4_2 () =
 let console_subscribe_v5 () =
   (* output of "albatross-client-local console foo --socket -" *)
   let data =
-    Cstruct.of_hex {|
+    Ohex.decode {|
 30 20 30 13 02 01 05 04  08 00 00 00 00 00 00 00
 00 0c 04 3a 66 6f 6f a0  09 a0 07 a1 05 a1 03 02
 01 14|}
   in
-  match Vmm_asn.wire_of_cstruct data with
+  match Vmm_asn.wire_of_str data with
   | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
   | Ok ((hdr, cmd) as w) ->
     Alcotest.check test_header "header is equal"
@@ -595,12 +595,12 @@ let console_subscribe_v5 () =
 let console_subscribe_v5_2 () =
   (* output of "albatross-client-local console foo.bar --socket -" *)
   let data =
-    Cstruct.of_hex {|
+    Ohex.decode {|
 30 24 30 17 02 01 05 04  08 00 00 00 00 00 00 00
 00 0c 08 3a 66 6f 6f 2e  62 61 72 a0 09 a0 07 a1
 05 a1 03 02 01 14|}
   in
-  match Vmm_asn.wire_of_cstruct data with
+  match Vmm_asn.wire_of_str data with
   | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
   | Ok ((hdr, cmd) as w) ->
     Alcotest.check test_header "header is equal"
@@ -612,7 +612,7 @@ let console_subscribe_v5_2 () =
              (Vmm_commands.pp_wire ~verbose:true) w
 
 let to_cert s =
-  Result.get_ok (X509.Certificate.decode_pem (Cstruct.of_string s))
+  Result.get_ok (X509.Certificate.decode_pem s)
 
 let bistro_console_subscribe_v4 () =
   (* albatross-client-bistro console foo --destination="-:1025" *)
@@ -840,11 +840,11 @@ let test_unikernels =
 
 let dec_b64_unik data =
   let data = Base64.decode_exn data in
-  Result.get_ok (Vmm_asn.unikernels_of_cstruct (Cstruct.of_string data))
+  Result.get_ok (Vmm_asn.unikernels_of_str data)
 
 let u1_3 =
   Unikernel.{
-    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    typ = `Solo5 ; compressed = false ; image = "" ;
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
@@ -853,7 +853,7 @@ let u1_3 =
 
 let u2_3 =
   Unikernel.{
-    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    typ = `Solo5 ; compressed = false ; image = "" ;
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", None ] ;
