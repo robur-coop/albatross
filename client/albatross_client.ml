@@ -17,10 +17,7 @@ type exit_status =
 let classify_tls_error = function
   | Tls_lwt.Tls_alert
       (Tls.Packet.BAD_CERTIFICATE
-      | Tls.Packet.UNSUPPORTED_CERTIFICATE
-      | Tls.Packet.CERTIFICATE_REVOKED
-      | Tls.Packet.CERTIFICATE_EXPIRED
-      | Tls.Packet.CERTIFICATE_UNKNOWN) as exn ->
+      | Tls.Packet.CERTIFICATE_EXPIRED) as exn ->
     Logs.err (fun m -> m "local authentication failure %s"
                  (Printexc.to_string exn));
     Local_authentication_failed
@@ -53,12 +50,12 @@ let output_result ((hdr, reply) as wire) =
         | Error (`Msg e) -> Logs.err (fun m -> m "failed to write image: %s" e)
       in
       if compressed then
-        match Vmm_compress.uncompress (Cstruct.to_string data) with
+        match Vmm_compress.uncompress data with
         | Ok blob -> write blob
         | Error `Msg msg ->
           Logs.err (fun m -> m "failed to uncompress image: %s" msg)
       else
-        write (Cstruct.to_string data)
+        write data
     in
     begin match s with
       | `Unikernel_image (compressed, image) ->
@@ -66,7 +63,7 @@ let output_result ((hdr, reply) as wire) =
         write_to_file name compressed image
       | `Old_unikernels vms ->
         List.iter (fun (name, cfg) ->
-            if Cstruct.length cfg.Vmm_core.Unikernel.image > 0 then
+            if String.length cfg.Vmm_core.Unikernel.image > 0 then
               write_to_file name cfg.compressed cfg.image)
           vms
       | `Block_device_image (compressed, image) ->
@@ -137,7 +134,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->
     begin
-      let hash = Ohex.encode (Cstruct.to_string digest) in
+      let hash = Ohex.encode digest in
       can_update ~happy_eyeballs host hash >>= function
       | Error `Msg msg ->
         Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
@@ -156,8 +153,8 @@ let prepare_update ~happy_eyeballs level host dryrun = function
             Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
             Lwt.return (Error Http_error)
           | Ok unikernel ->
-            let r = Vmm_unix.manifest_devices_match ~bridges ~block_devices
-                (Cstruct.of_string unikernel)
+            let r =
+              Vmm_unix.manifest_devices_match ~bridges ~block_devices unikernel
             in
             match r with
             | Error `Msg msg ->
@@ -166,8 +163,8 @@ let prepare_update ~happy_eyeballs level host dryrun = function
             | Ok () ->
               let compressed, image =
                 match level with
-                | 0 -> false, unikernel |> Cstruct.of_string
-                | _ -> true, Vmm_compress.compress ~level unikernel |> Cstruct.of_string
+                | 0 -> false, unikernel
+                | _ -> true, Vmm_compress.compress ~level unikernel
               in
               let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; cpuid; memory ; block_devices ; bridges ; argv } in
               Lwt.return (Ok (`Unikernel_force_create config))
@@ -194,12 +191,12 @@ let create_vm force image cpuid memory argv block_devices bridges compression re
   in
   let img_file = Fpath.v image in
   let* image = Bos.OS.File.read img_file in
-  let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices (Cstruct.of_string image) in
+  let* () = Vmm_unix.manifest_devices_match ~bridges ~block_devices image in
   let image, compressed = match compression with
-    | 0 -> Cstruct.of_string image, false
+    | 0 -> image, false
     | level ->
       let img = Vmm_compress.compress ~level image in
-      Cstruct.of_string img, true
+      img, true
   and argv = match argv with [] -> None | xs -> Some xs
   and fail_behaviour =
     let exits = match exit_codes with [] -> None | xs -> Some (Vmm_core.IS.of_list xs) in
@@ -214,10 +211,10 @@ let create_block size compression data =
   | None -> Ok (`Block_add (size, false, None))
   | Some image ->
     let* size_in_mb = Vmm_unix.bytes_of_mb size in
-    if size_in_mb >= Cstruct.length image then
+    if size_in_mb >= String.length image then
       let compressed, img =
         if compression > 0 then
-          true, Vmm_compress.compress_cs compression image
+          true, Vmm_compress.compress ~level:compression image
         else
           false, image
       in
@@ -262,8 +259,8 @@ let connect_local opt_socket name (cmd : Vmm_commands.t) =
   in
   match opt_socket with
   | Some "-" ->
-    let data = Vmm_asn.wire_to_cstruct wire in
-    Logs.app (fun m -> m "out: %a" Cstruct.hexdump_pp data);
+    let data = Vmm_asn.wire_to_str wire in
+    Logs.app (fun m -> m "out: %a" (Ohex.pp_hexdump ()) data);
     Lwt.return (Error Communication_failed)
   | _ ->
     let sockaddr = Lwt_unix.ADDR_UNIX (Option.value ~default:(Vmm_core.socket_path sock) opt_socket) in
@@ -284,7 +281,7 @@ let connect_remote ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port)
       | Tls_lwt.Tls_alert x -> Some ("TLS alert: " ^ Tls.Packet.alert_type_to_string x)
       | Tls_lwt.Tls_failure f -> Some ("TLS failure: " ^ Tls.Engine.string_of_failure f)
       | _ -> None) ;
-  let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
+  let key_eq a b = X509.Public_key.(String.equal (encode_der a) (encode_der b)) in
   if not (key_eq (X509.Private_key.public key) (X509.Certificate.public_key cert)) then begin
     Logs.err (fun m -> m "Public key of certificate doesn't match private key");
     Lwt.return (Error Cli_failed)
@@ -303,12 +300,16 @@ let connect_remote ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port)
         Lwt.return (Error Connect_failed)
       | Ok ((ip, port), fd) ->
         Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
-        let client = Tls.Config.client ~certificates ~authenticator () in
-        Lwt.catch (fun () ->
-            Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
-            Logs.debug (fun m -> m "finished tls handshake") ;
-            Ok fd)
-          (fun exn -> Lwt.return (Error (classify_tls_error exn)))
+        match Tls.Config.client ~certificates ~authenticator () with
+        | Error `Msg msg ->
+          Logs.err (fun m -> m "tls configuration failed: %s" msg);
+          Lwt.return (Error Cli_failed)
+        | Ok client ->
+          Lwt.catch (fun () ->
+              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
+              Logs.debug (fun m -> m "finished tls handshake") ;
+              Ok fd)
+            (fun exn -> Lwt.return (Error (classify_tls_error exn)))
 
 let timestamps validity =
   let now = Ptime_clock.now () in
@@ -365,7 +366,7 @@ let s_exts =
                        (singleton Ext_key_usage (true, [ `Server_auth ]))))
 
 let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
-  let key_eq a b = X509.Public_key.(Cstruct.equal (encode_der a) (encode_der b)) in
+  let key_eq a b = X509.Public_key.(String.equal (encode_der a) (encode_der b)) in
   let* () =
     if key_eq (X509.Private_key.public key) (X509.Certificate.public_key cert) then
       Ok ()
@@ -416,11 +417,11 @@ let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
 let read_cert_key cert key =
   let* key =
     let* key_data = Bos.OS.File.read (Fpath.v key) in
-    X509.Private_key.decode_pem (Cstruct.of_string key_data)
+    X509.Private_key.decode_pem key_data
   in
   let* certs =
     let* cert_data = Bos.OS.File.read (Fpath.v cert) in
-    X509.Certificate.decode_pem_multiple (Cstruct.of_string cert_data)
+    X509.Certificate.decode_pem_multiple cert_data
   in
   let cert, chain = match certs with
     | [] -> assert false
@@ -476,7 +477,7 @@ let sign ?dbname ?certname ?cacert extensions issuer key csr delta =
     match dbname with
     | None -> Ok () (* no DB! *)
     | Some dbname ->
-      append dbname (Printf.sprintf "%s %s\n" (Z.to_string (X509.Certificate.serial cert)) certname)
+      append dbname (Printf.sprintf "%s %s\n" (Ohex.encode (X509.Certificate.serial cert)) certname)
   in
   let chain =
     let self_signed c =
@@ -487,7 +488,7 @@ let sign ?dbname ?certname ?cacert extensions issuer key csr delta =
     | _ -> [ cert ]
   in
   let enc = X509.Certificate.encode_pem_multiple chain in
-  Bos.OS.File.write Fpath.(v certname + "pem") (Cstruct.to_string enc)
+  Bos.OS.File.write Fpath.(v certname + "pem") enc
 
 let priv_key typ name =
   let file = Fpath.(v name + "key") in
@@ -497,11 +498,11 @@ let priv_key typ name =
     Logs.info (fun m -> m "creating new %a key %a"
                   X509.Key_type.pp key_type Fpath.pp file);
     let pem = X509.Private_key.encode_pem priv in
-    let* () = Bos.OS.File.write ~mode:0o400 file (Cstruct.to_string pem) in
+    let* () = Bos.OS.File.write ~mode:0o400 file pem in
     Ok priv
   end else
     let* s = Bos.OS.File.read file in
-    X509.Private_key.decode_pem (Cstruct.of_string s)
+    X509.Private_key.decode_pem s
 
 let albatross_extension csr =
   let req_exts =
@@ -564,11 +565,11 @@ let sign_csr dbname cacert key csr days =
 
 let sign_main _ db cacert cakey csrname days =
   (let* cacert = Bos.OS.File.read (Fpath.v cacert) in
-   let* cacert = X509.Certificate.decode_pem (Cstruct.of_string cacert) in
+   let* cacert = X509.Certificate.decode_pem cacert in
    let* pk = Bos.OS.File.read (Fpath.v cakey) in
-   let* cakey = X509.Private_key.decode_pem (Cstruct.of_string pk) in
+   let* cakey = X509.Private_key.decode_pem pk in
    let* enc = Bos.OS.File.read (Fpath.v csrname) in
-   let* csr = X509.Signing_request.decode_pem (Cstruct.of_string enc) in
+   let* csr = X509.Signing_request.decode_pem enc in
    sign_csr (Fpath.v db) cacert cakey csr days)
   |> function
   | Ok () -> Success
@@ -646,7 +647,7 @@ let jump cmd name d cert key ca key_type tmpdir =
       let* priv = priv_key key_type name in
       let* csr = csr priv name cmd in
       let enc = X509.Signing_request.encode_pem csr in
-      Bos.OS.File.write Fpath.(v name + ".req") (Cstruct.to_string enc)
+      Bos.OS.File.write Fpath.(v name + ".req") enc
     in
     match r with
     | Ok () -> Ok Success
@@ -723,7 +724,7 @@ let block_set () compression block_data name dst =
   let compressed, data =
     let level = compress_default compression dst in
     if level > 0 then
-      true, Vmm_compress.compress_cs level block_data
+      true, Vmm_compress.compress ~level block_data
     else
       false, block_data
   in
@@ -813,7 +814,7 @@ let inspect_dump _ name dbdir =
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while reading dump file: %s" msg);
     Cli_failed
-  | Ok data -> match Vmm_asn.unikernels_of_cstruct data with
+  | Ok data -> match Vmm_asn.unikernels_of_str data with
     | Error (`Msg msg) ->
       Logs.err (fun m -> m "couldn't parse dump file: %s" msg);
       Cli_failed
@@ -979,9 +980,9 @@ let block_size =
 
 let data_c =
   let parse s =
-    Result.map Cstruct.of_string (Bos.OS.File.read (Fpath.v s))
+    Bos.OS.File.read (Fpath.v s)
   and pp ppf data =
-    Format.fprintf ppf "file with %d bytes" (Cstruct.length data)
+    Format.fprintf ppf "file with %u bytes" (String.length data)
   in
   Arg.conv (parse, pp)
 

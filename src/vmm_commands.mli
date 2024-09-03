@@ -50,9 +50,9 @@ type policy_cmd = [
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * bool * Cstruct.t option
+  | `Block_add of int * bool * string option
   | `Block_remove
-  | `Block_set of bool * Cstruct.t
+  | `Block_set of bool * string
   | `Block_dump of int
 ]
 
@@ -89,9 +89,9 @@ type success = [
   | `Old_unikernels of (Name.t * Unikernel.config) list
   | `Old_unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_info of (Name.t * Unikernel.info) list
-  | `Unikernel_image of bool * Cstruct.t
+  | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of bool * Cstruct.t
+  | `Block_device_image of bool * string
 ]
 
 type res = [

@@ -97,9 +97,9 @@ let pp_policy_cmd ppf = function
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * bool * Cstruct.t option
+  | `Block_add of int * bool * string option
   | `Block_remove
-  | `Block_set of bool * Cstruct.t
+  | `Block_set of bool * string
   | `Block_dump of int
 ]
 
@@ -109,10 +109,10 @@ let pp_block_cmd ppf = function
   | `Block_add (size, compressed, data) ->
     Fmt.pf ppf "block add %d (compressed %B data %a)"
       size compressed
-      Fmt.(option ~none:(any "no data") int) (Option.map Cstruct.length data)
+      Fmt.(option ~none:(any "no data") int) (Option.map String.length data)
   | `Block_set (compressed, data) ->
     Fmt.pf ppf "block set compressed %B %d bytes" compressed
-      (Cstruct.length data)
+      (String.length data)
   | `Block_dump level -> Fmt.pf ppf "block dump, compress level %d" level
 
 type t = [
@@ -158,9 +158,9 @@ type success = [
   | `Old_unikernels of (Name.t * Unikernel.config) list
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Old_unikernel_info of (Name.t * Unikernel.info) list
-  | `Unikernel_image of bool * Cstruct.t
+  | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of bool * Cstruct.t
+  | `Block_device_image of bool * string
 ]
 
 let pp_block ppf (id, size, active) =
@@ -188,11 +188,11 @@ let pp_success ~verbose ppf = function
       ppf infos
   | `Unikernel_image (compressed, image) ->
     Fmt.pf ppf "image (compression %B) %d bytes"
-      compressed (Cstruct.length image)
+      compressed (String.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
   | `Block_device_image (compressed, data) ->
     Fmt.pf ppf "block device compressed %B, %d bytes"
-      compressed (Cstruct.length data)
+      compressed (String.length data)
 
 type res = [
   | `Command of t

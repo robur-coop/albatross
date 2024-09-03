@@ -8,30 +8,38 @@ let read_tls t =
     if l = 0 then
       Lwt.return (Ok ())
     else
-      Tls_lwt.Unix.read t (Cstruct.shift buf off) >>= function
+      let buf' =
+        if off = 0 then buf else Bytes.create l
+      in
+      (* TODO Tls_lwt.Unix.read should receive an (optional) "off" parameter. *)
+      Tls_lwt.Unix.read t buf' >>= function
       | 0 ->
         Logs.debug (fun m -> m "TLS: end of file") ;
         Lwt.return (Error `Eof)
-      | x when x == l -> Lwt.return (Ok ())
-      | x when x < l -> r_n buf (off + x) tot
+      | x when x == l ->
+        if off = 0 then () else Bytes.blit buf' 0 buf off x;
+        Lwt.return (Ok ())
+      | x when x < l ->
+        if off = 0 then () else Bytes.blit buf' 0 buf off x;
+        r_n buf (off + x) tot
       | _ ->
         Logs.err (fun m -> m "TLS: read too much, shouldn't happen") ;
         Lwt.return (Error `Toomuch)
   in
-  let buf = Cstruct.create 4 in
+  let buf = Bytes.create 4 in
   r_n buf 0 4 >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
-    let len = Cstruct.BE.get_uint32 buf 0 in
+    let len = Bytes.get_int32_be buf 0 in
     if len > 0l then
-      let b = Cstruct.create (Int32.to_int len) in
+      let b = Bytes.create (Int32.to_int len) in
       r_n b 0 (Int32.to_int len) >|= function
       | Error e -> Error e
       | Ok () ->
         (*          Logs.debug (fun m -> m "TLS read id %d %a tag %d data %a"
                          hdr.Vmm_wire.id Vmm_wire.pp_version hdr.Vmm_wire.version hdr.Vmm_wire.tag
-                         Cstruct.hexdump_pp b) ; *)
-        match Vmm_asn.wire_of_cstruct b with
+                         (Ohex.pp_hexdump ()) b) ; *)
+        match Vmm_asn.wire_of_str (Bytes.unsafe_to_string b) with
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s while parsing data" msg) ;
           Error `Exception
@@ -45,11 +53,11 @@ let read_tls t =
         Lwt.return (Error `Eof)
 
 let write_tls s wire =
-  let data = Vmm_asn.wire_to_cstruct wire in
-  let dlen = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.length data)) ;
-  let buf = Cstruct.(append dlen data) in
-  (*  Logs.debug (fun m -> m "TLS write %a" Cstruct.hexdump_pp (Cstruct.of_string buf)) ; *)
+  let data = Vmm_asn.wire_to_str wire in
+  let dlen = Bytes.create 4 in
+  Bytes.set_int32_be dlen 0 (Int32.of_int (String.length data)) ;
+  let buf = Bytes.unsafe_to_string dlen ^ data in
+  (*  Logs.debug (fun m -> m "TLS write %a" (Ohex.pp_hexdump ()) buf) ; *)
   Lwt.catch
     (fun () -> Tls_lwt.Unix.write s buf >|= fun () -> Ok ())
     (function

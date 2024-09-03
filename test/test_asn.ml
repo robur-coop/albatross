@@ -5,5 +5,5 @@ let () =
     Vmm_commands.header Vmm_core.Name.root,
     `Failure "test"
   in
-  let cs = Vmm_asn.wire_to_cstruct wire in
+  let cs = Vmm_asn.wire_to_str wire in
   ignore cs

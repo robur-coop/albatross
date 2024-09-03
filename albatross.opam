@@ -7,25 +7,24 @@ bug-reports: "https://github.com/robur-coop/albatross/issues"
 license: "ISC"
 
 depends: [
-  "ocaml" {>= "4.12.0"}
+  "ocaml" {>= "4.13.0"}
   "dune" {>= "2.7.0"}
   "dune-configurator"
   "conf-pkg-config" {build}
   "conf-libnl3" {os = "linux"}
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "5.3.0"}
-  "cstruct" {>= "6.0.0"}
   "logs"
   "bos" {>= "0.2.0"}
   "ptime"
   "cmdliner" {>= "1.1.0"}
   "fmt" {>= "0.8.7"}
-  "x509" {>= "0.13.0"}
-  "tls" {>= "0.16.0"}
-  "tls-lwt" {>= "0.16.0"}
-  "mirage-crypto"
-  "mirage-crypto-rng" {>= "0.11.0"}
-  "asn1-combinators" {>= "0.2.0"}
+  "x509" {>= "1.0.0"}
+  "tls" {>= "1.0.0"}
+  "tls-lwt" {>= "1.0.0"}
+  "mirage-crypto" {>= "1.0.0"}
+  "mirage-crypto-rng" {>= "1.0.0"}
+  "asn1-combinators" {>= "0.3.0"}
   "duration"
   "decompress" {>= "1.3.0"}
   "bigstringaf" {>= "0.2.0"}
@@ -35,12 +34,13 @@ depends: [
   "metrics-influx" {>= "0.2.0"}
   "metrics-rusage"
   "ohex" {>= "0.2.0"}
-  "http-lwt-client" {>= "0.2.0"}
+  "http-lwt-client" {>= "0.3.0"}
   "happy-eyeballs-lwt"
   "solo5-elftool" {>= "0.3"}
   "owee" {>= "0.4"}
   "fpath" {>= "0.7.3"}
-  "logs-syslog" {>= "0.4.0"}
+  "logs-syslog" {>= "0.4.1"}
+  "digestif" {>= "1.2.0"}
   "alcotest" {with-test}
 ]
 build: [

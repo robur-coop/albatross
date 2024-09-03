@@ -2,7 +2,7 @@
 
 let u1 =
   Vmm_core.Unikernel.{
-    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    typ = `Solo5 ; compressed = false ; image = "";
     fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
@@ -11,7 +11,7 @@ let u1 =
 
 let u2 =
   Vmm_core.Unikernel.{
-    typ = `Solo5 ; compressed = false ; image = Cstruct.empty ;
+    typ = `Solo5 ; compressed = false ; image = "";
     fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", Some (Macaddr.of_string_exn "00:de:ad:be:ef:00") ] ;
@@ -29,8 +29,8 @@ let unikernels =
   ins "bar:my.nice.unikernel" u2 t
 
 let jump () =
-  let data = Vmm_asn.unikernels_to_cstruct unikernels in
-  print_endline (Base64.encode_string (Cstruct.to_string data));
+  let data = Vmm_asn.unikernels_to_str unikernels in
+  print_endline (Base64.encode_string data);
   Ok ()
 
 open Cmdliner

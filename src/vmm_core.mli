@@ -104,7 +104,7 @@ module Unikernel : sig
   type config = {
     typ : typ ;
     compressed : bool ;
-    image : Cstruct.t ;
+    image : string  ;
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
@@ -128,7 +128,7 @@ module Unikernel : sig
     cmd : string array;
     pid : int;
     taps : string list;
-    digest : Cstruct.t;
+    digest : string;
     started : Ptime.t;
   }
 
@@ -142,8 +142,8 @@ module Unikernel : sig
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
-    digest : Cstruct.t ;
-    started : Ptime.t;
+    digest : string ;
+    started : Ptime.t ;
   }
 
   val info : t -> info

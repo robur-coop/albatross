@@ -128,16 +128,16 @@ let read_wire s =
   r buf 0 4 >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
-    let len = Cstruct.BE.get_uint32 (Cstruct.of_bytes buf) 0 in
+    let len = Bytes.get_int32_be buf 0 in
     if len > 0l then begin
       let b = Bytes.create (Int32.to_int len) in
       r b 0 (Int32.to_int len) >|= function
       | Error e -> Error e
       | Ok () ->
         (*          Logs.debug (fun m -> m "read hdr %a, body %a"
-                         Cstruct.hexdump_pp (Cstruct.of_bytes buf)
-                         Cstruct.hexdump_pp (Cstruct.of_bytes b)) ; *)
-        match Vmm_asn.wire_of_cstruct (Cstruct.of_bytes b) with
+                         (Ohex.pp_hexdump ()) (Bytes.unsafe_to_string buf)
+                         (Ohex.pp_hexdump ()) (Bytes.unsafe_to_string b)) ; *)
+        match Vmm_asn.wire_of_str (Bytes.unsafe_to_string b) with
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s while parsing data" msg) ;
           Error `Exception
@@ -164,12 +164,12 @@ let write_raw s buf =
          safe_close s >|= fun () ->
          Error `Exception)
   in
-  (*  Logs.debug (fun m -> m "writing %a" Cstruct.hexdump_pp (Cstruct.of_bytes buf)) ; *)
+  (*  Logs.debug (fun m -> m "writing %a" Ohex.pp_hexdump (Bytes.unsage_to_string buf)) ; *)
   w 0 (Bytes.length buf)
 
 let write_wire s wire =
-  let data = Vmm_asn.wire_to_cstruct wire in
-  let dlen = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 dlen 0 (Int32.of_int (Cstruct.length data)) ;
-  let buf = Cstruct.(to_bytes (append dlen data)) in
+  let data = Vmm_asn.wire_to_str wire in
+  let dlen = Bytes.create 4 in
+  Bytes.set_int32_be dlen 0 (Int32.of_int (String.length data)) ;
+  let buf = Bytes.cat dlen (Bytes.unsafe_of_string data) in
   write_raw s buf

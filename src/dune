@@ -5,7 +5,7 @@
   (backend bisect_ppx))
  (wrapped false)
  (modules vmm_core vmm_commands vmm_compress vmm_trie vmm_trie vmm_ring vmm_asn vmm_resources)
- (libraries logs ipaddr ptime duration cstruct bigstringaf
+ (libraries logs ipaddr ptime duration bigstringaf
    decompress.de decompress.zl asn1-combinators fpath
    metrics mirage-crypto ohex))
 
@@ -14,4 +14,4 @@
  (public_name albatross.unix)
  (wrapped false)
  (modules vmm_unix vmm_lwt vmm_vmmd)
- (libraries albatross ipaddr.unix bos solo5-elftool lwt lwt.unix ptime.clock.os))
+ (libraries albatross ipaddr.unix bos solo5-elftool lwt lwt.unix ptime.clock.os digestif))

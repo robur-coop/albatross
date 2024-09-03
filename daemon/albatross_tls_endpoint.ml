@@ -6,14 +6,20 @@ let command = ref 0L
 
 let tls_config cacert cert priv_key =
   X509_lwt.private_of_pems ~cert ~priv_key >>= fun cert ->
-  X509_lwt.certs_of_pem cacert >>= (function
-      | [ ca ] -> Lwt.return ca
-      | _ -> Lwt.fail_with "expect single ca as cacert") >|= fun ca ->
+  X509_lwt.certs_of_pem cacert >|= fun cas ->
+  let ca = match cas with
+    | [ ca ] -> ca
+    | _ -> failwith "expect single ca as cacert"
+  in
   let time () = Some (Ptime_clock.now ()) in
-  Tls.Config.server
-    ~version:(`TLS_1_3, `TLS_1_3)
-    ~authenticator:(X509.Authenticator.chain_of_trust ~time [ca])
-    ~certificates:(`Single cert) ()
+  match
+    Tls.Config.server
+      ~version:(`TLS_1_3, `TLS_1_3)
+      ~authenticator:(X509.Authenticator.chain_of_trust ~time [ca])
+      ~certificates:(`Single cert) ()
+  with
+  | Ok cfg -> cfg
+  | Error `Msg msg -> failwith msg
 
 let read version fd tls =
   (* now we busy read and process output *)
