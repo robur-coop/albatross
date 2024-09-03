@@ -1,3 +1,8 @@
+# v2.2.0 (2024-09-03)
+
+* Adapt to TLS 1.0.0, mirage-crypto 1.0.0, x509 1.0.0 and asn1-combinators 0.3.0
+  API changes (#187 @hannesm)
+
 # v2.1.0 (2024-08-15)
 
 * BUGFIX install tls_endpoint as systemd service (not only as example), fix typo
