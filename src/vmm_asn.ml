@@ -15,8 +15,8 @@
    --use-version command-line flag - so new clients can talk to old servers).
 
    It should be ensured that old unikernels dumped to disk (a) can be read by
-   new albatross daemons. The functions unikernels_to_str and
-   unikernels_of_str are used for dump and restore, each an explicit choice.
+   new albatross daemons. The functions state_to_str and
+   state_of_str are used for dump and restore, each an explicit choice.
    They use the trie of unikernel_config, dump always uses the latest version in
    the explicit choice. There's no version field involved.
 
@@ -832,26 +832,35 @@ let version2_unikernels = trie v2_unikernel_config
 
 let version3_unikernels = trie unikernel_config
 
-let unikernels =
+let policies = trie policy
+
+let state =
   (* the choice is the implicit version + migration... be aware when
      any dependent data layout changes .oO(/o\) *)
   let f = function
-    | `C1 data -> data
-    | `C2 data -> data
-    | `C3 data -> data
-    | `C4 data -> data
-  and g data =
-    `C4 data
+    | `C1 data -> data, Vmm_trie.empty
+    | `C2 data -> data, Vmm_trie.empty
+    | `C3 data -> data, Vmm_trie.empty
+    | `C4 data -> data, Vmm_trie.empty
+    | `C5 (data, policies) -> (data, policies)
+  and g (unikernels, policies) =
+    `C5 (unikernels, policies)
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice5
            (my_explicit 0 ~label:"unikernel-OLD1" version1_unikernels)
            (my_explicit 1 ~label:"unikernel-OLD0" version0_unikernels)
            (my_explicit 2 ~label:"unikernel-OLD2" version2_unikernels)
-           (my_explicit 3 ~label:"unikernel" version3_unikernels))
+           (my_explicit 3 ~label:"unikernel" version3_unikernels)
+           (my_explicit 4 ~label:"unikernel and policy"
+              (sequence2
+                 (required ~label:"unikernels" version3_unikernels)
+                 (required ~label:"policies" policies)))
+        )
 
-let unikernels_of_str, unikernels_to_str =
-  projections_of unikernels
+let state_of_str, state_to_str =
+  let d, e = projections_of state in
+  d, fun unik ps -> e (unik, ps)
 
 let cert_extension =
   (* note that subCAs are deployed out there, thus modifying the encoding of

@@ -38,13 +38,13 @@ let remove_resources t name =
   in
   { t with resources }
 
-let dump_unikernels t =
+let dump_state t =
   let unikernels = Vmm_trie.all t.resources.Vmm_resources.unikernels in
   let trie = List.fold_left (fun t (name, unik) ->
       fst @@ Vmm_trie.insert name unik.Unikernel.config t)
       Vmm_trie.empty unikernels
   in
-  let data = Vmm_asn.unikernels_to_str trie in
+  let data = Vmm_asn.state_to_str trie t.resources.policies in
   match Vmm_unix.dump data with
   | Error (`Msg msg) -> Logs.err (fun m -> m "failed to dump unikernels: %s" msg)
   | Ok () -> Logs.info (fun m -> m "dumped current state")
@@ -52,7 +52,7 @@ let dump_unikernels t =
 let waiter t id =
   let t = remove_resources t id in
   let name = Name.to_string id in
-  if not !in_shutdown then dump_unikernels t ;
+  if not !in_shutdown then dump_state t ;
   match String_map.find_opt name t.waiters with
   | None -> t, None
   | Some waiter ->
@@ -134,18 +134,41 @@ type 'a create =
   ('a t -> ('a t * Vmm_commands.wire * Vmm_commands.res * Name.t * Unikernel.t, [ `Msg of string ]) result) *
   (unit -> Vmm_commands.res)
 
-let restore_unikernels () =
+let restore_state () =
   match Vmm_unix.restore () with
   | Error `NoFile ->
     Logs.warn (fun m -> m "no state dump found, starting with no unikernels") ;
-    Ok Vmm_trie.empty
+    Ok (Vmm_trie.empty, Vmm_trie.empty)
   | Error (`Msg msg) -> Error (`Msg ("while reading state: " ^ msg))
   | Ok data ->
-    match Vmm_asn.unikernels_of_str data with
+    match Vmm_asn.state_of_str data with
     | Error (`Msg msg) -> Error (`Msg ("couldn't parse state: " ^ msg))
-    | Ok unikernels ->
-      Logs.info (fun m -> m "restored %d unikernels" (List.length (Vmm_trie.all unikernels))) ;
-      Ok unikernels
+    | Ok (unikernels, policies) ->
+      Logs.info (fun m -> m "restored %u unikernels and %u policies"
+                    (List.length (Vmm_trie.all unikernels))
+                    (List.length (Vmm_trie.all policies))) ;
+      Ok (unikernels, policies)
+
+let restore_policies t policies =
+  let resources =
+    List.fold_left (fun r (name, p) ->
+        match r with
+        | Error _ as e -> e
+        | Ok r ->
+          let path = Name.path name in
+          match Vmm_resources.insert_policy r path p with
+          | Error `Msg msg ->
+            let fmt = Fmt.str "couldn't insert policy %a for %a: %s"
+                Policy.pp p Name.pp name msg
+            in
+            Error (`Msg fmt)
+          | Ok r -> Ok r)
+      (Ok t.resources)
+      (Vmm_trie.all policies)
+  in
+  match resources with
+  | Ok resources -> Ok { t with resources }
+  | Error _ as e -> e
 
 let setup_stats t name vm =
   let stat_out =
@@ -201,7 +224,7 @@ let handle_create t name vm_config =
     Logs.debug (fun m -> m "exec()ed vm") ;
     let resources = Vmm_resources.insert_vm t.resources name vm in
     let t = { t with resources } in
-    dump_unikernels t ;
+    dump_state t ;
     Logs.info (fun m -> m "created %a: %a" Name.pp name Unikernel.pp vm);
     let t, stat_out = setup_stats t name vm in
     Ok (t, stat_out, `Success (`String "created VM"), name, vm)

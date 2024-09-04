@@ -814,17 +814,23 @@ let inspect_dump _ name dbdir =
   | Error (`Msg msg) ->
     Logs.err (fun m -> m "error while reading dump file: %s" msg);
     Cli_failed
-  | Ok data -> match Vmm_asn.unikernels_of_str data with
+  | Ok data -> match Vmm_asn.state_of_str data with
     | Error (`Msg msg) ->
       Logs.err (fun m -> m "couldn't parse dump file: %s" msg);
       Cli_failed
-    | Ok unikernels ->
-      let all = Vmm_trie.all unikernels in
-      Logs.app (fun m -> m "parsed %d unikernels:" (List.length all));
+    | Ok (unikernels, policies) ->
+      let uniks = Vmm_trie.all unikernels in
+      Logs.app (fun m -> m "parsed %u unikernels:" (List.length uniks));
       List.iter (fun (name, unik) ->
           Logs.app (fun m -> m "%a: %a" Vmm_core.Name.pp name
                        Vmm_core.Unikernel.pp_config unik))
-        all;
+        uniks;
+      let ps = Vmm_trie.all policies in
+      Logs.app (fun m -> m "parsed %u policies:" (List.length ps));
+      List.iter (fun (name, p) ->
+          Logs.app (fun m -> m "%a: %a" Vmm_core.Name.pp name
+                       Vmm_core.Policy.pp p))
+        ps;
       Success
 
 let cert () dst server_ca cert key =
