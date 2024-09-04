@@ -8,20 +8,12 @@ let read_tls t =
     if l = 0 then
       Lwt.return (Ok ())
     else
-      let buf' =
-        if off = 0 then buf else Bytes.create l
-      in
-      (* TODO Tls_lwt.Unix.read should receive an (optional) "off" parameter. *)
-      Tls_lwt.Unix.read t buf' >>= function
+      Tls_lwt.Unix.read t ~off buf >>= function
       | 0 ->
         Logs.debug (fun m -> m "TLS: end of file") ;
         Lwt.return (Error `Eof)
-      | x when x == l ->
-        if off = 0 then () else Bytes.blit buf' 0 buf off x;
-        Lwt.return (Ok ())
-      | x when x < l ->
-        if off = 0 then () else Bytes.blit buf' 0 buf off x;
-        r_n buf (off + x) tot
+      | x when x == l -> Lwt.return (Ok ())
+      | x when x < l -> r_n buf (off + x) tot
       | _ ->
         Logs.err (fun m -> m "TLS: read too much, shouldn't happen") ;
         Lwt.return (Error `Toomuch)
