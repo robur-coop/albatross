@@ -259,7 +259,9 @@ let handle_policy_cmd t id =
   | `Policy_remove ->
     Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;
     let* resources = Vmm_resources.remove_policy t.resources path in
-    Ok ({ t with resources }, `End (`Success (`String "removed policy")))
+    let t = { t with resources } in
+    dump_state t ;
+    Ok (t, `End (`Success (`String "removed policy")))
   | `Policy_add policy ->
     Logs.debug (fun m -> m "insert policy %a" Name.pp id) ;
     let same_policy = match Vmm_resources.find_policy t.resources path with
@@ -270,7 +272,9 @@ let handle_policy_cmd t id =
       Ok (t, `Loop (`Success (`String "no modification of policy")))
     else
       let* resources = Vmm_resources.insert_policy t.resources path policy in
-      Ok ({ t with resources }, `Loop (`Success (`String "added policy")))
+      let t = { t with resources } in
+      dump_state t ;
+      Ok (t, `Loop (`Success (`String "added policy")))
   | `Policy_info ->
     Logs.debug (fun m -> m "policy %a" Name.pp id) ;
     let policies =
