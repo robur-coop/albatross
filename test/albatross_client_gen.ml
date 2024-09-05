@@ -29,7 +29,7 @@ let unikernels =
   ins "bar:my.nice.unikernel" u2 t
 
 let jump () =
-  let data = Vmm_asn.unikernels_to_str unikernels in
+  let data = Vmm_asn.state_to_str unikernels Vmm_trie.empty in
   print_endline (Base64.encode_string data);
   Ok ()
 

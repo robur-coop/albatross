@@ -168,71 +168,76 @@ let jump _ systemd influx tmpdir dbdir =
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m
    | Ok () -> ());
-  match Vmm_vmmd.restore_unikernels () with
+  match Vmm_vmmd.restore_state () with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
-  | Ok old_unikernels ->
-    Lwt_main.run
-      (let console_path = socket_path `Console in
-       (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX console_path) >|= function
-         | Some x -> x
-         | None ->
-           failwith ("Failed to connect to " ^ console_path ^ ", is albatross-console started?")) >>= fun c ->
-       Albatrossd_utils.init_influx "albatross" influx;
-       let listen_socket () =
-         if systemd then Vmm_lwt.systemd_socket ()
-         else Vmm_lwt.service_socket `Vmmd
-       in
-       Lwt.catch listen_socket
-         (fun e ->
-            let str =
-              Fmt.str "unable to create server socket %a: %s"
-                pp_socket `Vmmd (Printexc.to_string e)
-            in
-            invalid_arg str) >>= fun ss ->
-       let self_destruct_mutex = Lwt_mutex.create () in
-       let self_destruct () =
-         Lwt_mutex.with_lock self_destruct_mutex (fun () ->
+  | Ok (old_unikernels, policies) ->
+    match Vmm_vmmd.restore_policies !state policies with
+    | Error `Msg msg ->
+      Logs.err (fun m -> m "policy restore error: %s" msg)
+    | Ok state' ->
+      state := state';
+      Lwt_main.run
+        (let console_path = socket_path `Console in
+         (Vmm_lwt.connect Lwt_unix.PF_UNIX (Lwt_unix.ADDR_UNIX console_path) >|= function
+           | Some x -> x
+           | None ->
+             failwith ("Failed to connect to " ^ console_path ^ ", is albatross-console started?")) >>= fun c ->
+         Albatrossd_utils.init_influx "albatross" influx;
+         let listen_socket () =
+           if systemd then Vmm_lwt.systemd_socket ()
+           else Vmm_lwt.service_socket `Vmmd
+         in
+         Lwt.catch listen_socket
+           (fun e ->
+              let str =
+                Fmt.str "unable to create server socket %a: %s"
+                  pp_socket `Vmmd (Printexc.to_string e)
+              in
+              invalid_arg str) >>= fun ss ->
+         let self_destruct_mutex = Lwt_mutex.create () in
+         let self_destruct () =
+           Lwt_mutex.with_lock self_destruct_mutex (fun () ->
+               Lwt_mutex.with_lock create_lock (fun () ->
+                   Vmm_lwt.safe_close ss >>= fun () ->
+                   let state', tasks = Vmm_vmmd.killall !state Lwt.task in
+                   state := state';
+                   Lwt.return tasks) >>= fun tasks ->
+               Lwt.join (List.map (Lwt.map ignore) tasks))
+         in
+         Sys.(set_signal sigterm
+                (Signal_handle (fun _ -> Lwt.async self_destruct)));
+         let cons_out = write_reply "cons" c
+         and stat_out txt wire = match !stats_fd with
+           | None ->
+             Logs.info (fun m -> m "ignoring stat %s %a" txt
+                           (Vmm_commands.pp_wire ~verbose:false) wire);
+             Lwt.return_unit
+           | Some s ->
+             write_reply "stat" s txt wire >|= function
+             | Ok () -> ()
+             | Error `Msg msg ->
+               Logs.err (fun m -> m "error while writing to stats: %s" msg);
+               stats_fd := None
+         in
+         Lwt_list.iter_s (fun (name, config) ->
              Lwt_mutex.with_lock create_lock (fun () ->
-                 Vmm_lwt.safe_close ss >>= fun () ->
-                 let state', tasks = Vmm_vmmd.killall !state Lwt.task in
-                 state := state';
-                 Lwt.return tasks) >>= fun tasks ->
-             Lwt.join (List.map (Lwt.map ignore) tasks))
-       in
-       Sys.(set_signal sigterm
-              (Signal_handle (fun _ -> Lwt.async self_destruct)));
-       let cons_out = write_reply "cons" c
-       and stat_out txt wire = match !stats_fd with
-         | None ->
-           Logs.info (fun m -> m "ignoring stat %s %a" txt
-                         (Vmm_commands.pp_wire ~verbose:false) wire);
-           Lwt.return_unit
-         | Some s ->
-           write_reply "stat" s txt wire >|= function
-           | Ok () -> ()
-           | Error `Msg msg ->
-             Logs.err (fun m -> m "error while writing to stats: %s" msg);
-             stats_fd := None
-       in
-       Lwt_list.iter_s (fun (name, config) ->
-           Lwt_mutex.with_lock create_lock (fun () ->
-               create stat_out cons_out stub_data_out name config))
-         (Vmm_trie.all old_unikernels) >>= fun () ->
-       Lwt.catch (fun () ->
-           let rec loop () =
-             Lwt_unix.accept ss >>= fun (fd, addr) ->
-             Lwt_unix.set_close_on_exec fd ;
-             m `Open;
-             Lwt.async (fun () ->
-                 handle cons_out stat_out fd addr >|= fun () ->
-                 m `Close) ;
-             loop ()
-           in
-           loop ())
-         (fun e ->
-            Logs.err (fun m -> m "exception %s, shutting down"
-                         (Printexc.to_string e));
-            self_destruct ()))
+                 create stat_out cons_out stub_data_out name config))
+           (Vmm_trie.all old_unikernels) >>= fun () ->
+         Lwt.catch (fun () ->
+             let rec loop () =
+               Lwt_unix.accept ss >>= fun (fd, addr) ->
+               Lwt_unix.set_close_on_exec fd ;
+               m `Open;
+               Lwt.async (fun () ->
+                   handle cons_out stat_out fd addr >|= fun () ->
+                   m `Close) ;
+               loop ()
+             in
+             loop ())
+           (fun e ->
+              Logs.err (fun m -> m "exception %s, shutting down"
+                           (Printexc.to_string e));
+              self_destruct ()))
 
 open Cmdliner
 

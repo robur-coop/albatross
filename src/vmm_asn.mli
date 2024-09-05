@@ -17,5 +17,5 @@ val of_cert_extension :
   string -> (Vmm_commands.version * Vmm_commands.t, [> `Msg of string ]) result
 val to_cert_extension : Vmm_commands.t -> string
 
-val unikernels_to_str : Unikernel.config Vmm_trie.t -> string
-val unikernels_of_str : string -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
+val state_to_str : Unikernel.config Vmm_trie.t -> Policy.t Vmm_trie.t -> string
+val state_of_str : string -> (Unikernel.config Vmm_trie.t * Policy.t Vmm_trie.t, [> `Msg of string ]) result

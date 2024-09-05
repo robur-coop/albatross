@@ -39,6 +39,8 @@ val handle_command : 'a t -> Vmm_commands.wire ->
 
 val killall : 'a t -> (unit -> 'b * 'a) -> 'a t * 'b list
 
-val restore_unikernels : unit -> (Unikernel.config Vmm_trie.t, [> `Msg of string ]) result
+val restore_state : unit -> (Unikernel.config Vmm_trie.t * Policy.t Vmm_trie.t, [> `Msg of string ]) result
 
-val dump_unikernels : 'a t -> unit
+val dump_state : 'a t -> unit
+
+val restore_policies : 'a t -> Policy.t Vmm_trie.t -> ('a t, [> `Msg of string ]) result

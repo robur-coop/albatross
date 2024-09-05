@@ -840,7 +840,7 @@ let test_unikernels =
 
 let dec_b64_unik data =
   let data = Base64.decode_exn data in
-  Result.get_ok (Vmm_asn.unikernels_of_str data)
+  fst (Result.get_ok (Vmm_asn.state_of_str data))
 
 let u1_3 =
   Unikernel.{
