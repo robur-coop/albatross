@@ -14,4 +14,8 @@
  (wrapped false)
  (modules vmm_unix vmm_lwt vmm_vmmd)
  (libraries albatross ipaddr.unix bos solo5-elftool lwt lwt.unix ptime.clock.os
-   digestif))
+   digestif)
+ (foreign_stubs
+  (language c)
+  (names vmm_stubs)
+  (flags (:standard))))

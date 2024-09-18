@@ -168,9 +168,21 @@ let jump _ systemd influx tmpdir dbdir =
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m
    | Ok () -> ());
+  let root_policy =
+    match Vmm_unix.root_policy () with
+    | Error `Msg m -> invalid_arg m
+    | Ok p ->
+      Logs.app (fun m -> m "root policy: %a" Policy.pp p);
+      p
+  in
   match Vmm_vmmd.restore_state () with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok (old_unikernels, policies) ->
+    let policies, old_p = Vmm_trie.insert Name.root root_policy policies in
+    Option.iter (fun p ->
+        if not (Policy.equal p root_policy) then
+          Logs.warn (fun m -> m "replacing stored root policy %a with discovered %a"
+                        Policy.pp p Policy.pp root_policy)) old_p;
     match Vmm_vmmd.restore_policies !state policies with
     | Error `Msg msg ->
       Logs.err (fun m -> m "policy restore error: %s" msg)
