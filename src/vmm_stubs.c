@@ -7,6 +7,7 @@
 #include <caml/unixsupport.h>
 
 #include <unistd.h>
+#include <errno.h>
 
 CAMLprim value vmm_cpu_count (value unit) {
   CAMLparam1(unit);
@@ -59,6 +60,11 @@ CAMLprim value vmm_disk_space (value path) {
   const char *p = String_val(path);
   if (statfs(p, &s) < 0)
     uerror("statfs", Nothing);
+  int r = to_mb(s.f_blocks, s.f_bsize);
+  if (r < 0) {
+    errno = EOVERFLOW;
+    uerror("statfs", Nothing);
+  }
   CAMLreturn(Val_int(to_mb(s.f_blocks, s.f_bsize)));
 }
 
