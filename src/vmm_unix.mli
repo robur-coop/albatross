@@ -43,3 +43,5 @@ val vm_device : Unikernel.t -> (string, [> `Msg of string ]) result
 val manifest_devices_match : bridges:(string * string option * Macaddr.t option) list ->
   block_devices:(string * string option * int option) list -> string ->
   (unit, [> `Msg of string]) result
+
+val root_policy : unit -> (Policy.t, [> `Msg of string ]) result

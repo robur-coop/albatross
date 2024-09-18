@@ -488,3 +488,42 @@ let find_block_devices () =
         | Ok size, Ok id ->
           Ok ((id, size) :: acc))
     (Ok []) files
+
+external cpu_count : unit -> int = "vmm_cpu_count"
+
+external disk_space : string -> int = "vmm_disk_space"
+
+external memory : unit -> int = "vmm_memory"
+
+let find_bridges () =
+  match Lazy.force uname with
+  | FreeBSD ->
+    let cmd = Bos.Cmd.(v "ifconfig" % "-g" % "bridge") in
+    let* names = Bos.OS.Cmd.(run_out cmd |> out_lines |> success) in
+    Ok names
+  | Linux ->
+    let* bridges = Bos.(OS.Cmd.(run_out Cmd.(v "ip" % "-o" % "link" % "show" % "type" % "bridge") |> out_lines |> success)) in
+    (* output is <id>: <name>: ... *)
+    Ok (List.fold_left (fun acc s ->
+        match String.split_on_char ':' s with
+        | _id :: name :: _tl -> String.trim name :: acc
+        | _ -> Logs.err (fun m -> m "couldn't find bridge name in %s" s); acc)
+        [] bridges)
+
+let root_policy () =
+  try
+    let cpus = cpu_count () in
+    let disk_space = disk_space (Fpath.to_string (block_dir ())) in
+    let memory = memory () in
+    let* bridges = find_bridges () in
+    let rec gen_cpu acc n =
+      if n = 0 then acc else gen_cpu (Vmm_core.IS.add (pred n) acc) (pred n)
+    in
+    Ok { Vmm_core.Policy.vms = max_int ;
+         cpuids = gen_cpu Vmm_core.IS.empty cpus ;
+         memory ;
+         block = Some disk_space ;
+         bridges = String_set.of_list bridges }
+  with
+  | Unix.Unix_error (e, _, _) ->
+    Error (`Msg (Fmt.str "root policy failed: %a" pp_unix_err e))
