@@ -15,18 +15,26 @@ CAMLprim value vmm_cpu_count (value unit) {
   CAMLreturn(Val_int(r));
 }
 
-int to_mb (int a, int b) {
+int to_mb (long a, long b) {
   int r = 0;
-  if (a % 1024 == 0) {
-    if (b % 1024 == 0)
-      r = (a / 1024) * (b / 1024);
-    else
-      r = (a / 1024) * b / 1024;
-  } else {
-    if (b % 1024 == 0)
-      r = a * (b / 1024) / 1024;
-    else
-      r = a * b / 1024 / 1024;
+  if (a % (1024 * 1024) == 0)
+    r = (a / 1024 / 1024) * b;
+  else {
+    if (b % (1024 * 1024) == 0)
+      r = a * (b / 1024 / 1024);
+    else {
+      if (a % 1024 == 0) {
+        if (b % 1024 == 0)
+          r = (a / 1024) * (b / 1024);
+        else
+          r = (a / 1024) * b / 1024;
+      } else {
+        if (b % 1024 == 0)
+          r = a * (b / 1024) / 1024;
+        else
+          r = a * b / 1024 / 1024;
+      }
+    }
   }
   return r;
 }
