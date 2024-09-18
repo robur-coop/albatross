@@ -15,11 +15,27 @@ CAMLprim value vmm_cpu_count (value unit) {
   CAMLreturn(Val_int(r));
 }
 
+int to_mb (int a, int b) {
+  int r = 0;
+  if (a % 1024 == 0) {
+    if (b % 1024 == 0)
+      r = (a / 1024) * (b / 1024);
+    else
+      r = (a / 1024) * b / 1024;
+  } else {
+    if (b % 1024 == 0)
+      r = a * (b / 1024) / 1024;
+    else
+      r = a * b / 1024 / 1024;
+  }
+  return r;
+}
+
 CAMLprim value vmm_memory (value unit) {
   CAMLparam1(unit);
   long pages = sysconf(_SC_PHYS_PAGES);
   long page_size = sysconf(_SC_PAGE_SIZE);
-  CAMLreturn(Val_int(pages * (page_size / 1024) / 1024));
+  CAMLreturn(Val_int(to_mb(pages, page_size)));
 }
 
 #ifdef __linux__
@@ -35,6 +51,6 @@ CAMLprim value vmm_disk_space (value path) {
   const char *p = String_val(path);
   if (statfs(p, &s) < 0)
     uerror("statfs", Nothing);
-  CAMLreturn(Val_int(s.f_blocks * s.f_bsize / 1024 / 1024));
+  CAMLreturn(Val_int(to_mb(s.f_blocks, s.f_bsize)));
 }
 
