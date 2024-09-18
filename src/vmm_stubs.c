@@ -11,7 +11,7 @@
 CAMLprim value vmm_cpu_count (value unit) {
   CAMLparam1(unit);
   int r;
-  r = (int)sysconf(_SC_NPROCESSORS_CONF);
+  r = (int)sysconf(_SC_NPROCESSORS_ONLN);
   CAMLreturn(Val_int(r));
 }
 
