@@ -247,15 +247,17 @@ module Policy = struct
       bridges
       Fmt.(list ~sep:(any ", ") string) (String_set.elements res.bridges)
 
-  let usable { vms ; cpuids ; memory ; _ } =
+  let usable { vms ; cpuids ; memory ; block ; _ } =
     if vms <= 0 then
       Error (`Msg "Unusable policy with no VMs")
     else if IS.is_empty cpuids then
       Error (`Msg "Unusable policy with no CPUids")
     else if memory <= 16 then
-      Error (`Msg "Unusable policy with memory <= 16 MB")
-    else
-      Ok ()
+      Error (`Msg ("Unusable policy with memory " ^ string_of_int memory ^ " MB <= 16 MB"))
+    else match block with
+      | None -> Ok ()
+      | Some x when x >= 0 -> Ok ()
+      | Some x -> Error (`Msg ("Unusable policy with block " ^ string_of_int x ^ " MB < 0 MB"))
 
   let is_smaller ~super ~sub =
     let sub_block sub super =
