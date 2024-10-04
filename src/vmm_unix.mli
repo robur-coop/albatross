@@ -38,7 +38,7 @@ val dump : ?name:string -> string -> (unit, [> `Msg of string ]) result
 
 val restore : ?name:string -> unit -> (string, [> `Msg of string | `NoFile ]) result
 
-val vm_device : Unikernel.t -> (string, [> `Msg of string ]) result
+val unikernel_device : Unikernel.t -> (string, [> `Msg of string ]) result
 
 val manifest_devices_match : bridges:(string * string option * Macaddr.t option) list ->
   block_devices:(string * string option * int option) list -> string ->

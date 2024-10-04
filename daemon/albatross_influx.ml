@@ -75,7 +75,7 @@ module P = struct
 
   let i64 i = Printf.sprintf "%Lui" i
 
-  let encode_ru vm ru =
+  let encode_ru unikernel ru =
     let fields =
       [ "utime", tv ru.utime ;
         "stime", tv ru.stime ;
@@ -96,9 +96,9 @@ module P = struct
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "resource_usage,vm=%s %s" vm (String.concat "," fields)
+    Printf.sprintf "resource_usage,vm=%s %s" unikernel (String.concat "," fields)
 
-  let encode_kinfo_mem vm mem =
+  let encode_kinfo_mem unikernel mem =
     let now = Unix.gettimeofday () in
     let started =
       Int64.to_float (fst mem.start) +. (float_of_int (snd mem.start) /. 1_000_000.)
@@ -117,9 +117,9 @@ module P = struct
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "kinfo_mem,vm=%s %s" vm (String.concat "," fields)
+    Printf.sprintf "kinfo_mem,vm=%s %s" unikernel (String.concat "," fields)
 
-  let encode_vmm vm xs =
+  let encode_vmm unikernel xs =
     let escape s =
       let cutted = String.split_on_char ',' s in
       let cutted = String.concat "\\," cutted in
@@ -128,13 +128,13 @@ module P = struct
       let cutted = String.split_on_char '=' cutted in
       String.concat "\\=" cutted
     in
-    Printf.sprintf "vmm,vm=%s %s" vm
+    Printf.sprintf "vmm,vm=%s %s" unikernel
       (String.concat ","
          (List.map (fun (k, v) -> (escape k) ^ "=" ^ (i64 v)) xs))
 
   let i32 i = Printf.sprintf "%lui" i
 
-  let encode_if vm ifd =
+  let encode_if unikernel ifd =
     let fields =
     (* TODO: flags *)
       [ "send_queue_length", i32 ifd.send_length ;
@@ -157,7 +157,7 @@ module P = struct
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
     Printf.sprintf "interface,vm=%s,bridge=%s %s"
-      vm ifd.bridge (String.concat "," fields)
+      unikernel ifd.bridge (String.concat "," fields)
 end
 
 let command = ref 1L
@@ -233,10 +233,10 @@ let rec read_sock_write_tcp drop c ?fd fam addr =
       Lwt.return (Some fd) >>= fun fd ->
       read_sock_write_tcp drop c ?fd fam addr
 
-let query_sock vm c =
-  let header = Vmm_commands.header ~sequence:!command vm in
+let query_sock unikernel c =
+  let header = Vmm_commands.header ~sequence:!command unikernel in
   command := Int64.succ !command  ;
-  Logs.debug (fun m -> m "%Lu requesting %a via socket" !command Name.pp vm) ;
+  Logs.debug (fun m -> m "%Lu requesting %a via socket" !command Name.pp unikernel) ;
   Vmm_lwt.write_wire c (header, `Command (`Stats_cmd `Stats_subscribe))
 
 let rec maybe_connect () =
@@ -251,7 +251,7 @@ let rec maybe_connect () =
     Logs.debug (fun m -> m "connected");
     Lwt.return c
 
-let client influx vm drop =
+let client influx unikernel drop =
   match influx with
   | None -> Lwt.return (Error (`Msg "influx host not provided"))
   | Some (ip, port) ->
@@ -276,7 +276,7 @@ let client influx vm drop =
   let rec loop () =
     (* start a socket connection to vmm_stats *)
     maybe_connect () >>= fun c ->
-    query_sock vm c >>= function
+    query_sock unikernel c >>= function
     | Error e ->
       let err =
         Error (`Msg (Fmt.str "error %s while writing to stat socket" (str_of_e e)))
@@ -288,10 +288,10 @@ let client influx vm drop =
   in
   loop ()
 
-let run_client _ influx vm drop tmpdir =
+let run_client _ influx unikernel drop tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
-  Lwt_main.run (client influx vm drop)
+  Lwt_main.run (client influx unikernel drop)
 
 open Cmdliner
 
@@ -299,11 +299,11 @@ let drop_label =
   let doc = "Drop unikernel path" in
   Arg.(value & flag & info [ "drop-label" ] ~doc)
 
-let vm_c = Arg.conv (Name.of_string, Name.pp)
+let unikernel_c = Arg.conv (Name.of_string, Name.pp)
 
-let opt_vm_name =
+let opt_unikernel_name =
   let doc = "name of unikernel." in
-  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
+  Arg.(value & opt unikernel_c Name.root & info [ "n" ; "name"] ~doc)
 
 let cmd =
   let doc = "Albatross Influx connector" in
@@ -313,7 +313,7 @@ let cmd =
         statistics and pushes them via TCP to influxdb";
   ] in
   let term =
-    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_vm_name $ drop_label $ Albatross_cli.tmpdir))
+    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_unikernel_name $ drop_label $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-influx" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term

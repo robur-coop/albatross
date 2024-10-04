@@ -61,11 +61,11 @@ let output_result ((hdr, reply) as wire) =
       | `Unikernel_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image
-      | `Old_unikernels vms ->
+      | `Old_unikernels unikernels ->
         List.iter (fun (name, cfg) ->
             if String.length cfg.Vmm_core.Unikernel.image > 0 then
               write_to_file name cfg.compressed cfg.image)
-          vms
+          unikernels
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image
@@ -175,7 +175,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
     Lwt.return (Error Communication_failed)
   | Error _ -> Lwt.return (Error Communication_failed)
 
-let create_vm force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
+let create_unikernel force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let ( let* ) = Result.bind in
   let* () =
     if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
@@ -222,7 +222,7 @@ let create_block size compression data =
     else
       Error (`Msg "data exceeds size")
 
-let policy vms memory cpus block bridgesl =
+let policy unikernels memory cpus block bridgesl =
   let bridges = Vmm_core.String_set.of_list bridgesl
   and cpuids = Vmm_core.IS.of_list cpus
   in
@@ -230,7 +230,7 @@ let policy vms memory cpus block bridgesl =
     Logs.warn (fun m -> m "Bridges is not a set");
   if not (Vmm_core.IS.cardinal cpuids = List.length cpus) then
     Logs.warn (fun m -> m "CPUids is not a set");
-  Vmm_core.Policy.{ vms ; cpuids ; memory ; block ; bridges }
+  Vmm_core.Policy.{ unikernels ; cpuids ; memory ; block ; bridges }
 
 let to_exit_code = function
   | Error `Eof -> Error Success
@@ -668,8 +668,8 @@ let info_policy () path =
 let remove_policy () path =
   jump (`Policy_cmd `Policy_remove) (Vmm_core.Name.create_of_path path)
 
-let add_policy () vms memory cpus block bridges path d cert key ca key_type tmpdir =
-  let p = policy vms memory cpus block bridges in
+let add_policy () unikernels memory cpus block bridges path d cert key ca key_type tmpdir =
+  let p = policy unikernels memory cpus block bridges in
   match Vmm_core.Policy.usable p with
   | Error `Msg msg ->
     Logs.err (fun m -> m "%s" msg);
@@ -689,7 +689,7 @@ let destroy () = jump (`Unikernel_cmd `Unikernel_destroy)
 
 let create () force image cpuid memory argv block network compression restart_on_fail exit_code
   name d cert key ca key_type tmpdir =
-  match create_vm force image cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code with
+  match create_unikernel force image cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code with
   | Ok cmd -> jump (`Unikernel_cmd cmd) name d cert key ca key_type tmpdir
   | Error _ as e -> e
 
@@ -972,7 +972,7 @@ let cpus =
   let doc = "CPUids to allow for this policy (argument may be repeated)." in
   Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
 
-let vms =
+let unikernels =
   let doc = "Number of unikernels to allow running at the same time." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"UNIKERNELS")
 
@@ -1016,7 +1016,7 @@ let cpu =
   let doc = "CPUid to use." in
   Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
 
-let vm_mem =
+let unikernel_mem =
   let doc = "Memory to assign (in MB)." in
   Arg.(value & opt int 32 & info [ "mem" ] ~doc)
 
@@ -1127,23 +1127,23 @@ let path =
   let doc = "Path to unikernels." in
   Arg.(required & pos 0 (some path_c) None & info [] ~doc ~docv:"PATH")
 
-let vm_c = Arg.conv (Name.of_string, Name.pp)
+let unikernel_c = Arg.conv (Name.of_string, Name.pp)
 
-let opt_vm_name =
+let opt_unikernel_name =
   let doc = "Name of unikernel." in
-  Arg.(value & opt vm_c Name.root & info [ "n" ; "name"] ~doc)
+  Arg.(value & opt unikernel_c Name.root & info [ "n" ; "name"] ~doc)
 
-let vm_name =
+let unikernel_name =
   let doc = "Name of unikernel." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"UNIKERNEL-NAME")
+  Arg.(required & pos 0 (some unikernel_c) None & info [] ~doc ~docv:"UNIKERNEL-NAME")
 
 let block_name =
   let doc = "Name of block device." in
-  Arg.(required & pos 0 (some vm_c) None & info [] ~doc ~docv:"BLOCK-NAME")
+  Arg.(required & pos 0 (some unikernel_c) None & info [] ~doc ~docv:"BLOCK-NAME")
 
 let opt_block_name =
   let doc = "Name of block device." in
-  Arg.(value & opt vm_c Name.root & info [ "name" ] ~doc)
+  Arg.(value & opt unikernel_c Name.root & info [ "name" ] ~doc)
 
 let remote_host default_port =
   let parse s =
@@ -1225,7 +1225,7 @@ let destroy_cmd =
      `P "Destroy a unikernel."]
   in
   let term =
-    Term.(term_result (const destroy $ (Albatross_cli.setup_log (const false)) $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const destroy $ (Albatross_cli.setup_log (const false)) $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "destroy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1237,7 +1237,7 @@ let restart_cmd =
      `P "Restarts a unikernel."]
   in
   let term =
-    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1261,7 +1261,7 @@ let info_cmd =
      `P "Shows information about unikernels."]
   in
   let term =
-    Term.(term_result (const info_ $ (Albatross_cli.setup_log (const false)) $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const info_ $ (Albatross_cli.setup_log (const false)) $ opt_unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "info" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1273,7 +1273,7 @@ let get_cmd =
      `P "Downloads a unikernel image from albatross to disk."]
   in
   let term =
-    Term.(term_result (const get $ (Albatross_cli.setup_log (const false)) $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const get $ (Albatross_cli.setup_log (const false)) $ compress_level $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "get" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1297,7 +1297,7 @@ let add_policy_cmd =
      `P "Adds a policy."]
   in
   let term =
-    Term.(term_result (const add_policy $ (Albatross_cli.setup_log (const false)) $ vms $ mem $ cpus $ opt_block_size $ bridge $ path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const add_policy $ (Albatross_cli.setup_log (const false)) $ unikernels $ mem $ cpus $ opt_block_size $ bridge $ path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "add-policy" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1309,7 +1309,7 @@ let create_cmd =
      `P "Creates a unikernel."]
   in
   let term =
-    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ cpu $ vm_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ cpu $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "create" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1321,7 +1321,7 @@ let console_cmd =
      `P "Shows console output of a unikernel."]
   in
   let term =
-    Term.(term_result (const console $ (Albatross_cli.setup_log (const false)) $ since $ count $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const console $ (Albatross_cli.setup_log (const false)) $ since $ count $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "console" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1333,7 +1333,7 @@ let stats_subscribe_cmd =
      `P "Shows statistics of unikernel."]
   in
   let term =
-    Term.(term_result (const stats_subscribe $ (Albatross_cli.setup_log (const false)) $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_subscribe $ (Albatross_cli.setup_log (const false)) $ opt_unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1345,7 +1345,7 @@ let stats_remove_cmd =
      `P "Removes statistics of unikernel."]
   in
   let term =
-    Term.(term_result (const stats_remove $ (Albatross_cli.setup_log (const false)) $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_remove $ (Albatross_cli.setup_log (const false)) $ opt_unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats-remove" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1357,7 +1357,7 @@ let stats_add_cmd =
      `P "Add unikernel to statistics gathering."]
   in
   let term =
-    Term.(term_result (const stats_add $ (Albatross_cli.setup_log (const false)) $ vmm_dev $ pid_req0 $ bridge_taps $ opt_vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_add $ (Albatross_cli.setup_log (const false)) $ vmm_dev $ pid_req0 $ bridge_taps $ opt_unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats-add" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1429,7 +1429,7 @@ let update_cmd =
      `P "Check and update a unikernel from the binary repository."]
   in
   let term =
-    Term.(const update $ (Albatross_cli.setup_log (const false)) $ http_host $ dryrun $ compress_level $ vm_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir)
+    Term.(const update $ (Albatross_cli.setup_log (const false)) $ http_host $ dryrun $ compress_level $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir)
   and info = Cmd.info "update" ~doc ~man ~exits
   in
   Cmd.v info term

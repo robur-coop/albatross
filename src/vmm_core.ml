@@ -92,7 +92,7 @@ module Name = struct
     path_equal x y && opt_eq (snd x) (snd y)
 
   let pp ppf (p, name) =
-    Fmt.(pf ppf "[vm: %a:%a]" (list ~sep:(any ":") string) p
+    Fmt.(pf ppf "[unikernel: %a:%a]" (list ~sep:(any ":") string) p
            (option ~none:(any "") string) name)
 
   let path (p, _) = p
@@ -201,7 +201,7 @@ module Name = struct
     let file = to_string name in
     Fpath.(!tmpdir / "fifo" / file)
 
-  let block_name vm_name dev = path vm_name, Some dev
+  let block_name unikernel_name dev = path unikernel_name, Some dev
 
   let mac name bridge =
     (* deterministic mac address computation: VEB Kombinat Robotron prefix
@@ -218,7 +218,7 @@ module Policy = struct
   let eq_int (a : int) (b : int) = a = b
 
   type t = {
-    vms : int ;
+    unikernels : int ;
     cpuids : IS.t ;
     memory : int ;
     block : int option ;
@@ -231,7 +231,7 @@ module Policy = struct
       | Some a, Some b -> eq_int a b
       | _ -> false
     in
-    eq_int p1.vms p2.vms &&
+    eq_int p1.unikernels p2.unikernels &&
     IS.equal p1.cpuids p2.cpuids &&
     eq_int p1.memory p2.memory &&
     eq_opt p1.block p2.block &&
@@ -241,15 +241,15 @@ module Policy = struct
     let bridges =
       if String_set.is_empty res.bridges then "" else ", bridges: "
     in
-    Fmt.pf ppf "policy: %d vms %a cpus %d MB memory %a block%s%a"
-      res.vms pp_is res.cpuids res.memory
+    Fmt.pf ppf "policy: %d unikernels %a cpus %d MB memory %a block%s%a"
+      res.unikernels pp_is res.cpuids res.memory
       Fmt.(option ~none:(any "no") (int ++ any " MB")) res.block
       bridges
       Fmt.(list ~sep:(any ", ") string) (String_set.elements res.bridges)
 
-  let usable { vms ; cpuids ; memory ; block ; _ } =
-    if vms <= 0 then
-      Error (`Msg "Unusable policy with no VMs")
+  let usable { unikernels ; cpuids ; memory ; block ; _ } =
+    if unikernels <= 0 then
+      Error (`Msg "Unusable policy with no unikernels")
     else if IS.is_empty cpuids then
       Error (`Msg "Unusable policy with no CPUids")
     else if memory <= 16 then
@@ -267,9 +267,9 @@ module Policy = struct
       | Some x, Some y -> x >= y
       | None, Some _ -> false
     in
-    if super.vms < sub.vms then
+    if super.unikernels < sub.unikernels then
       Error (`Msg (Fmt.str "policy above allows %d unikernels, which is fewer than %d"
-                     super.vms sub.vms))
+                     super.unikernels sub.unikernels))
     else if super.memory < sub.memory then
       Error (`Msg (Fmt.str "policy above allows %d MB memory, which is fewer than %d MB"
                      super.memory sub.memory))
@@ -316,10 +316,10 @@ module Unikernel = struct
     argv : string list option ;
   }
 
-  let bridges (vm : config) =
+  let bridges (unikernel : config) =
     List.map
       (fun (net, bri, _mac) -> match bri with None -> net | Some s -> s)
-      vm.bridges
+      unikernel.bridges
 
   let fine_with_policy (p : Policy.t) (c : config) =
     let bridge_allowed set s = String_set.mem s set in
@@ -345,19 +345,19 @@ module Unikernel = struct
     Fmt.pf ppf "%s -> %s%a" name (Option.value ~default:name bridge)
       Fmt.(option ((any "@") ++ Macaddr.pp)) mac
 
-  let pp_config ppf (vm : config) =
+  let pp_config ppf (unikernel : config) =
     Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
-      pp_typ vm.typ
-      vm.compressed
-      (String.length vm.image)
-      pp_fail_behaviour vm.fail_behaviour
-      vm.cpuid vm.memory
-      Fmt.(list ~sep:(any ", ") pp_block) vm.block_devices
-      Fmt.(list ~sep:(any ", ") pp_bridge) vm.bridges
+      pp_typ unikernel.typ
+      unikernel.compressed
+      (String.length unikernel.image)
+      pp_fail_behaviour unikernel.fail_behaviour
+      unikernel.cpuid unikernel.memory
+      Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
+      Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
 
-  let pp_config_with_argv ppf (vm : config) =
-    Fmt.pf ppf "%a@ argv %a" pp_config vm
-      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) vm.argv
+  let pp_config_with_argv ppf (unikernel : config) =
+    Fmt.pf ppf "%a@ argv %a" pp_config unikernel
+      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) unikernel.argv
 
   let restart_handler config =
     match config.fail_behaviour with `Quit -> false | `Restart _ -> true
@@ -371,13 +371,13 @@ module Unikernel = struct
     started : Ptime.t ;
   }
 
-  let pp ppf vm =
-    let hex_digest = Ohex.encode vm.digest in
+  let pp ppf unikernel =
+    let hex_digest = Ohex.encode unikernel.digest in
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
-      vm.pid
-      Fmt.(list ~sep:(any ", ") string) vm.taps
-      Fmt.(list ~sep:(any ", ") pp_block) vm.config.block_devices
-      Fmt.(array ~sep:(any " ") string) vm.cmd
+      unikernel.pid
+      Fmt.(list ~sep:(any ", ") string) unikernel.taps
+      Fmt.(list ~sep:(any ", ") pp_block) unikernel.config.block_devices
+      Fmt.(array ~sep:(any " ") string) unikernel.cmd
       hex_digest
 
   type info = {

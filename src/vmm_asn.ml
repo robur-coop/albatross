@@ -113,14 +113,14 @@ let projections_of asn =
   (decode_strict c, Asn.encode c)
 
 let policy =
-  let f (cpuids, vms, memory, block, bridges) =
+  let f (cpuids, unikernels, memory, block, bridges) =
     let bridges = String_set.of_list bridges
     and cpuids = IS.of_list cpuids
     in
-    Policy.{ vms ; cpuids ; memory ; block ; bridges }
+    Policy.{ unikernels ; cpuids ; memory ; block ; bridges }
   and g policy =
     (IS.elements policy.Policy.cpuids,
-     policy.Policy.vms,
+     policy.Policy.unikernels,
      policy.Policy.memory,
      policy.Policy.block,
      String_set.elements policy.Policy.bridges)
@@ -128,7 +128,7 @@ let policy =
   Asn.S.map f g @@
   Asn.S.(sequence5
            (required ~label:"cpuids" Asn.S.(sequence_of int))
-           (required ~label:"vms" int)
+           (required ~label:"unikernels" int)
            (required ~label:"memory" int)
            (optional ~label:"block" int)
            (required ~label:"bridges" Asn.S.(sequence_of utf8_string)))
@@ -376,7 +376,7 @@ let v0_unikernel_config =
     and fail_behaviour = `Quit (* TODO maybe set to restart by default :) *)
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g _vm = failwith "cannot encode v0 unikernel configs"
+  and g _unikernel = failwith "cannot encode v0 unikernel configs"
   in
   Asn.S.map f g @@
   Asn.S.(sequence6
@@ -396,7 +396,7 @@ let v1_unikernel_config =
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g _vm = failwith "cannot encode v1 unikernel configs"
+  and g _unikernel = failwith "cannot encode v1 unikernel configs"
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -416,16 +416,16 @@ let v2_unikernel_config =
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g (vm : config) =
+  and g (unikernel : config) =
     let bridges =
-      match vm.bridges with
+      match unikernel.bridges with
       | [] -> None
       | xs -> Some (List.map (fun (a, b, _) -> a, b) xs)
-    and blocks = match vm.block_devices with
+    and blocks = match unikernel.block_devices with
       | [] -> None
       | xs -> Some (List.map (fun (a, _, _) -> a) xs)
     in
-    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
+    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -449,11 +449,11 @@ let unikernel_config =
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
     { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
-  and g (vm : config) =
-    let bridges = match vm.bridges with [] -> None | xs -> Some xs
-    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
+  and g (unikernel : config) =
+    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
+    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (vm.typ, (vm.compressed, (vm.image, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (blocks, (bridges, vm.argv))))))))
+    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -479,23 +479,23 @@ let unikernel_config =
 let unikernel_cmd =
   let f = function
     | `C1 `C1 () -> `Old_unikernel_info1
-    | `C1 `C2 vm -> `Unikernel_create vm
-    | `C1 `C3 vm -> `Unikernel_force_create vm
+    | `C1 `C2 unikernel -> `Unikernel_create unikernel
+    | `C1 `C3 unikernel -> `Unikernel_force_create unikernel
     | `C1 `C4 () -> `Unikernel_destroy
-    | `C1 `C5 vm -> `Unikernel_create vm
-    | `C1 `C6 vm -> `Unikernel_force_create vm
+    | `C1 `C5 unikernel -> `Unikernel_create unikernel
+    | `C1 `C6 unikernel -> `Unikernel_force_create unikernel
     | `C2 `C1 () -> `Old_unikernel_get
     | `C2 `C2 () -> `Old_unikernel_info2
     | `C2 `C3 () -> `Unikernel_get 0
-    | `C2 `C4 vm -> `Unikernel_create vm
-    | `C2 `C5 vm -> `Unikernel_force_create vm
+    | `C2 `C4 unikernel -> `Unikernel_create unikernel
+    | `C2 `C5 unikernel -> `Unikernel_force_create unikernel
     | `C2 `C6 level -> `Unikernel_get level
     | `C3 `C1 () -> `Unikernel_restart
     | `C3 `C2 () -> `Unikernel_info
   and g = function
     | `Old_unikernel_info1 -> `C1 (`C1 ())
-    | `Unikernel_create vm -> `C2 (`C4 vm)
-    | `Unikernel_force_create vm -> `C2 (`C5 vm)
+    | `Unikernel_create unikernel -> `C2 (`C4 unikernel)
+    | `Unikernel_force_create unikernel -> `C2 (`C5 unikernel)
     | `Unikernel_destroy -> `C1 (`C4 ())
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Old_unikernel_info2 -> `C2 (`C2 ())
@@ -575,7 +575,7 @@ let wire_command =
     | `C1 console -> `Console_cmd console
     | `C2 stats -> `Stats_cmd stats
     | `C3 () -> Asn.S.parse_error "support for log dropped"
-    | `C4 vm -> `Unikernel_cmd vm
+    | `C4 unikernel -> `Unikernel_cmd unikernel
     | `C5 policy -> `Policy_cmd policy
     | `C6 block -> `Block_cmd block
   and g = function
@@ -634,11 +634,11 @@ let old_unikernel_info =
     and started = Ptime.epoch
     in
     { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
-  and g (vm : info) =
-    let bridges = match vm.bridges with [] -> None | xs -> Some xs
-    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
+  and g (unikernel : info) =
+    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
+    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (vm.typ, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (vm.digest, (blocks, (bridges, vm.argv)))))))
+    (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, unikernel.argv)))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -668,11 +668,11 @@ let unikernel_info =
     and started = Option.value ~default:Ptime.epoch started
     in
     { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
-  and g (vm : info) =
-    let bridges = match vm.bridges with [] -> None | xs -> Some xs
-    and blocks = match vm.block_devices with [] -> None | xs -> Some xs
+  and g (unikernel : info) =
+    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
+    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (vm.typ, (vm.fail_behaviour, (vm.cpuid, (vm.memory, (vm.digest, (blocks, (bridges, (vm.argv, Some vm.started))))))))
+    (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, Some unikernel.started))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -710,22 +710,22 @@ let success name =
     | `C1 `C1 () -> `Empty
     | `C1 `C2 str -> `String str
     | `C1 `C3 policies -> `Policies policies
-    | `C1 `C4 vms -> `Old_unikernels vms
+    | `C1 `C4 unikernels -> `Old_unikernels unikernels
     | `C1 `C5 blocks -> `Block_devices blocks
-    | `C1 `C6 vms -> `Old_unikernel_info vms
+    | `C1 `C6 unikernels -> `Old_unikernel_info unikernels
     | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
     | `C2 `C2 (compress, data) -> `Block_device_image (compress, data)
-    | `C2 `C3 vms -> `Unikernel_info vms
+    | `C2 `C3 unikernels -> `Unikernel_info unikernels
   and g = function
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
     | `Policies ps -> `C1 (`C3 ps)
-    | `Old_unikernels vms -> `C1 (`C4 vms)
+    | `Old_unikernels unikernels -> `C1 (`C4 unikernels)
     | `Block_devices blocks -> `C1 (`C5 blocks)
-    | `Old_unikernel_info vms -> `C1 (`C6 vms)
+    | `Old_unikernel_info unikernels -> `C1 (`C6 unikernels)
     | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
     | `Block_device_image (compress, data) -> `C2 (`C2 (compress, data))
-    | `Unikernel_info vms -> `C2 (`C3 vms)
+    | `Unikernel_info unikernels -> `C2 (`C3 unikernels)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
