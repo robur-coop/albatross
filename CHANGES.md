@@ -1,3 +1,13 @@
+# v2.3.0 (2024-10-07)
+
+* Albatross-daemon: discover and provide root policy with the available system
+  resources (#190 @hannesm @reynir @PizieDust)
+* Vmm_core.Policy.usable: check that block size, if present, is non-negative
+  (#192 @hannesm)
+* BREAKING: rename vm to unikernel (#192 @hannesm)
+* Document Vmm_trie (#192 @hannesm)
+* Parse /proc/pid/status less strict (#193 @Firobe)
+
 # v2.2.0 (2024-09-05)
 
 * Store the policies on disk, next to the unikernels (#189 @hannesm)
