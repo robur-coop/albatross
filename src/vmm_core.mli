@@ -79,7 +79,7 @@ end
 
 module Policy : sig
   type t = {
-    vms : int;
+    unikernels : int;
     cpuids : IS.t;
     memory : int;
     block : int option;

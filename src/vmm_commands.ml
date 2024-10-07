@@ -74,7 +74,7 @@ let pp_unikernel_cmd ~verbose ppf = function
       (if verbose then Unikernel.pp_config_with_argv else Unikernel.pp_config)
       config
   | `Unikernel_force_create config ->
-    Fmt.pf ppf "vm force create %a"
+    Fmt.pf ppf "unikernel force create %a"
       (if verbose then Unikernel.pp_config_with_argv else Unikernel.pp_config)
       config
   | `Unikernel_restart -> Fmt.string ppf "unikernel restart"
@@ -176,11 +176,11 @@ let pp_success ~verbose ppf = function
   | `String data -> Fmt.pf ppf "success: %s" data
   | `Policies ps ->
     my_fmt_list "no policies" Fmt.(pair ~sep:(any ": ") Name.pp Policy.pp) ppf ps
-  | `Old_unikernels vms ->
+  | `Old_unikernels unikernels ->
     my_fmt_list "no unikernels"
       Fmt.(pair ~sep:(any ": ") Name.pp
              (if verbose then Unikernel.pp_config_with_argv else Unikernel.pp_config))
-      ppf vms
+      ppf unikernels
   | `Unikernel_info infos | `Old_unikernel_info infos ->
     my_fmt_list "no unikernels"
       Fmt.(pair ~sep:(any ": ") Name.pp

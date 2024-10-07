@@ -28,7 +28,7 @@ let rec create stat_out cons_out data_out name config =
        | Error (`Msg msg) ->
          Logs.err (fun m -> m "create (exec) failed %s" msg) ;
          Lwt.return (None, fail_cont ())
-       | Ok (state', stat, data, name, vm) ->
+       | Ok (state', stat, data, name, unikernel) ->
          state := state';
          (if Unikernel.restart_handler config then
             match Vmm_vmmd.register_restart !state name Lwt.task with
@@ -42,18 +42,18 @@ let rec create stat_out cons_out data_out name config =
                       state := state';
                       if may && should_restart config name r then
                         create stat_out cons_out stub_data_out
-                          name vm.Unikernel.config
+                          name unikernel.Unikernel.config
                       else
                         Lwt.return_unit)));
          stat_out "setting up stat" stat >|= fun () ->
-         (Some vm, data)) >>= fun (started, data) ->
+         (Some unikernel, data)) >>= fun (started, data) ->
   (match started with
    | None -> ()
-   | Some vm ->
+   | Some unikernel ->
      Lwt.async (fun () ->
-         Vmm_lwt.wait_and_clear vm.Unikernel.pid >>= fun r ->
+         Vmm_lwt.wait_and_clear unikernel.Unikernel.pid >>= fun r ->
          Lwt_mutex.with_lock create_lock (fun () ->
-             let state', stat' = Vmm_vmmd.handle_shutdown !state name vm r in
+             let state', stat' = Vmm_vmmd.handle_shutdown !state name unikernel r in
              state := state';
              stat_out "handle shutdown stat" stat' >|= fun () ->
              let state', waiter_opt = Vmm_vmmd.waiter !state name in
@@ -94,8 +94,8 @@ let handle cons_out stat_out fd addr =
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->
           `Close
-        | `Create (id, vm) ->
-          create stat_out cons_out out id vm >|= fun () ->
+        | `Create (id, unikernel) ->
+          create stat_out cons_out out id unikernel >|= fun () ->
           Lwt_mutex.unlock create_lock;
           `Close
         | `Wait (who, data) ->
@@ -105,14 +105,14 @@ let handle cons_out stat_out fd addr =
           task >>= fun r ->
           out (data r) >|= fun () ->
           `Close
-        | `Wait_and_create (who, (id, vm)) ->
+        | `Wait_and_create (who, (id, unikernel)) ->
           let state', task = Vmm_vmmd.register !state who Lwt.task in
           state := state';
           Lwt_mutex.unlock create_lock;
           task >>= fun r ->
           Logs.info (fun m -> m "wait returned %a" pp_process_exit r);
           Lwt_mutex.with_lock create_lock (fun () ->
-              create stat_out cons_out out id vm) >|= fun () ->
+              create stat_out cons_out out id unikernel) >|= fun () ->
           `Close
         | `Replace_stats (wire, datas) ->
           (Option.fold

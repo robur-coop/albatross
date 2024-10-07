@@ -297,16 +297,16 @@ let ok_msg = Alcotest.(result unit msg)
 let empty_resources () =
   Alcotest.check test_resources __LOC__ Vmm_resources.empty Vmm_resources.empty;
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_vm empty (n_o_s "foo") u);
+    Vmm_resources.(check_unikernel empty (n_o_s "foo") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_vm empty (n_o_s "bar") u);
+    Vmm_resources.(check_unikernel empty (n_o_s "bar") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_vm empty (n_o_s "foo:bar") u);
+    Vmm_resources.(check_unikernel empty (n_o_s "foo:bar") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
     Vmm_resources.(check_block empty (n_o_s "foo:bar") 10)
 
 let p1 = Policy.{
-    vms = 1 ;
+    unikernels = 1 ;
     cpuids = IS.singleton 0 ;
     memory = 10 ;
     block = Some 5 ;
@@ -316,20 +316,20 @@ let p1 = Policy.{
 let r1 =
   Result.get_ok (Vmm_resources.(insert_policy empty (p_o_s "alpha") p1))
 
-let policy_is_respected_vm () =
+let policy_is_respected_unikernel () =
   Alcotest.check ok_msg __LOC__ (Ok ())
-    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u);
+    (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u);
+    (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u);
   let u' = { u with cpuid = 1 } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "cpuid not allowed"))
-    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u');
+    (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u');
   let u' = { u with memory = 11 } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "too much memory"))
-    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u');
+    (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u');
   let u' = { u with bridges = [ "service2", None, None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "wrong bridge"))
-    (Vmm_resources.check_vm r1 (n_o_s "alpha:bar") u')
+    (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u')
 
 let policy_is_respected_block () =
   Alcotest.check ok_msg __LOC__ (Ok ())
@@ -345,9 +345,9 @@ let policy_is_respected_sub () =
   (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p1 with
    | Error _ -> Alcotest.fail "expected insertion of sub-policy to succeed"
    | Ok _ -> ());
-  let p' = { p1 with vms = 2 } in
+  let p' = { p1 with unikernels = 2 } in
   (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
-   | Ok _ -> Alcotest.fail "insertion of subpolicy increasing vms should fail"
+   | Ok _ -> Alcotest.fail "insertion of subpolicy increasing unikernels should fail"
    | Error _ -> ());
   let p' = { p1 with cpuids = IS.singleton 1 } in
   (match Vmm_resources.insert_policy r1 (p_o_s "alpha:beta") p' with
@@ -379,13 +379,13 @@ let policy_is_respected_sub () =
    | Error _ -> ())
 
 let policy_is_respected_super () =
-  let p' = { p1 with vms = 2 } in
+  let p' = { p1 with unikernels = 2 } in
   (match Vmm_resources.insert_policy r1 Name.root_path p' with
    | Ok _ -> ()
-   | Error _ -> Alcotest.fail "insertion of superpolicy increasing vms should work");
-  let p' = { p1 with vms = 0 } in
+   | Error _ -> Alcotest.fail "insertion of superpolicy increasing unikernels should work");
+  let p' = { p1 with unikernels = 0 } in
   (match Vmm_resources.insert_policy r1 Name.root_path p' with
-   | Ok _ -> Alcotest.fail "insertion of superpolicy decreasing vms should fail"
+   | Ok _ -> Alcotest.fail "insertion of superpolicy decreasing unikernels should fail"
    | Error _ -> ());
   let p' = { p1 with cpuids = IS.(add 1 (singleton 0)) } in
   (match Vmm_resources.insert_policy r1 Name.root_path p' with
@@ -425,7 +425,7 @@ let policy_is_respected_super () =
    | Error _ -> ())
 
 let policy_can_be_overwritten () =
-  let p' = { p1 with vms = 2 } in
+  let p' = { p1 with unikernels = 2 } in
   match Vmm_resources.insert_policy r1 (p_o_s "alpha") p' with
   | Ok _ -> ()
   | Error _ -> Alcotest.fail "overwriting of policy should work"
@@ -458,7 +458,7 @@ let resource_remove_policy () =
    | Error _ -> Alcotest.fail "expected removal of policy to succeed"
    | Ok _ -> ())
 
-let resource_add_remove_vm () =
+let resource_add_remove_unikernel () =
   let u1 =
     Unikernel.{
       config = u ;
@@ -469,53 +469,53 @@ let resource_add_remove_vm () =
       started = Ptime.epoch ;
     }
   in
-  (match Vmm_resources.remove_vm r1 (n_o_s "alpha:beta") with
-   | Ok _ -> Alcotest.fail "expected non-existing vm removal to fail"
+  (match Vmm_resources.remove_unikernel r1 (n_o_s "alpha:beta") with
+   | Ok _ -> Alcotest.fail "expected non-existing unikernel removal to fail"
    | Error _ -> ());
-  let r2 = Vmm_resources.insert_vm r1 (n_o_s "alpha:beta") u1 in
-  Alcotest.check ok_msg __LOC__ (Error (`Msg "vm with same name already present"))
-    Vmm_resources.(check_vm r2 (n_o_s "alpha:beta") u);
+  let r2 = Vmm_resources.insert_unikernel r1 (n_o_s "alpha:beta") u1 in
+  Alcotest.check ok_msg __LOC__ (Error (`Msg "unikernel with same name already present"))
+    Vmm_resources.(check_unikernel r2 (n_o_s "alpha:beta") u);
   (try
-     ignore (Vmm_resources.insert_vm r2 (n_o_s "alpha:beta") u1);
-     Alcotest.fail "expected exception (second vm with same name)"
+     ignore (Vmm_resources.insert_unikernel r2 (n_o_s "alpha:beta") u1);
+     Alcotest.fail "expected exception (second unikernel with same name)"
    with
      Invalid_argument _ -> ());
-  match Vmm_resources.remove_vm r2 (n_o_s "alpha:beta") with
+  match Vmm_resources.remove_unikernel r2 (n_o_s "alpha:beta") with
   | Ok r3 ->
-    ignore (Vmm_resources.insert_vm r3 (n_o_s "alpha:beta") u1)
-  | Error _ -> Alcotest.fail "expected vm removal to succeed"
+    ignore (Vmm_resources.insert_unikernel r3 (n_o_s "alpha:beta") u1)
+  | Error _ -> Alcotest.fail "expected unikernel removal to succeed"
 
-let resource_vm_with_block () =
+let resource_unikernel_with_block () =
   let uc2 = Unikernel.{ u with block_devices = [ "block", None, None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
-    Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc2);
+    Vmm_resources.(check_unikernel r1 (n_o_s "alpha:bar") uc2);
   let r2 =
     Result.get_ok (Vmm_resources.insert_block r1 (n_o_s "alpha:block") 5)
   in
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_vm r2 (n_o_s "alpha:bar") uc2);
+    Vmm_resources.(check_unikernel r2 (n_o_s "alpha:bar") uc2);
   let uc3 = { uc2 with block_devices = [ "block", Some "b", None ] } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
-    Vmm_resources.(check_vm r1 (n_o_s "alpha:bar") uc3);
+    Vmm_resources.(check_unikernel r1 (n_o_s "alpha:bar") uc3);
   let u = Unikernel.{ config = uc2; cmd = Array.make 0 "" ; pid = 0 ; taps = [] ; digest = "" ; started = Ptime.epoch ; } in
-  let r3 = Vmm_resources.insert_vm r2 (n_o_s "alpha:bar") u in
+  let r3 = Vmm_resources.insert_unikernel r2 (n_o_s "alpha:bar") u in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device already in use"))
-    Vmm_resources.(check_vm r3 (n_o_s "alpha:bar2") uc2);
+    Vmm_resources.(check_unikernel r3 (n_o_s "alpha:bar2") uc2);
   (match Vmm_resources.remove_block r3 (n_o_s "alpha:block") with
    | Ok _ -> Alcotest.fail "block device should still be in use"
    | Error _ -> ())
 
 let resource_tests = [
   "empty resources is empty, everything accepted", `Quick, empty_resources ;
-  "policy is respected when checking vm", `Quick, policy_is_respected_vm ;
+  "policy is respected when checking unikernel", `Quick, policy_is_respected_unikernel ;
   "policy is respected when checking block", `Quick, policy_is_respected_block ;
   "policy is respected when checking sub-policy", `Quick, policy_is_respected_sub ;
   "policy is respected when checking super-policy", `Quick, policy_is_respected_super ;
   "policy can be overwritten", `Quick, policy_can_be_overwritten ;
   "block insertion and removal", `Quick, resource_insert_block ;
   "policy removal", `Quick, resource_remove_policy ;
-  "vm insertion and removal", `Quick, resource_add_remove_vm ;
-  "vm with block", `Quick, resource_vm_with_block ;
+  "unikernel insertion and removal", `Quick, resource_add_remove_unikernel ;
+  "unikernel with block", `Quick, resource_unikernel_with_block ;
 ]
 
 let test_version =

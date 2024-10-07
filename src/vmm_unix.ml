@@ -300,24 +300,24 @@ let bridges_exist bridges =
        bridge_exists (bridge_name b))
     (Ok ()) bridges
 
-let prepare name (vm : Unikernel.config) =
+let prepare name (unikernel : Unikernel.config) =
   let* image =
-    match vm.Unikernel.typ with
+    match unikernel.Unikernel.typ with
     | `Solo5 ->
-      if vm.Unikernel.compressed then
-        match Vmm_compress.uncompress vm.Unikernel.image with
+      if unikernel.Unikernel.compressed then
+        match Vmm_compress.uncompress unikernel.Unikernel.image with
         | Ok blob -> Ok blob
         | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
       else
-        Ok vm.Unikernel.image
+        Ok unikernel.Unikernel.image
   in
   let filename = Name.image_file name in
   let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
   let* target, version = solo5_image_target image in
   let* _ = check_solo5_tender target version in
-  let* () = manifest_devices_match ~bridges:vm.Unikernel.bridges ~block_devices:vm.Unikernel.block_devices image in
+  let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
   let* () = Bos.OS.File.write filename image in
-  let* () = bridges_exist vm.Unikernel.bridges in
+  let* () = bridges_exist unikernel.Unikernel.bridges in
   let fifo = Name.fifo_file name in
   let* () =
     match fifo_exists fifo with
@@ -342,14 +342,14 @@ let prepare name (vm : Unikernel.config) =
         let* tap = create_tap bridge in
         let (service, _, mac) = arg in
         Ok ((service, tap, mac) :: acc))
-      (Ok []) vm.Unikernel.bridges
+      (Ok []) unikernel.Unikernel.bridges
   in
   Ok (List.rev taps, digest)
 
-let vm_device vm =
+let unikernel_device unikernel =
   match Lazy.force uname with
-  | FreeBSD -> Ok ("solo5-" ^ string_of_int vm.Unikernel.pid)
-  | Linux -> Error (`Msg "don't know what you mean (trying to find vm device)")
+  | FreeBSD -> Ok ("solo5-" ^ string_of_int unikernel.Unikernel.pid)
+  | Linux -> Error (`Msg "don't know what you mean (trying to find unikernel device)")
 
 let free_system_resources name taps =
   (* same order as prepare! *)
@@ -426,7 +426,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     close_no_err stdout;
     Error (`Msg (Fmt.str "cmd %a exits: %a" Bos.Cmd.pp cmd pp_unix_err e))
 
-let destroy vm = Unix.kill vm.Unikernel.pid Sys.sigterm
+let destroy unikernel = Unix.kill unikernel.Unikernel.pid Sys.sigterm
 
 let bytes_of_mb size =
   let res = size lsl 20 in
@@ -519,7 +519,7 @@ let root_policy () =
     let rec gen_cpu acc n =
       if n = 0 then acc else gen_cpu (Vmm_core.IS.add (pred n) acc) (pred n)
     in
-    Ok { Vmm_core.Policy.vms = max_int ;
+    Ok { Vmm_core.Policy.unikernels = max_int ;
          cpuids = gen_cpu Vmm_core.IS.empty cpus ;
          memory ;
          block = Some disk_space ;
