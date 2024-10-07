@@ -120,13 +120,9 @@ let read_proc_status pid =
     List.map (String.split_on_char ':') lines |>
     List.fold_left (fun acc x -> match acc, x with
         | Some acc, k :: v ->
-          (* strip leading tab character *)
-          let v = String.concat ":" v in
-          if String.length v > 1 then
-            let v = String.sub v 1 (String.length v - 1) in
-            Some ((k, v) :: acc)
-          else
-            None
+          (* strip leading tab character and further possible whitespace *)
+          let v = String.concat ":" v |> String.trim in
+          Some ((k, v) :: acc)
         | _ -> None) (Some []) |>
     Option.to_result ~none:(`Msg "failed to parse /proc/<pid>/status")
   with _ -> Error (`Msg (Fmt.str "error reading file /proc/%d/status" pid))
