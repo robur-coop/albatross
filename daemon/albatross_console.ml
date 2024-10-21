@@ -7,8 +7,8 @@
     - Add name (by vmmd) --> creates a new console slurper for name,
        and starts a read_console task
     - Attach name --> attaches console of name: send existing stuff to client,
-       and record the requesting socket to receive further messages. A potential
-       earlier subscriber to the same console is closed. *)
+       and record the requesting socket to receive further messages. Multiple
+       clients can be attached simultaneously. *)
 
 open Lwt.Infix
 
@@ -219,7 +219,7 @@ let cmd =
     `S "DESCRIPTION";
     `P "$(tname) reads the console output of a unikernel and preserves the
         latest 1000 lines in a ring buffer in memory for clients. Each unikernel
-        may only have a single subscribed client, which is sent to until the
+        may have multiple subscribed clients, which is sent to until the
         client closes the connection (each new line is sent as new message on
         the stream). The albatross-daemon informs albatross-console when a new
         unikernel is created, and albatross-console starts reading from the
