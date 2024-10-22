@@ -13,7 +13,7 @@
  (public_name albatross.unix)
  (wrapped false)
  (modules vmm_unix vmm_lwt vmm_vmmd)
- (libraries albatross ipaddr.unix bos solo5-elftool lwt lwt.unix ptime.clock.os
+ (libraries albatross ipaddr.unix bos solo5-elftool lwt lwt.unix ptime.clock
    digestif cachet)
  (foreign_stubs
   (language c)
