@@ -362,6 +362,26 @@ module Unikernel = struct
   let restart_handler config =
     match config.fail_behaviour with `Quit -> false | `Restart _ -> true
 
+  type arguments = {
+    fail_behaviour : fail_behaviour;
+    cpuid : int ;
+    memory : int ;
+    block_devices : (string * string option * int option) list ;
+    bridges : (string * string option * Macaddr.t option) list ;
+    argv : string list option ;
+  }
+
+  let pp_arguments ppf (unikernel : arguments) =
+    Fmt.pf ppf "fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
+      pp_fail_behaviour unikernel.fail_behaviour
+      unikernel.cpuid unikernel.memory
+      Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
+      Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
+
+  let pp_arguments_with_argv ppf (unikernel : arguments) =
+    Fmt.pf ppf "%a@ argv %a" pp_arguments unikernel
+      Fmt.(option ~none:(any "no") (list ~sep:(any " ") string)) unikernel.argv
+
   type t = {
     config : config ;
     cmd : string array ;
