@@ -378,7 +378,7 @@ let handle_unikernel_cmd t id =
          | () -> ());
         Ok (t, `Wait_and_create (id, (id, unikernel_config)))
     end
-  | `Unikernel_restart ->
+  | `Unikernel_restart args ->
     begin
       match Vmm_resources.find_unikernel t.resources id with
       | None -> stop_create t id
@@ -388,7 +388,19 @@ let handle_unikernel_cmd t id =
         (match Vmm_unix.destroy unikernel with
          | exception Unix.Unix_error _ -> ()
          | () -> ());
-        Ok (t, `Wait_and_create (id, (id, unikernel.Unikernel.config)))
+        let config =
+          match args with
+          | None -> unikernel.Unikernel.config
+          | Some (a : Unikernel.arguments) ->
+            (* TODO: should check whether args conform to manifest!? *)
+            { unikernel.Unikernel.config with
+              fail_behaviour = a.fail_behaviour ;
+              cpuid = a.cpuid ;
+              block_devices = a.block_devices ;
+              bridges = a.bridges ;
+              argv = a.argv }
+        in
+        Ok (t, `Wait_and_create (id, (id, config)))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_unikernel t.resources id with

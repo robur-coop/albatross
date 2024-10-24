@@ -123,6 +123,19 @@ module Unikernel : sig
 
   val restart_handler : config -> bool
 
+  type arguments = {
+    fail_behaviour : fail_behaviour;
+    cpuid : int ;
+    memory : int ;
+    block_devices : (string * string option * int option) list ;
+    bridges : (string * string option * Macaddr.t option) list ;
+    argv : string list option ;
+  }
+
+  val pp_arguments : arguments Fmt.t
+
+  val pp_arguments_with_argv : arguments Fmt.t
+
   type t = {
     config : config;
     cmd : string array;
