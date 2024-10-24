@@ -366,7 +366,7 @@ module Unikernel = struct
     config : config ;
     cmd : string array ;
     pid : int ;
-    taps : string list ;
+    taps : (string * Macaddr.t) list ;
     digest : string ;
     started : Ptime.t ;
   }
@@ -375,28 +375,63 @@ module Unikernel = struct
     let hex_digest = Ohex.encode unikernel.digest in
     Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
       unikernel.pid
-      Fmt.(list ~sep:(any ", ") string) unikernel.taps
+      Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string Macaddr.pp)) unikernel.taps
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.config.block_devices
       Fmt.(array ~sep:(any " ") string) unikernel.cmd
       hex_digest
+
+  type block_info = {
+    unikernel_device : string ;
+    host_device : string ;
+    sector_size : int ;
+    size : int ;
+  }
+
+  let pp_block_info ppf { unikernel_device ; host_device ; sector_size ; size } =
+    Fmt.pf ppf "%s -> %s (sector-size: %u bytes, size %u MB)"
+      unikernel_device host_device sector_size size
+
+  type net_info = {
+    unikernel_device : string ;
+    host_device : string ;
+    mac : Macaddr.t ;
+  }
+
+  let pp_net_info ppf { unikernel_device ; host_device ; mac } =
+    Fmt.pf ppf "%s -> %s (mac %a)" unikernel_device host_device
+      Macaddr.pp mac
 
   type info = {
     typ : typ ;
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : (string * string option * int option) list ;
-    bridges : (string * string option * Macaddr.t option) list ;
+    block_devices : block_info list ;
+    bridges : net_info list ;
     argv : string list option ;
     digest : string ;
     started : Ptime.t ;
   }
 
-  let info t =
+  let info block_size t =
     let cfg = t.config in
+    let block_devices =
+      List.map (fun (unikernel_device, host_device, sector_size) ->
+          let host_device = Option.value ~default:unikernel_device host_device
+          and sector_size = Option.value ~default:512 sector_size (* TODO: this is the default in solo5-hvt at the moment *)
+          in
+          let size = Option.value ~default:0 (* TODO: ??? can this happen? *) (block_size host_device) in
+          { unikernel_device ; host_device ; sector_size ; size })
+        cfg.block_devices
+    and bridges =
+      List.map2 (fun (unikernel_device, host_device, _mac) (_tap, mac) ->
+          let host_device = Option.value ~default:unikernel_device host_device in
+          { unikernel_device ; host_device ; mac }
+        ) cfg.bridges t.taps
+    in
     { typ = cfg.typ ; fail_behaviour = cfg.fail_behaviour ; cpuid = cfg.cpuid ;
-      memory = cfg.memory ; block_devices = cfg.block_devices ;
-      bridges = cfg.bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
+      memory = cfg.memory ; block_devices ;
+      bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
 
   let pp_info ppf (info : info) =
     let hex_digest = Ohex.encode info.digest in
@@ -405,8 +440,8 @@ module Unikernel = struct
       (Ptime.pp_rfc3339 ()) info.started
       pp_fail_behaviour info.fail_behaviour
       info.cpuid info.memory
-      Fmt.(list ~sep:(any ", ") pp_block) info.block_devices
-      Fmt.(list ~sep:(any ", ") pp_bridge) info.bridges
+      Fmt.(list ~sep:(any ", ") pp_block_info) info.block_devices
+      Fmt.(list ~sep:(any ", ") pp_net_info) info.bridges
       hex_digest
 
   let pp_info_with_argv ppf (info : info) =

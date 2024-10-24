@@ -175,7 +175,9 @@ let setup_stats t name unikernel =
     let name = match Vmm_unix.unikernel_device unikernel with
       | Error _ -> ""
       | Ok name -> name
-    and ifs = Unikernel.(List.combine (List.map (fun (x,_,_) -> x) unikernel.config.bridges) unikernel.taps)
+    and ifs =
+      Unikernel.(List.combine (List.map (fun (x,_,_) -> x) unikernel.config.bridges)
+                   (List.map fst unikernel.taps))
     in
     `Stats_add (name, unikernel.Unikernel.pid, ifs)
   in
@@ -239,7 +241,7 @@ let handle_create t name unikernel_config =
       (cons_out, success, fail))
 
 let handle_shutdown t name unikernel r =
-  (match Vmm_unix.free_system_resources name unikernel.Unikernel.taps with
+  (match Vmm_unix.free_system_resources name (List.map fst unikernel.Unikernel.taps) with
    | Ok () -> ()
    | Error (`Msg e) ->
      Logs.err (fun m -> m "%s while shutdown unikernel %a" e Unikernel.pp unikernel));
@@ -284,7 +286,13 @@ let handle_policy_cmd t id =
     in
     Ok (t, `End (`Success (`Policies policies)))
 
-let handle_unikernel_cmd t id = function
+let handle_unikernel_cmd t id =
+  let block_size id name =
+    match Vmm_resources.find_block t.resources (Name.block_name id name) with
+    | None -> None
+    | Some (size, _active) -> Some size
+  in
+  function
   | `Old_unikernel_info1 ->
     Logs.debug (fun m -> m "old info1 %a" Name.pp id) ;
     let empty_image unikernel = { unikernel.Unikernel.config with image = "" } in
@@ -311,9 +319,9 @@ let handle_unikernel_cmd t id = function
       match Name.name id with
       | None ->
         Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, Unikernel.info unikernel) :: unikernels) []
+          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
       | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info unikernel ])
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
           (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Old_unikernel_info infos)))
@@ -323,9 +331,9 @@ let handle_unikernel_cmd t id = function
       match Name.name id with
       | None ->
         Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, Unikernel.info unikernel) :: unikernels) []
+          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
       | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info unikernel ])
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
           (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Unikernel_info infos)))

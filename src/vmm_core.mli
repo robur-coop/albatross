@@ -127,26 +127,39 @@ module Unikernel : sig
     config : config;
     cmd : string array;
     pid : int;
-    taps : string list;
+    taps : (string * Macaddr.t) list;
     digest : string;
     started : Ptime.t;
   }
 
   val pp : t Fmt.t
 
+  type block_info = {
+    unikernel_device : string ;
+    host_device : string ;
+    sector_size : int ;
+    size : int ;
+  }
+
+  type net_info = {
+    unikernel_device : string ;
+    host_device : string ;
+    mac : Macaddr.t ;
+  }
+
   type info = {
     typ : typ ;
     fail_behaviour : fail_behaviour;
     cpuid : int ;
     memory : int ;
-    block_devices : (string * string option * int option) list ;
-    bridges : (string * string option * Macaddr.t option) list ;
+    block_devices : block_info list ;
+    bridges : net_info list ;
     argv : string list option ;
     digest : string ;
     started : Ptime.t ;
   }
 
-  val info : t -> info
+  val info : (string -> int option) -> t -> info
 
   val pp_info : info Fmt.t
 
