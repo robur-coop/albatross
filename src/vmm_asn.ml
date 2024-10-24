@@ -476,6 +476,37 @@ let unikernel_config =
                                 (optional ~label:"mac" mac_addr)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
+let unikernel_arguments =
+  let open Unikernel in
+  let f (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv))))) =
+    let bridges = match bridges with None -> [] | Some xs -> xs
+    and block_devices = match blocks with None -> [] | Some xs -> xs
+    in
+    { fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+  and g (unikernel : arguments) =
+    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
+    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
+    in
+    (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv)))))
+  in
+  Asn.S.(map f g @@ sequence @@
+           (required ~label:"fail-behaviour" fail_behaviour)
+         @ (required ~label:"cpuid" int)
+         @ (required ~label:"memory" int)
+         @ (optional ~label:"blocks"
+              (my_explicit 0 (set_of
+                                (sequence3
+                                   (required ~label:"block-name" utf8_string)
+                                   (optional ~label:"block-device-name" utf8_string)
+                                   (optional ~label:"block-sector-size" int)))))
+         @ (optional ~label:"bridges"
+              (my_explicit 1 (set_of
+                             (sequence3
+                                (required ~label:"netif" utf8_string)
+                                (optional ~label:"bridge" utf8_string)
+                                (optional ~label:"mac" mac_addr)))))
+        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+
 let unikernel_cmd =
   let f = function
     | `C1 `C1 () -> `Old_unikernel_info1
@@ -490,7 +521,8 @@ let unikernel_cmd =
     | `C2 `C4 unikernel -> `Unikernel_create unikernel
     | `C2 `C5 unikernel -> `Unikernel_force_create unikernel
     | `C2 `C6 level -> `Unikernel_get level
-    | `C3 `C1 () -> `Unikernel_restart
+    | `C3 `C1 `C1 () -> `Unikernel_restart None
+    | `C3 `C1 `C2 args -> `Unikernel_restart (Some args)
     | `C3 `C2 () -> `Unikernel_info
   and g = function
     | `Old_unikernel_info1 -> `C1 (`C1 ())
@@ -500,7 +532,8 @@ let unikernel_cmd =
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Old_unikernel_info2 -> `C2 (`C2 ())
     | `Unikernel_get level -> `C2 (`C6 level)
-    | `Unikernel_restart -> `C3 (`C1 ())
+    | `Unikernel_restart None -> `C3 (`C1 (`C1 ()))
+    | `Unikernel_restart (Some args) -> `C3 (`C1 (`C2 args))
     | `Unikernel_info -> `C3 (`C2 ())
   in
   Asn.S.map f g @@
@@ -520,7 +553,10 @@ let unikernel_cmd =
              (my_explicit 10 ~label:"force-create" unikernel_config)
              (my_explicit 11 ~label:"get" int))
           (choice2
-             (my_explicit 12 ~label:"restart" null)
+             (my_explicit 12 ~label:"restart"
+                (choice2
+                   (my_explicit 0 ~label:"no arguments" null)
+                   (my_explicit 1 ~label:"new arguments" unikernel_arguments)))
              (my_explicit 13 ~label:"info" null)))
 
 let policy_cmd =
@@ -629,14 +665,33 @@ let data =
 let old_unikernel_info =
   let open Unikernel in
   let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, argv))))))) =
-    let bridges = match bridges with None -> [] | Some xs -> xs
-    and block_devices = match blocks with None -> [] | Some xs -> xs
+    let bridges = match bridges with None -> [] | Some xs ->
+      List.map (fun (unikernel_device, host_device, mac) ->
+          { unikernel_device ; host_device = Option.value ~default:unikernel_device host_device ;
+            mac = Option.value ~default:Macaddr.broadcast mac })
+        xs
+    and block_devices = match blocks with None -> [] | Some xs ->
+      List.map (fun (unikernel_device, host_device, sector_size) ->
+          { unikernel_device ; host_device = Option.value ~default:unikernel_device host_device ;
+            sector_size = Option.value ~default:512 (* TODO: default from solo5-hvt *) sector_size ;
+            size = 0 })
+        xs
     and started = Ptime.epoch
     in
     { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
   and g (unikernel : info) =
-    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
-    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
+    let bridges = match unikernel.bridges with
+      | [] -> None
+      | xs ->
+        Some (List.map (fun { unikernel_device ; host_device ; mac } ->
+            unikernel_device, Some host_device, Some mac)
+            xs)
+    and blocks = match unikernel.block_devices with
+      | [] -> None
+      | xs ->
+        Some (List.map (fun { unikernel_device ; host_device ; sector_size ; _ } ->
+            unikernel_device, Some host_device, Some sector_size)
+            xs)
     in
     (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, unikernel.argv)))))))
   in
@@ -649,28 +704,40 @@ let old_unikernel_info =
          @ (optional ~label:"blocks"
               (my_explicit 0 (set_of
                                 (sequence3
-                                   (required ~label:"block-name" utf8_string)
-                                   (optional ~label:"block-device-name" utf8_string)
+                                   (required ~label:"unikernel-device" utf8_string)
+                                   (optional ~label:"host-device" utf8_string)
                                    (optional ~label:"block-sector-size" int)))))
          @ (optional ~label:"bridges"
               (my_explicit 1 (set_of
                                 (sequence3
-                                   (required ~label:"net-name" utf8_string)
-                                   (optional ~label:"bridge-name" utf8_string)
+                                   (required ~label:"unikernel-device" utf8_string)
+                                   (optional ~label:"host-device" utf8_string)
                                    (optional ~label:"mac" mac_addr)))))
         -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
 let unikernel_info =
   let open Unikernel in
   let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started)))))))) =
-    let bridges = match bridges with None -> [] | Some xs -> xs
-    and block_devices = match blocks with None -> [] | Some xs -> xs
+    let bridges = match bridges with None -> [] | Some xs ->
+      List.map (fun (unikernel_device, host_device, mac) ->
+          { unikernel_device ; host_device ; mac })
+        xs
+    and block_devices = match blocks with None -> [] | Some xs ->
+      List.map (fun (unikernel_device, host_device, sector_size, size) ->
+          { unikernel_device ; host_device ; sector_size ; size })
+        xs
     and started = Option.value ~default:Ptime.epoch started
     in
     { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
   and g (unikernel : info) =
-    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
-    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
+    let bridges = match unikernel.bridges with
+      | [] -> None
+      | xs -> Some (List.map (fun { unikernel_device ; host_device ; mac } ->
+          unikernel_device, host_device, mac) xs)
+    and blocks = match unikernel.block_devices with
+      | [] -> None
+      | xs -> Some (List.map (fun { unikernel_device ; host_device ; sector_size ; size } ->
+          unikernel_device, host_device, sector_size, size) xs)
     in
     (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, Some unikernel.started))))))))
   in
@@ -682,16 +749,17 @@ let unikernel_info =
          @ (required ~label:"digest" octet_string)
          @ (optional ~label:"blocks"
               (my_explicit 0 (set_of
-                                (sequence3
-                                   (required ~label:"block-name" utf8_string)
-                                   (optional ~label:"block-device-name" utf8_string)
-                                   (optional ~label:"block-sector-size" int)))))
+                                (sequence4
+                                   (required ~label:"unikernel-device" utf8_string)
+                                   (required ~label:"host-device" utf8_string)
+                                   (required ~label:"block-sector-size" int)
+                                   (required ~label:"block-size" int)))))
          @ (optional ~label:"bridges"
               (my_explicit 1 (set_of
                                 (sequence3
-                                   (required ~label:"net-name" utf8_string)
-                                   (optional ~label:"bridge-name" utf8_string)
-                                   (optional ~label:"mac" mac_addr)))))
+                                   (required ~label:"unikernel-device" utf8_string)
+                                   (required ~label:"host-device" utf8_string)
+                                   (required ~label:"mac" mac_addr)))))
          @ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string)))
         -@ (optional ~label:"started" (my_explicit 3 generalized_time)))
 

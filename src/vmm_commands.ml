@@ -59,7 +59,7 @@ type unikernel_cmd = [
   | `Unikernel_info
   | `Unikernel_create of Unikernel.config
   | `Unikernel_force_create of Unikernel.config
-  | `Unikernel_restart
+  | `Unikernel_restart of Unikernel.arguments option
   | `Unikernel_destroy
   | `Unikernel_get of int
   | `Old_unikernel_info1
@@ -77,7 +77,10 @@ let pp_unikernel_cmd ~verbose ppf = function
     Fmt.pf ppf "unikernel force create %a"
       (if verbose then Unikernel.pp_config_with_argv else Unikernel.pp_config)
       config
-  | `Unikernel_restart -> Fmt.string ppf "unikernel restart"
+  | `Unikernel_restart args ->
+    Fmt.pf ppf "unikernel restart%a"
+      Fmt.(option ~none:(any "") (any " " ++ if verbose then Unikernel.pp_arguments_with_argv else Unikernel.pp_arguments))
+      args
   | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
   | `Unikernel_get level -> Fmt.pf ppf "unikernel get compress level %d" level
   | `Old_unikernel_info1 -> Fmt.string ppf "old unikernel info1"
