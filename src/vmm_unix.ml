@@ -380,10 +380,14 @@ let cpuset cpu =
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
+  let bridge_taps =
+    List.map (fun (bridge, tap, mac) ->
+        bridge, tap, Option.value mac ~default:(Name.mac name bridge))
+      bridge_taps
+  in
   let net, macs =
     List.split
       (List.map (fun (bridge, tap, mac) ->
-           let mac = Option.value mac ~default:(Name.mac name bridge) in
            "--net:" ^ bridge ^ "=" ^ tap,
            "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
           bridge_taps)
@@ -431,7 +435,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     (* we gave a copy (well, two copies) of that file descriptor to the solo5
        process and don't really need it here anymore... *)
     close_no_err stdout ;
-    let taps = List.map (fun (_,tap,_) -> tap) bridge_taps in
+    let taps = List.map (fun (_, tap, mac) -> tap, mac) bridge_taps in
     let started = Ptime_clock.now () in
     Ok Unikernel.{ config ; cmd = line ; pid ; taps ; digest ; started }
   with
