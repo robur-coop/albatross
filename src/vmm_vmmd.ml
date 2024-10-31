@@ -381,7 +381,11 @@ let handle_unikernel_cmd t id =
   | `Unikernel_restart args ->
     begin
       match Vmm_resources.find_unikernel t.resources id with
-      | None -> stop_create t id
+      | None ->
+        (* TODO: unsure about the semantics here -- a restart on a non-existing
+           unikernel should do what? and on a currently restart(ing-on-failure)
+           one? *)
+        stop_create t id
       | Some unikernel ->
         let* resources = Vmm_resources.remove_unikernel t.resources id in
         let* () = Vmm_resources.check_unikernel resources id unikernel.Unikernel.config in
@@ -392,7 +396,6 @@ let handle_unikernel_cmd t id =
           match args with
           | None -> unikernel.Unikernel.config
           | Some (a : Unikernel.arguments) ->
-            (* TODO: should check whether args conform to manifest!? *)
             { unikernel.Unikernel.config with
               fail_behaviour = a.fail_behaviour ;
               cpuid = a.cpuid ;
@@ -400,7 +403,12 @@ let handle_unikernel_cmd t id =
               bridges = a.bridges ;
               argv = a.argv }
         in
-        Ok (t, `Wait_and_create (id, (id, config)))
+        match Vmm_unix.manifest_devices_match ~bridges:config.bridges
+                ~block_devices:config.block_devices
+                config.image
+        with
+        | Ok () -> Ok (t, `Wait_and_create (id, (id, config)))
+        | Error _ as e -> e
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_unikernel t.resources id with
