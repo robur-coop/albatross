@@ -521,9 +521,10 @@ let unikernel_cmd =
     | `C2 `C4 unikernel -> `Unikernel_create unikernel
     | `C2 `C5 unikernel -> `Unikernel_force_create unikernel
     | `C2 `C6 level -> `Unikernel_get level
-    | `C3 `C1 `C1 () -> `Unikernel_restart None
-    | `C3 `C1 `C2 args -> `Unikernel_restart (Some args)
+    | `C3 `C1 () -> `Unikernel_restart None
     | `C3 `C2 () -> `Unikernel_info
+    | `C3 `C3 `C1 () -> `Unikernel_restart None
+    | `C3 `C3 `C2 args -> `Unikernel_restart (Some args)
   and g = function
     | `Old_unikernel_info1 -> `C1 (`C1 ())
     | `Unikernel_create unikernel -> `C2 (`C4 unikernel)
@@ -532,8 +533,8 @@ let unikernel_cmd =
     | `Old_unikernel_get -> `C2 (`C1 ())
     | `Old_unikernel_info2 -> `C2 (`C2 ())
     | `Unikernel_get level -> `C2 (`C6 level)
-    | `Unikernel_restart None -> `C3 (`C1 (`C1 ()))
-    | `Unikernel_restart (Some args) -> `C3 (`C1 (`C2 args))
+    | `Unikernel_restart None -> `C3 (`C3 (`C1 ()))
+    | `Unikernel_restart (Some args) -> `C3 (`C3 (`C2 args))
     | `Unikernel_info -> `C3 (`C2 ())
   in
   Asn.S.map f g @@
@@ -552,12 +553,13 @@ let unikernel_cmd =
              (my_explicit 9 ~label:"create" unikernel_config)
              (my_explicit 10 ~label:"force-create" unikernel_config)
              (my_explicit 11 ~label:"get" int))
-          (choice2
-             (my_explicit 12 ~label:"restart"
+          (choice3
+             (my_explicit 12 ~label:"restart-OLD" null)
+             (my_explicit 13 ~label:"info" null)
+             (my_explicit 14 ~label:"restart"
                 (choice2
                    (my_explicit 0 ~label:"no arguments" null)
-                   (my_explicit 1 ~label:"new arguments" unikernel_arguments)))
-             (my_explicit 13 ~label:"info" null)))
+                   (my_explicit 1 ~label:"new arguments" unikernel_arguments)))))
 
 let policy_cmd =
   let f = function
