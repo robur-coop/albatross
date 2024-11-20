@@ -38,7 +38,7 @@ let read_console id name ring fd =
              Vmm_lwt.safe_close fd >|= fun () ->
              let update s =
                let s = Option.value ~default:[] s in
-               let s' = List.filter (fun (_v, _u, fd') -> fd <> fd') s in
+               let s' = List.filter (fun (_v, _u, fd') -> fd != fd') s in
                if s' = [] then
                  None
                else
