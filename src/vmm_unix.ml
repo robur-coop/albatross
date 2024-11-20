@@ -252,13 +252,12 @@ let check_solo5_tender target version =
     Error (`Msg (Fmt.str "unexpected solo5 tender --version output, expected one line with 'ABI version %u', got %s"
                    version (String.concat "\n" out)))
 
-let solo5_image_devices image =
-  let* mft = Solo5_elftool.query_manifest (owee_buf_of_str image) in
-  Ok (List.fold_left
-        (fun (block_devices, networks) -> function
-           | Solo5_elftool.Dev_block_basic name -> name :: block_devices, networks
-           | Solo5_elftool.Dev_net_basic name -> block_devices, name :: networks)
-        ([], []) mft.entries)
+let solo5_image_devices mft =
+  List.fold_left
+    (fun (block_devices, networks) -> function
+       | Solo5_elftool.Dev_block_basic name -> name :: block_devices, networks
+       | Solo5_elftool.Dev_net_basic name -> block_devices, name :: networks)
+    ([], []) mft.Solo5_elftool.entries
 
 let equal_string_lists b1 b2 err =
   if String_set.(equal (of_list b1) (of_list b2)) then
@@ -266,20 +265,23 @@ let equal_string_lists b1 b2 err =
   else
     Error (`Msg err)
 
-let devices_match ~bridges ~block_devices (manifest_block, manifest_net) =
+let devices_match ~bridges ~block_devices mft =
+  let (manifest_block, manifest_net) = solo5_image_devices mft in
   let* () =
     equal_string_lists manifest_block block_devices
-      "specified block device(s) does not match with manifest"
+      (Format.asprintf "specified block device(s) does not match with manifest. Declared manifest: %a"
+         Solo5_elftool.pp_mft mft)
   in
   equal_string_lists manifest_net bridges
-    "specified bridge(s) does not match with the manifest"
+    (Format.asprintf "specified bridge(s) does not match with the manifest. Declared manifest: %a"
+         Solo5_elftool.pp_mft mft)
 
 let manifest_devices_match ~bridges ~block_devices image =
-  let* things = solo5_image_devices image in
+  let* mft = Solo5_elftool.query_manifest (owee_buf_of_str image) in
   let bridges = List.map (fun (b, _, _) -> b) bridges
   and block_devices = List.map (fun (b, _, _) -> b) block_devices
   in
-  devices_match ~bridges ~block_devices things
+  devices_match ~bridges ~block_devices mft
 
 let bridge_name (service, b, _mac) = match b with None -> service | Some b -> b
 
