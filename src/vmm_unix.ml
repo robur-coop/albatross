@@ -273,11 +273,11 @@ let devices_match ~bridges ~block_devices mft =
   in
   let* () =
     equal_string_lists manifest_block block_devices
-      (Fmt.str "specified block device(s) does not match with manifest. Declared devices: %a"
+      (Fmt.str "specified block device(s) does not match with manifest. Devices present in manifest: %a"
          Fmt.(list ~sep:(any ", ") pp_entry) mft.entries)
   in
   equal_string_lists manifest_net bridges
-    (Fmt.str "specified bridge(s) does not match with the manifest. Declared devices: %a"
+    (Fmt.str "specified bridge(s) does not match with the manifest. Devices present in manifest: %a"
          Fmt.(list ~sep:(any ", ") pp_entry) mft.entries)
 
 let manifest_devices_match ~bridges ~block_devices image =
