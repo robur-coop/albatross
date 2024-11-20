@@ -19,7 +19,7 @@ let active = ref Vmm_core.String_map.empty
 let read_console id name ring fd =
   let update s =
     let s = Option.value ~default:[] s in
-    let s' = List.filter (fun (_v, _u, fd') -> fd <> fd') s in
+    let s' = List.filter (fun (_v, _u, fd') -> fd != fd') s in
     if s' = [] then
       None
     else
