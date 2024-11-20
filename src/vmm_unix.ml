@@ -267,14 +267,18 @@ let equal_string_lists b1 b2 err =
 
 let devices_match ~bridges ~block_devices mft =
   let (manifest_block, manifest_net) = solo5_image_devices mft in
+  let pp_entry ppf = function
+    | Solo5_elftool.Dev_block_basic name -> Fmt.pf ppf "block %S" name
+    | Solo5_elftool.Dev_net_basic name -> Fmt.pf ppf "net %S" name
+  in
   let* () =
     equal_string_lists manifest_block block_devices
-      (Format.asprintf "specified block device(s) does not match with manifest. Declared manifest: %a"
-         Solo5_elftool.pp_mft mft)
+      (Fmt.str "specified block device(s) does not match with manifest. Declared devices: %a"
+         Fmt.(list ~sep:(any ", ") pp_entry) mft.entries)
   in
   equal_string_lists manifest_net bridges
-    (Format.asprintf "specified bridge(s) does not match with the manifest. Declared manifest: %a"
-         Solo5_elftool.pp_mft mft)
+    (Fmt.str "specified bridge(s) does not match with the manifest. Declared devices: %a"
+         Fmt.(list ~sep:(any ", ") pp_entry) mft.entries)
 
 let manifest_devices_match ~bridges ~block_devices image =
   let* mft = Solo5_elftool.query_manifest (owee_buf_of_str image) in
