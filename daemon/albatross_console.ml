@@ -17,6 +17,14 @@ let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 let active = ref Vmm_core.String_map.empty
 
 let read_console id name ring fd =
+  let update s =
+    let s = Option.value ~default:[] s in
+    let s' = List.filter (fun (_v, _u, fd') -> fd <> fd') s in
+    if s' = [] then
+      None
+    else
+      Some s'
+  in
   Lwt.catch (fun () ->
       Lwt_unix.wait_read fd >>= fun () ->
       let channel = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
@@ -36,14 +44,6 @@ let read_console id name ring fd =
            Vmm_lwt.write_wire fd (header, data) >>= function
            | Error _ ->
              Vmm_lwt.safe_close fd >|= fun () ->
-             let update s =
-               let s = Option.value ~default:[] s in
-               let s' = List.filter (fun (_v, _u, fd') -> fd <> fd') s in
-               if s' = [] then
-                 None
-               else
-                 Some s'
-             in
              active := Vmm_core.String_map.update name update !active
            | Ok () -> Lwt.return_unit
         in
@@ -61,7 +61,8 @@ let read_console id name ring fd =
          | exn ->
            Logs.err (fun m -> m "%s error while reading %s" name (Printexc.to_string exn))
        end ;
-       Vmm_lwt.safe_close fd)
+       Vmm_lwt.safe_close fd >|= fun () ->
+       active := Vmm_core.String_map.update name update !active)
 
 let open_fifo name =
   let fifo = Vmm_core.Name.fifo_file name in
