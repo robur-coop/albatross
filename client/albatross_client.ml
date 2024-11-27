@@ -153,6 +153,13 @@ let prepare_update ~happy_eyeballs level host dryrun = function
             Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
             Lwt.return (Error Http_error)
           | Ok unikernel ->
+            let bridges = List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; mac } ->
+                unikernel_device, Some host_device, Some mac)
+                bridges
+            and block_devices = List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; sector_size ; _ } ->
+                unikernel_device, Some host_device, Some sector_size)
+                block_devices
+            in
             let r =
               Vmm_unix.manifest_devices_match ~bridges ~block_devices unikernel
             in
@@ -693,7 +700,32 @@ let create () force image cpuid memory argv block network compression restart_on
   | Ok cmd -> jump (`Unikernel_cmd cmd) name d cert key ca key_type tmpdir
   | Error _ as e -> e
 
-let restart () = jump (`Unikernel_cmd `Unikernel_restart)
+let restart () replace cpuid memory argv block_devices bridges restart_on_fail exit_codes name d cert key ca key_type tmpdir =
+  let ( let* ) = Result.bind in
+  let* args =
+    if replace then
+      let* () =
+        if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
+          Ok ()
+        else
+          Error (`Msg "Bridge names must be a set")
+      in
+      let* () =
+        if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) block_devices))) = List.length block_devices then
+          Ok ()
+        else
+          Error (`Msg "Block devices must be a set")
+      in
+      let fail_behaviour =
+        let exits = match exit_codes with [] -> None | xs -> Some (Vmm_core.IS.of_list xs) in
+        if restart_on_fail then `Restart exits else `Quit
+      and argv = match argv with [] -> None | xs -> Some xs
+      in
+      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv })
+    else
+      Ok None
+  in
+  jump (`Unikernel_cmd (`Unikernel_restart args)) name d cert key ca key_type tmpdir
 
 let since_count since count = match since with
   | None -> `Count count
@@ -1089,7 +1121,7 @@ let net =
 
 let restart_on_fail =
   let doc = "When the unikernel exits, restart it." in
-  Arg.(value & flag & info [  "restart" ; "restart-on-fail" ] ~doc)
+  Arg.(value & flag & info [ "restart" ; "restart-on-fail" ] ~doc)
 
 let exit_code =
   let doc = "Exit codes to restart on (default: everything apart 1 (solo5 error), 60, 61, 62, 63, 64 (argument parsing errors)). Can be repeated." in
@@ -1230,6 +1262,10 @@ let destroy_cmd =
   in
   Cmd.v info term
 
+let replace_args =
+  let doc = "Replace the arguments with the provided ones." in
+  Arg.(value & flag & info [ "replace-arguments" ] ~doc)
+
 let restart_cmd =
   let doc = "Restarts a unikernel." in
   let man =
@@ -1237,7 +1273,7 @@ let restart_cmd =
      `P "Restarts a unikernel."]
   in
   let term =
-    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ replace_args $ cpu $ unikernel_mem $ args $ block $ net $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
