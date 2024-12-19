@@ -180,7 +180,7 @@ to retain the signing request and certificate, and the user keys are on the
 local machine.
 
 ```
-albatross-client create hello hello-key.hvt --ca=user.pem --ca-key=user.pem --server-ca=cacert.pem --destination <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
+albatross-client create hello hello-key.hvt --ca=user.pem --ca-key=user.key --server-ca=cacert.pem --destination <REMOTE_IP:PORT> [--arg='--hello=albatross-hi'] [--cpu=1]
 ```
 
 ## Installation
