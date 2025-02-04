@@ -375,6 +375,11 @@ let handle_unikernel_cmd t id = function
       match Vmm_resources.find_unikernel t.resources id with
       | None -> stop_create t id
       | Some unikernel ->
+        let* resources = Vmm_resources.remove_unikernel t.resources id in
+        let* () = Vmm_resources.check_unikernel resources id unikernel.Unikernel.config in
+        (match Vmm_unix.destroy unikernel with
+         | exception Unix.Unix_error _ -> ()
+         | () -> ());
         Ok (t, `Wait_and_create (id, (id, unikernel.Unikernel.config)))
     end
   | `Unikernel_destroy ->
