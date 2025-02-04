@@ -178,6 +178,11 @@ let jump _ systemd influx tmpdir dbdir =
   match Vmm_vmmd.restore_state () with
   | Error (`Msg msg) -> Logs.err (fun m -> m "bailing out: %s" msg)
   | Ok (old_unikernels, policies) ->
+    let file = "state.started" in
+    (match Vmm_unix.backup file with
+     | Ok () -> Logs.info (fun m -> m "backing up state to %s" file)
+     | Error `Msg msg -> Logs.err (fun m -> m "backing up state failed: %s" msg)
+     | Error `NoFile -> Logs.err (fun m -> m "backing up state failed - no file"));
     let policies, old_p = Vmm_trie.insert Name.root root_policy policies in
     Option.iter (fun p ->
         if not (Policy.equal p root_policy) then
