@@ -1,3 +1,15 @@
+# v2.4.0 (2025-02-05)
+
+* albatross-daemon: on startup backup the state file (#206 @hannesm, fixes #203)
+* Add block size to info command, adapt types slightly (#195 @hannesm)
+* Allow the arguments in restart to be changed (#195 @hannesm)
+* Update to ocaml-solo5-elftool 0.4.0 - bump OCaml lower bound to 4.14
+  (#207 @reynir, #208)
+* BUGFIX: restart command kills the unikernel first (#205 @reynir)
+* Print manifest on mismatch (#196 @reynir)
+* Albatross-console: use physical equality for file descriptors (#200 @reynir)
+* Albatross-console: allow multiple subscribers (#194 @reynir)
+
 # v2.3.0 (2024-10-07)
 
 * Albatross-daemon: discover and provide root policy with the available system
