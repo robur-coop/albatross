@@ -175,7 +175,9 @@ let setup_stats t name unikernel =
     let name = match Vmm_unix.unikernel_device unikernel with
       | Error _ -> ""
       | Ok name -> name
-    and ifs = Unikernel.(List.combine (List.map (fun (x,_,_) -> x) unikernel.config.bridges) unikernel.taps)
+    and ifs =
+      Unikernel.(List.combine (List.map (fun (x,_,_) -> x) unikernel.config.bridges)
+                   (List.map fst unikernel.taps))
     in
     `Stats_add (name, unikernel.Unikernel.pid, ifs)
   in
@@ -239,7 +241,7 @@ let handle_create t name unikernel_config =
       (cons_out, success, fail))
 
 let handle_shutdown t name unikernel r =
-  (match Vmm_unix.free_system_resources name unikernel.Unikernel.taps with
+  (match Vmm_unix.free_system_resources name (List.map fst unikernel.Unikernel.taps) with
    | Ok () -> ()
    | Error (`Msg e) ->
      Logs.err (fun m -> m "%s while shutdown unikernel %a" e Unikernel.pp unikernel));
@@ -284,7 +286,13 @@ let handle_policy_cmd t id =
     in
     Ok (t, `End (`Success (`Policies policies)))
 
-let handle_unikernel_cmd t id = function
+let handle_unikernel_cmd t id =
+  let block_size id name =
+    match Vmm_resources.find_block t.resources (Name.block_name id name) with
+    | None -> None
+    | Some (size, _active) -> Some size
+  in
+  function
   | `Old_unikernel_info1 ->
     Logs.debug (fun m -> m "old info1 %a" Name.pp id) ;
     let empty_image unikernel = { unikernel.Unikernel.config with image = "" } in
@@ -311,21 +319,33 @@ let handle_unikernel_cmd t id = function
       match Name.name id with
       | None ->
         Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, Unikernel.info unikernel) :: unikernels) []
+          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
       | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info unikernel ])
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
           (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
-    Ok (t, `End (`Success (`Old_unikernel_info infos)))
+    Ok (t, `End (`Success (`Old_unikernel_info2 infos)))
+  | `Old_unikernel_info3 ->
+    Logs.debug (fun m -> m "old info3 %a" Name.pp id) ;
+    let infos =
+      match Name.name id with
+      | None ->
+        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
+          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
+      | Some _ ->
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
+          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
+    in
+    Ok (t, `End (`Success (`Old_unikernel_info3 infos)))
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let infos =
       match Name.name id with
       | None ->
         Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, Unikernel.info unikernel) :: unikernels) []
+          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
       | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info unikernel ])
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
           (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Unikernel_info infos)))
@@ -370,17 +390,37 @@ let handle_unikernel_cmd t id = function
          | () -> ());
         Ok (t, `Wait_and_create (id, (id, unikernel_config)))
     end
-  | `Unikernel_restart ->
+  | `Unikernel_restart args ->
     begin
       match Vmm_resources.find_unikernel t.resources id with
-      | None -> stop_create t id
+      | None ->
+        (* TODO: unsure about the semantics here -- a restart on a non-existing
+           unikernel should do what? and on a currently restart(ing-on-failure)
+           one? *)
+        stop_create t id
       | Some unikernel ->
         let* resources = Vmm_resources.remove_unikernel t.resources id in
         let* () = Vmm_resources.check_unikernel resources id unikernel.Unikernel.config in
+        let config =
+          match args with
+          | None -> unikernel.Unikernel.config
+          | Some (a : Unikernel.arguments) ->
+            { unikernel.Unikernel.config with
+              fail_behaviour = a.fail_behaviour ;
+              cpuid = a.cpuid ;
+              block_devices = a.block_devices ;
+              bridges = a.bridges ;
+              argv = a.argv }
+        in
+        let* () =
+          Vmm_unix.manifest_devices_match ~bridges:config.bridges
+            ~block_devices:config.block_devices
+            config.image
+        in
         (match Vmm_unix.destroy unikernel with
          | exception Unix.Unix_error _ -> ()
          | () -> ());
-        Ok (t, `Wait_and_create (id, (id, unikernel.Unikernel.config)))
+        Ok (t, `Wait_and_create (id, (id, config)))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_unikernel t.resources id with
