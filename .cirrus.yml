@@ -13,14 +13,6 @@ regular_task_template: &REGULAR_TASK_TEMPLATE
 
 task:
   << : *PKG_INSTALL_TASK_TEMPLATE
-  ocaml_script: opam init -a --comp=4.13.1
-  << : *REGULAR_TASK_TEMPLATE
-  name: FreeBSD 13.3
-  freebsd_instance:
-    image_family: freebsd-13-3
-
-task:
-  << : *PKG_INSTALL_TASK_TEMPLATE
   ocaml_script: opam init -a --comp=4.14.2
   << : *REGULAR_TASK_TEMPLATE
   name: FreeBSD 14
