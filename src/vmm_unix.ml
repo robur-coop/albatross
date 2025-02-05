@@ -189,17 +189,24 @@ let destroy_tap tap =
   in
   Bos.OS.Cmd.run cmd
 
-let owee_buf_of_str b =
-  let buf = Bigarray.Array1.create Bigarray.Int8_unsigned Bigarray.c_layout (String.length b) in
-  for i = 0 to String.length b - 1 do
-    buf.{i} <- String.get_uint8 b i
-  done;
-  buf
+let cachet_of_str b =
+  let map () ~pos len =
+    if pos >= String.length b || len <= 0 then
+      (Cachet.Bstr.empty :> Cachet.bigstring)
+    else
+      let len = min len (max 0 (String.length b - pos)) in
+      let pg : Cachet.bigstring = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
+      for i = 0 to len - 1 do
+        pg.{i} <- b.[pos+i]
+      done;
+      pg
+  in
+  Cachet.make ~cachesize:8 ~map ()
 
 type solo5_target = Spt | Hvt
 
 let solo5_image_target image =
-  let* abi = Solo5_elftool.query_abi (owee_buf_of_str image) in
+  let* abi = Solo5_elftool.query_abi (cachet_of_str image) in
   match abi.target with
   | Solo5_elftool.Hvt -> Ok (Hvt, Int32.to_int abi.version)
   | Solo5_elftool.Spt -> Ok (Spt, Int32.to_int abi.version)
@@ -281,7 +288,7 @@ let devices_match ~bridges ~block_devices mft =
          Fmt.(list ~sep:(any ", ") pp_entry) mft.entries)
 
 let manifest_devices_match ~bridges ~block_devices image =
-  let* mft = Solo5_elftool.query_manifest (owee_buf_of_str image) in
+  let* mft = Solo5_elftool.query_manifest (cachet_of_str image) in
   let bridges = List.map (fun (b, _, _) -> b) bridges
   and block_devices = List.map (fun (b, _, _) -> b) block_devices
   in
