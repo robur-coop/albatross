@@ -674,6 +674,7 @@ let old_unikernel_info2 =
       List.map (fun (unikernel_device, host_device, mac) ->
           { unikernel_device ;
             host_device = Option.value ~default:unikernel_device host_device ;
+            (* We can't synthesize the mac, so use a dummy value *)
             mac = Option.value ~default:Macaddr.broadcast mac })
         xs
     and block_devices = match blocks with None -> [] | Some xs ->
@@ -729,6 +730,7 @@ let old_unikernel_info3 =
       List.map (fun (unikernel_device, host_device, mac) ->
           { unikernel_device ;
             host_device = Option.value ~default:unikernel_device host_device ;
+            (* We can't synthesize the mac, so use a dummy value *)
             mac = Option.value ~default:Macaddr.broadcast mac })
         xs
     and block_devices = match blocks with None -> [] | Some xs ->
