@@ -714,7 +714,7 @@ let old_unikernel_info2 =
                                 (sequence3
                                    (required ~label:"unikernel-device" utf8_string)
                                    (optional ~label:"host-device" utf8_string)
-                                   (optional ~label:"block-sector-size" int)))))
+                                   (optional ~label:"sector-size" int)))))
          @ (optional ~label:"bridges"
               (my_explicit 1 (set_of
                                 (sequence3
