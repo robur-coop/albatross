@@ -401,9 +401,6 @@ let handle_unikernel_cmd t id =
       | Some unikernel ->
         let* resources = Vmm_resources.remove_unikernel t.resources id in
         let* () = Vmm_resources.check_unikernel resources id unikernel.Unikernel.config in
-        (match Vmm_unix.destroy unikernel with
-         | exception Unix.Unix_error _ -> ()
-         | () -> ());
         let config =
           match args with
           | None -> unikernel.Unikernel.config
@@ -415,12 +412,15 @@ let handle_unikernel_cmd t id =
               bridges = a.bridges ;
               argv = a.argv }
         in
-        match Vmm_unix.manifest_devices_match ~bridges:config.bridges
-                ~block_devices:config.block_devices
-                config.image
-        with
-        | Ok () -> Ok (t, `Wait_and_create (id, (id, config)))
-        | Error _ as e -> e
+        let* () =
+          Vmm_unix.manifest_devices_match ~bridges:config.bridges
+            ~block_devices:config.block_devices
+            config.image
+        in
+        (match Vmm_unix.destroy unikernel with
+         | exception Unix.Unix_error _ -> ()
+         | () -> ());
+        Ok (t, `Wait_and_create (id, (id, config)))
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_unikernel t.resources id with
