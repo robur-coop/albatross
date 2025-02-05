@@ -108,7 +108,7 @@ let close_no_err fd = try close fd with _ -> ()
 (* own code starts here
    (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-let dump, restore =
+let dump, restore, backup =
   let state_file ?(name = "state") () =
     if Fpath.is_seg name then
       Fpath.(!dbdir / name)
@@ -130,6 +130,15 @@ let dump, restore =
      let* exists = Bos.OS.File.exists state_file in
      if exists then
        Bos.OS.File.read state_file
+     else Error `NoFile),
+  (fun ?name backup ->
+     let state_file = state_file ?name ()
+     and backup = state_file ~name:backup ()
+     in
+     let* exists = Bos.OS.File.exists state_file in
+     if exists then
+       let cmd = Bos.Cmd.(v "cp" % p state_file % p backup) in
+       Bos.OS.Cmd.(run_out cmd |> out_null |> success)
      else Error `NoFile)
 
 let block_sub = "block"
