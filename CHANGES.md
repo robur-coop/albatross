@@ -1,3 +1,7 @@
+# v2.4.1 (2025-02-11)
+
+* Re-add ptime 1.1.0 compatibility (dune-universe/opam-overlays only ships 1.1.0)
+
 # v2.4.0 (2025-02-05)
 
 * albatross-daemon: on startup backup the state file (#206 @hannesm, fixes #203)
