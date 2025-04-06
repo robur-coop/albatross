@@ -17,4 +17,4 @@ task:
   << : *REGULAR_TASK_TEMPLATE
   name: FreeBSD 14
   freebsd_instance:
-    image_family: freebsd-14-1
+    image_family: freebsd-14-2
