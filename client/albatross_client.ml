@@ -132,6 +132,10 @@ let http_get_binary ~happy_eyeballs host job build =
 
 let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
+  | Ok (_hdr, `Success (`Old_unikernel_info2
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
+  | Ok (_hdr, `Success (`Old_unikernel_info3
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->
     begin
       let hash = Ohex.encode digest in
