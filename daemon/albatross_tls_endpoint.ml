@@ -44,6 +44,15 @@ let process fd =
                    (Vmm_commands.pp_wire ~verbose:false) (hdr, pay));
     pay
 
+let read_image tls =
+  let rec loop acc =
+    Vmm_tls_lwt.read_tls_chunk tls >>= function
+    | Ok data -> loop (acc ^ data)
+    | Error `Eof -> Lwt.return (Ok acc)
+    | Error _ as e -> Lwt.return e
+  in
+  loop ""
+
 let handle tls =
   match Tls_lwt.Unix.epoch tls with
   | Error () -> Lwt.fail_with "error while getting epoch"
@@ -54,6 +63,24 @@ let handle tls =
       Lwt.return_unit
     | Ok (name, policies, version, cmd) ->
       begin
+        (* allow unikernel_create to carry the unikernel image on the tls flow *)
+        (match cmd with
+         | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
+           if u.Vmm_core.Unikernel.image = "" then
+             read_image tls >>= function
+             | Ok data ->
+               let cfg = { u with image = data } in
+               let cmd = match cmd with
+                 | `Unikernel_cmd `Unikernel_create _ -> `Unikernel_cmd (`Unikernel_create cfg)
+                 | `Unikernel_cmd `Unikernel_force_create _ -> `Unikernel_cmd (`Unikernel_force_create cfg)
+                 | _ -> assert false
+               in
+               Lwt.return cmd
+             | Error _ ->
+               Lwt.fail_with "error retrieving unikernel image"
+           else
+             Lwt.return cmd
+         | _ -> Lwt.return cmd) >>= fun cmd ->
         let sock, next = Vmm_commands.endpoint cmd in
         let sockaddr = Lwt_unix.ADDR_UNIX (Vmm_core.socket_path sock) in
         Vmm_lwt.connect Lwt_unix.PF_UNIX sockaddr >>= function
@@ -123,13 +150,13 @@ let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd syslog =
          Logs.err (fun m -> m "error establishing TLS connection: %s" (Printexc.to_string exn));
          Lwt.return (Error ())) >>= function
     | Ok t ->
-    Lwt.catch
-      (fun () ->
-         handle t >>= fun () ->
-         Vmm_tls_lwt.close t)
-      (fun e ->
-         Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
-         Vmm_tls_lwt.close t)
+      Lwt.catch
+        (fun () ->
+           handle t >>= fun () ->
+           Vmm_tls_lwt.close t)
+        (fun e ->
+           Logs.err (fun m -> m "error while handle() %s" (Printexc.to_string e)) ;
+           Vmm_tls_lwt.close t)
     | Error () -> Lwt.return_unit
   in
   Lwt_main.run
