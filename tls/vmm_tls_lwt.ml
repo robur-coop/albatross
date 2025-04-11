@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-let read_tls t =
+let read_tls_chunk t =
   let rec r_n buf off tot =
     let l = tot - off in
     if l = 0 then
@@ -31,18 +31,24 @@ let read_tls t =
         (*          Logs.debug (fun m -> m "TLS read id %d %a tag %d data %a"
                          hdr.Vmm_wire.id Vmm_wire.pp_version hdr.Vmm_wire.version hdr.Vmm_wire.tag
                          (Ohex.pp_hexdump ()) b) ; *)
-        match Vmm_asn.wire_of_str (Bytes.unsafe_to_string b) with
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "error %s while parsing data" msg) ;
-          Error `Exception
-        | (Ok (hdr, _)) as w ->
-          if not Vmm_commands.(is_current hdr.version) then
-            Logs.warn (fun m -> m "version mismatch, received %a current %a"
-                          Vmm_commands.pp_version hdr.Vmm_commands.version
-                          Vmm_commands.pp_version Vmm_commands.current);
-          w
-      else
-        Lwt.return (Error `Eof)
+        Ok (Bytes.unsafe_to_string b)
+    else
+      Lwt.return (Error `Eof)
+
+let read_tls t =
+  read_tls_chunk t >|= function
+  | Error _ as e -> e
+  | Ok data ->
+    match Vmm_asn.wire_of_str data with
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error %s while parsing data" msg) ;
+      Error `Exception
+    | (Ok (hdr, _)) as w ->
+      if not Vmm_commands.(is_current hdr.version) then
+        Logs.warn (fun m -> m "version mismatch, received %a current %a"
+                      Vmm_commands.pp_version hdr.Vmm_commands.version
+                      Vmm_commands.pp_version Vmm_commands.current);
+      w
 
 let write_tls s wire =
   let data = Vmm_asn.wire_to_str wire in
