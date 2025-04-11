@@ -245,6 +245,7 @@ let policy unikernels memory cpus block bridgesl =
 
 let to_exit_code = function
   | Error `Eof -> Error Success
+  | Error `Tls_eof -> Error Success
   | Error _ -> Error Communication_failed
   | Ok wire -> output_result wire
 

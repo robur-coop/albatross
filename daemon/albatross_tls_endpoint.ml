@@ -44,6 +44,15 @@ let process fd =
                    (Vmm_commands.pp_wire ~verbose:false) (hdr, pay));
     pay
 
+let read_image tls =
+  let rec loop acc =
+    Vmm_tls_lwt.read_tls_chunk tls >>= function
+    | Ok data -> loop (acc ^ data)
+    | Error `Eof -> Lwt.return (Ok acc)
+    | Error _ as e -> Lwt.return e
+  in
+  loop ""
+
 let handle tls =
   match Tls_lwt.Unix.epoch tls with
   | Error () -> Lwt.fail_with "error while getting epoch"
@@ -58,7 +67,7 @@ let handle tls =
         (match cmd with
          | `Unikernel_cmd (`Unikernel_create u | `Unikernel_force_create u) ->
            if u.Vmm_core.Unikernel.image = "" then
-             Vmm_tls_lwt.read_tls_chunk tls >>= function
+             read_image tls >>= function
              | Ok data ->
                let cfg = { u with image = data } in
                let cmd = match cmd with

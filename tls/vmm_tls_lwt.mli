@@ -1,10 +1,10 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 val read_tls_chunk : Tls_lwt.Unix.t ->
-  (string, [> `Eof | `Exception | `Toomuch ]) result Lwt.t
+  (string, [> `Eof | `Tls_eof | `Exception | `Toomuch ]) result Lwt.t
 
 val read_tls : Tls_lwt.Unix.t ->
-  (Vmm_commands.wire, [> `Eof | `Exception | `Toomuch ]) result Lwt.t
+  (Vmm_commands.wire, [> `Eof | `Tls_eof | `Exception | `Toomuch ]) result Lwt.t
 
 val write_tls :
   Tls_lwt.Unix.t -> Vmm_commands.wire -> (unit, [> `Exception ]) result Lwt.t

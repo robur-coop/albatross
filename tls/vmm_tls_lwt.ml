@@ -11,7 +11,7 @@ let read_tls_chunk t =
       Tls_lwt.Unix.read t ~off buf >>= function
       | 0 ->
         Logs.debug (fun m -> m "TLS: end of file") ;
-        Lwt.return (Error `Eof)
+        Lwt.return (Error `Tls_eof)
       | x when x == l -> Lwt.return (Ok ())
       | x when x < l -> r_n buf (off + x) tot
       | _ ->
