@@ -47,6 +47,7 @@ build: [
   ["sh" "-ex" "packaging/FreeBSD/create_package.sh"] {os = "freebsd"}
   ["sh" "-ex" "packaging/debian/create_package.sh"] {os-family = "debian" | os-family = "ubuntu"}
 ]
+available: os != "openbsd"
 synopsis: "Albatross - orchestrate and manage MirageOS unikernels with Solo5"
 description: """
 The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
