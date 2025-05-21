@@ -47,11 +47,15 @@ let process fd =
 let read_image tls =
   let rec loop acc =
     Vmm_tls_lwt.read_tls_chunk tls >>= function
-    | Ok data -> loop (acc ^ data)
+    | Ok data ->
+      Buffer.add_string acc data;
+      loop acc
     | Error `Eof -> Lwt.return (Ok acc)
     | Error _ as e -> Lwt.return e
   in
-  loop ""
+  loop (Buffer.create 65536) >|= function
+  | Ok buf -> Ok (Buffer.contents buf)
+  | Error _ as e -> e
 
 let handle tls =
   match Tls_lwt.Unix.epoch tls with
