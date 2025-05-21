@@ -84,6 +84,22 @@ let handle tls =
                Lwt.fail_with "error retrieving unikernel image"
            else
              Lwt.return cmd
+         | `Block_cmd (`Block_add (size, compressed, Some "")) ->
+           begin
+             read_image tls >>= function
+             | Ok data ->
+               Lwt.return (`Block_cmd (`Block_add (size, compressed, Some data)))
+             | Error _ ->
+               Lwt.fail_with "error retrieving block data"
+           end
+         | `Block_cmd (`Block_set (compressed, "")) ->
+           begin
+             read_image tls >>= function
+             | Ok data ->
+               Lwt.return (`Block_cmd (`Block_set (compressed, data)))
+             | Error _ ->
+               Lwt.fail_with "error retrieving block data"
+           end
          | _ -> Lwt.return cmd) >>= fun cmd ->
         let sock, next = Vmm_commands.endpoint cmd in
         let sockaddr = Lwt_unix.ADDR_UNIX (Vmm_core.socket_path sock) in
