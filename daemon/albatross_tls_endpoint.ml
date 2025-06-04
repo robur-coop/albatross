@@ -145,8 +145,8 @@ let handle tls =
               `Failure "couldn't write unikernel to VMMD"
             | Ok () ->
               (match next with
-               | `Read -> read version fd tls
-               | `End -> process fd) >>= fun res ->
+               | `Read | `Dump -> read version fd tls
+               | `Single -> process fd) >>= fun res ->
               Vmm_lwt.safe_close fd >|= fun () ->
               res
       end >>= fun reply ->

@@ -31,7 +31,10 @@ let classify_tls_error = function
     Communication_failed
 
 let exit_status = function
-  | Ok () -> Ok Success
+  | Ok `End -> Ok Success
+  | Ok _state ->
+    (* TODO: [Protocol_failure]? *)
+    Ok Communication_failed
   | Error e -> Ok e
 
 let filename =
@@ -39,7 +42,7 @@ let filename =
   (fun name ->
      Fpath.(v (Filename.get_temp_dir_name ()) / Vmm_core.Name.to_string name + ts))
 
-let output_result ((hdr, reply) as wire) =
+let output_result state ((hdr, reply) as wire) =
   let verbose = match Logs.level () with Some Logs.Debug -> true | _ -> false in
   match reply with
   | `Success s ->
@@ -62,33 +65,53 @@ let output_result ((hdr, reply) as wire) =
     begin match s with
       | `Unikernel_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
-        write_to_file name compressed image
+        write_to_file name compressed image;
+        Ok `End
       | `Old_unikernels unikernels ->
         List.iter (fun (name, cfg) ->
             if String.length cfg.Vmm_core.Unikernel.image > 0 then
               write_to_file name cfg.compressed cfg.image)
-          unikernels
-      | `Block_device_image (_, "") ->
+          unikernels;
+        Ok `End
+      | `Block_device_image (_compressed, "") ->
         (* TODO: compression! *)
-        ()
+        let name = hdr.Vmm_commands.name in
+        let fd = Unix.openfile (Fpath.to_string (filename name)) [ Unix.O_WRONLY ; O_CREAT ] 644 in
+        Ok (`Dump_to fd)
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
-        write_to_file name compressed image
-      | _ -> ()
-    end;
-    Ok ()
+        write_to_file name compressed image;
+        Ok `End
+      | _ -> Ok `End
+    end
   | `Data `Block_data None ->
-    Ok ()
+    (match state with
+     | `Dump_to fd ->
+       Unix.close fd;
+       Ok `End
+     | _ ->
+       Logs.warn (fun m -> m "Unexpected block dump EOF received");
+       (* TODO: New [Protocol_failure] error? *)
+       Error Communication_failed)
   | `Data `Block_data Some data ->
-    let name = hdr.Vmm_commands.name in
-    let fd = Unix.openfile (Fpath.to_string (filename name)) [ Unix.O_WRONLY ; O_APPEND ; O_CREAT ] 644 in
-    let written = Unix.write fd (Bytes.unsafe_of_string data) 0 (String.length data) in
-    assert (written = String.length data);
-    Unix.close fd;
-    Ok ()
+    (match state with
+     | `Dump_to fd ->
+       let written = Unix.write fd (Bytes.unsafe_of_string data) 0 (String.length data) in
+       assert (written = String.length data);
+       Ok state
+     | _ ->
+       Logs.warn (fun m -> m "Unexpected block dump data received");
+       (* TODO: New [Protocol_failure] error? *)
+       Error Communication_failed)
   | `Data _ ->
-    Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
-    Ok ()
+    (match state with
+     | `Read ->
+       Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
+       Ok state
+     | _ ->
+       Logs.warn (fun m -> m "Unexpected console data received");
+       (* TODO: New [Protocol_failure] error? *)
+       Error Communication_failed)
   | `Failure _ ->
     Logs.warn (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
     Error Remote_command_failed
@@ -257,25 +280,27 @@ let policy unikernels memory cpus block bridgesl =
     Logs.warn (fun m -> m "CPUids is not a set");
   Vmm_core.Policy.{ unikernels ; cpuids ; memory ; block ; bridges }
 
-let to_exit_code = function
+let to_exit_code state = function
   | Error `Eof -> Error Success
   | Error `Tls_eof -> Error Success
   | Error _ -> Error Communication_failed
-  | Ok wire -> output_result wire
+  | Ok wire -> output_result state wire
 
-let process_local fd = Vmm_lwt.read_wire fd >|= to_exit_code
+let process_local fd state = Vmm_lwt.read_wire fd >|= to_exit_code state
 
-let process_remote fd = Vmm_tls_lwt.read_tls fd >|= to_exit_code
+let process_remote fd state = Vmm_tls_lwt.read_tls fd >|= to_exit_code state
 
 let read p (fd, next) =
   let open Lwt_result.Infix in
   (* now we busy read and process output *)
-  let rec loop () =
-    p fd >>= loop
+  let rec loop state =
+    match state with
+    | `End ->
+      Lwt_result.return `End
+    | state ->
+      p fd state >>= loop
   in
-  match next with
-  | `Read -> loop ()
-  | `End -> p fd
+  loop (next :> [ `Dump | `Single | `Read | `Dump_to of Unix.file_descr | `End ])
 
 let connect_local opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
@@ -795,11 +820,11 @@ let one_jump :
       Albatross_cli.set_tmpdir tmpdir;
       connect_local opt_sock name cmd >>= (function
         | Error e -> Lwt.return (Error (`Connect e))
-        | Ok (fd, `End) ->
+        | Ok (fd, `Single) ->
           Vmm_lwt.read_wire fd >>= fun r ->
           Vmm_lwt.safe_close fd >|= fun () ->
           r
-        | Ok (_fd, `Read) ->
+        | Ok (_fd, (`Read | `Dump)) ->
           assert false)
   | `Remote endp ->
     fun cmd name cert key ca key_type _tmpdir ->
@@ -820,7 +845,7 @@ let one_jump :
            Lwt.return (Error (`Msg "non-empty path"))
       in
       let _, next = Vmm_commands.endpoint cmd in
-      assert (next = `End);
+      assert (next = `Single);
       (match gen_cert (cert, certs, key) key_type name cmd with
       | Error `Msg msg ->
         Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
@@ -849,7 +874,7 @@ let update () host dryrun compression name d cert key ca key_type tmpdir =
         one_jump d (`Unikernel_cmd cmd) name cert key ca key_type tmpdir >>= fun r ->
         match r with
         | Ok w ->
-          Lwt.return (exit_status (output_result w))
+          Lwt.return (exit_status (output_result `Single w))
         | Error _ ->
           Logs.err (fun m -> m "received error from albatross");
           Lwt.return (Error Remote_command_failed)
