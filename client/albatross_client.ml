@@ -76,7 +76,7 @@ let output_result state ((hdr, reply) as wire) =
       | `Block_device_image (_compressed, "") ->
         (* TODO: compression! *)
         let name = hdr.Vmm_commands.name in
-        let fd = Unix.openfile (Fpath.to_string (filename name)) [ Unix.O_WRONLY ; O_CREAT ] 644 in
+        let fd = Unix.openfile (Fpath.to_string (filename name)) [ Unix.O_WRONLY ; O_CREAT ] 0o644 in
         Ok (`Dump_to fd)
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
@@ -253,20 +253,15 @@ let create_unikernel force image cpuid memory argv block_devices bridges compres
   let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
-let create_block size compression data =
+let create_block size compression opt_file =
   let ( let* ) = Result.bind in
-  match data with
+  match opt_file with
   | None -> Ok (`Block_add (size, false, None))
-  | Some image ->
+  | Some f ->
     let* size_in_mb = Vmm_unix.bytes_of_mb size in
-    if size_in_mb >= String.length image then
-      let compressed, img =
-        if compression > 0 then
-          true, Vmm_compress.compress ~level:compression image
-        else
-          false, image
-      in
-      Ok (`Block_add (size, compressed, Some img))
+    if size_in_mb >= Unix.(stat f).st_size then
+      let compressed = compression > 0 in
+      Ok (`Block_add (size, compressed, Some ""))
     else
       Error (`Msg "data exceeds size")
 
@@ -653,7 +648,7 @@ let csr priv name cmd =
   let extensions = X509.Signing_request.Ext.(singleton Extensions ext) in
   X509.Signing_request.create name ~extensions priv
 
-let jump cmd name d cert key ca key_type tmpdir =
+let jump ?data cmd name d cert key ca key_type tmpdir =
   match d with
   | `Local opt_sock ->
     Albatross_cli.set_tmpdir tmpdir;
@@ -662,6 +657,20 @@ let jump cmd name d cert key ca key_type tmpdir =
       | Error e -> Lwt.return (Ok e)
       | Ok (fd, next) ->
         read process_local (fd, next) >>= fun r ->
+        (match data with
+         | None -> Lwt.return_unit
+         | Some s ->
+           let rec more sequence =
+             let header = Vmm_commands.header ~sequence name in
+             Lwt_stream.get s >>= function
+             | None ->
+               Vmm_lwt.write_wire fd (header, `Data (`Block_data None)) >|= fun _e -> ()
+             | Some data ->
+               Vmm_lwt.write_wire fd (header, `Data (`Block_data (Some data))) >>= function
+               | Ok () -> more (Int64.succ sequence)
+               | Error `Exception -> Lwt.return_unit
+           in
+           more 1L) >>= fun () ->
         Vmm_lwt.safe_close fd >|= fun () ->
         exit_status r)
   | `Remote endp ->
@@ -791,20 +800,30 @@ let block_info () = jump (`Block_cmd `Block_info)
 let block_dump () compression name dst =
   jump (`Block_cmd (`Block_dump (compress_default compression dst))) name dst
 
-let block_create () block_size compression block_data name dst cert key ca key_type tmpdir =
-  match create_block block_size (compress_default compression dst) block_data with
-  | Ok cmd -> jump (`Block_cmd cmd) name dst cert key ca key_type tmpdir
+let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
+  let data =
+    match opt_file with
+    | None -> Ok None
+    | Some f ->
+      let file = Fpath.v f in
+      let stream, push = Lwt_stream.create () in
+      let* () = Vmm_unix.dump_file_stream push file in
+      Ok (Some stream)
+  in
+  let* data = data in
+  match create_block block_size (compress_default compression dst) opt_file with
+  | Ok cmd -> jump ?data (`Block_cmd cmd) name dst cert key ca key_type tmpdir
   | Error _ as e -> e
 
-let block_set () compression block_data name dst =
-  let compressed, data =
+let block_set () compression file name dst cert key ca key_type tmpdir =
+  let compressed =
     let level = compress_default compression dst in
-    if level > 0 then
-      true, Vmm_compress.compress ~level block_data
-    else
-      false, block_data
+    level > 0
   in
-  jump (`Block_cmd (`Block_set (compressed, data))) name dst
+  let stream, push = Lwt_stream.create () in
+  let* () = Vmm_unix.dump_file_stream push (Fpath.v file) in
+  jump ~data:stream (`Block_cmd (`Block_set (compressed, ""))) name dst
+    cert key ca key_type tmpdir
 
 let block_destroy () = jump (`Block_cmd `Block_remove)
 
@@ -1060,21 +1079,13 @@ let block_size =
   let doc = "Block storage (in MB)." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"BLOCK-SIZE")
 
-let data_c =
-  let parse s =
-    Bos.OS.File.read (Fpath.v s)
-  and pp ppf data =
-    Format.fprintf ppf "file with %u bytes" (String.length data)
-  in
-  Arg.conv (parse, pp)
-
 let block_data =
   let doc = "Block device content (filename)." in
-  Arg.(required & pos 1 (some data_c) None & info [] ~doc ~docv:"FILE")
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"FILE")
 
 let opt_block_data =
   let doc = "Block device content (filename)." in
-  Arg.(value & opt (some data_c) None & info [ "data" ] ~doc ~docv:"FILE")
+  Arg.(value & opt (some file) None & info [ "data" ] ~doc ~docv:"FILE")
 
 let opt_block_size =
   let doc = "Block storage to allow (in MB)." in

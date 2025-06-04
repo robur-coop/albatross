@@ -90,7 +90,7 @@ let handle cons_out stat_out fd addr =
         | `Loop wire ->
           Lwt_mutex.unlock create_lock;
           out wire >>= loop
-        | `Stream (s, wire) ->
+        | `Send_stream (s, wire) ->
           Lwt_mutex.unlock create_lock;
           out wire >>= fun () ->
           let rec more () =
@@ -100,6 +100,26 @@ let handle cons_out stat_out fd addr =
           in
           more () >|= fun () ->
           `Close
+        | `Recv_stream (p, wire) ->
+          Lwt_mutex.unlock create_lock;
+          out wire >>= fun () ->
+          let rec more () =
+            Vmm_lwt.read_wire fd >>= function
+            | Error _ ->
+              Logs.err (fun m -> m "error while reading") ;
+              Lwt.return `Close
+            | Ok (_, `Data `Block_data None) ->
+              p None;
+              Lwt.return `Close
+            | Ok (_, `Data `Block_data d) ->
+              p d;
+              more ()
+            | Ok w ->
+              Logs.err (fun m -> m "unexpected data %a"
+                           (Vmm_commands.pp_wire ~verbose:false) w);
+              Lwt.return `Close
+          in
+          more ()
         | `End wire ->
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->
