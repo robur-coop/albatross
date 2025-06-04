@@ -461,7 +461,7 @@ let bytes_of_mb size =
   else
     Error (`Msg "overflow while computing bytes")
 
-let create_block ?data name size =
+let create_empty_block name =
   let block_name = block_file name in
   let* block_exists = Bos.OS.File.exists block_name in
   if block_exists then
@@ -470,10 +470,19 @@ let create_block ?data name size =
     let dir = block_dir () in
     let* dir_exists = Bos.OS.Path.exists dir in
     let* _ = (if dir_exists then Ok true else Bos.OS.Dir.create ~mode:0o700 dir) in
-    let data = Option.value ~default:"" data in
-    let* () = Bos.OS.File.write ~mode:0o600 block_name data in
-    let* size' = bytes_of_mb size in
-    Bos.OS.File.truncate block_name size'
+    Bos.OS.File.write ~mode:0o600 block_name ""
+
+let truncate name size =
+  let block_name = block_file name in
+  let* size' = bytes_of_mb size in
+  Bos.OS.File.truncate block_name size'
+
+let create_block ?data name size =
+  let* () = create_empty_block name in
+  let block_name = block_file name in
+  let data = Option.value ~default:"" data in
+  let* () = Bos.OS.File.write ~mode:0o600 block_name data in
+  truncate name size
 
 let destroy_block name =
   Bos.OS.File.delete (block_file name)
@@ -489,18 +498,17 @@ let dump_block name =
 let safe_close fd =
   Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
 
-let dump_block_stream push name =
-  let block_name = block_file name in
-  let* block_exists = Bos.OS.File.exists block_name in
-  if not block_exists then
+let dump_file_stream push name =
+  let* exists = Bos.OS.File.exists name in
+  if not exists then
     Error (`Msg "file does not exist")
   else begin
     Lwt.async (fun () ->
         let open Lwt.Infix in
         Lwt.catch (fun () ->
-            Lwt_unix.openfile (Fpath.to_string block_name) [Lwt_unix.O_RDONLY] 0 >>= fun fd ->
+            Lwt_unix.openfile (Fpath.to_string name) [Lwt_unix.O_RDONLY] 0 >>= fun fd ->
             Lwt.catch (fun () ->
-                Lwt_unix.stat (Fpath.to_string block_name) >>= fun stats ->
+                Lwt_unix.stat (Fpath.to_string name) >>= fun stats ->
                 let size = stats.Lwt_unix.st_size in
                 let rec more off =
                   let len = Int.min (size - off) 4096 in
@@ -517,15 +525,55 @@ let dump_block_stream push name =
                 more 0 >>= fun () ->
                 safe_close fd)
               (fun e ->
-                 Logs.err (fun m -> m "error reading %a: %s" Fpath.pp block_name
+                 Logs.err (fun m -> m "error reading %a: %s" Fpath.pp name
                               (Printexc.to_string e));
                  safe_close fd))
           (fun e ->
-             Logs.err (fun m -> m "error opening %a: %s" Fpath.pp block_name
+             Logs.err (fun m -> m "error opening %a: %s" Fpath.pp name
                           (Printexc.to_string e));
              Lwt.return_unit));
     Ok ()
   end
+
+let dump_block_stream push name =
+  let block_name = block_file name in
+  dump_file_stream push block_name
+
+let stream_to_block limit stream name =
+  let block_name = block_file name in
+  Lwt.async (fun () ->
+      let open Lwt.Infix in
+      Lwt.catch (fun () ->
+          Lwt_unix.openfile (Fpath.to_string block_name)
+            [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
+          Lwt.catch (fun () ->
+              let rec read_more size =
+                Lwt_stream.get stream >>= function
+                | None -> safe_close fd
+                | Some data ->
+                  if String.length data >= limit - size then begin
+                    Logs.err (fun m -> m "stream exceeds size");
+                    Lwt.return_unit
+                  end else
+                    let rec write off =
+                      Lwt_unix.write fd (Bytes.unsafe_of_string data) off
+                        (String.length data - off) >>= fun written ->
+                      if written = String.length data - off then
+                        read_more (size + String.length data)
+                      else
+                        write (off + written)
+                    in
+                    write 0
+              in
+              read_more 0)
+            (fun e ->
+               Logs.err (fun m -> m "error writing %a: %s"
+                            Fpath.pp block_name (Printexc.to_string e));
+               safe_close fd))
+        (fun e ->
+               Logs.err (fun m -> m "error opening %a for writing: %s"
+                            Fpath.pp block_name (Printexc.to_string e));
+               Lwt.return_unit))
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then

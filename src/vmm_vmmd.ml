@@ -459,9 +459,19 @@ let handle_block_cmd t id = function
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         let* () = Vmm_resources.check_block t.resources id size in
-        let* data =
-          match data with
-          | None -> Ok None
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+        match data with
+        | None ->
+          let* () = Vmm_unix.create_block ?data id size in
+          let* resources = Vmm_resources.insert_block t.resources id size in
+          Ok ({ t with resources }, `End (`Success (`String "added block device")))
+        | Some "" ->
+            (* TODO compression *)
+            let* () = Vmm_unix.create_empty_block id in
+            let stream, push = Lwt_stream.create () in
+            Vmm_unix.stream_to_block size_in_bytes stream id;
+            let* resources = Vmm_resources.insert_block t.resources id size in
+            Ok ({ t with resources }, `Recv_stream (push, `Success (`String "added block device")))
           | Some img ->
             let* img =
               if compressed then
@@ -469,37 +479,46 @@ let handle_block_cmd t id = function
               else
                 Ok img
             in
-            let* size_in_bytes = Vmm_unix.bytes_of_mb size in
-            if size_in_bytes >= String.length img then
-              Ok (Some img)
-            else
-              Error (`Msg "data exceeds block size")
-        in
-        let* () = Vmm_unix.create_block ?data id size in
-        let* resources = Vmm_resources.insert_block t.resources id size in
-        Ok ({ t with resources }, `End (`Success (`String "added block device")))
+            let* () =
+              if size_in_bytes >= String.length img then
+                Ok ()
+              else
+                Error (`Msg "data exceeds block size")
+            in
+            let* () = Vmm_unix.create_block ~data:img id size in
+            let* resources = Vmm_resources.insert_block t.resources id size in
+            Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
   | `Block_set (compressed, data) ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "set block: not found")
       | Some (_, true) -> Error (`Msg "set block: is in use")
       | Some (size, false) ->
-        let* data =
-          if compressed then
-            Vmm_compress.uncompress data
-          else
-            Ok data
-        in
         let* size_in_bytes = Vmm_unix.bytes_of_mb size in
-        let* () =
-          if size_in_bytes >= String.length data then
-            Ok ()
-          else
-            Error (`Msg "data exceeds block size")
-        in
-        let* () = Vmm_unix.destroy_block id in
-        let* () = Vmm_unix.create_block ~data id size in
-        Ok (t, `End (`Success (`String "set block device")))
+        match data with
+        | "" ->
+          let* () = Vmm_unix.destroy_block id in
+          let* () = Vmm_unix.create_empty_block id in
+          let stream, push = Lwt_stream.create () in
+          Vmm_unix.stream_to_block size_in_bytes stream id;
+          let* resources = Vmm_resources.insert_block t.resources id size in
+          Ok ({ t with resources }, `Recv_stream (push, `Success (`String "set block device")))
+        | _ ->
+          let* data =
+            if compressed then
+              Vmm_compress.uncompress data
+            else
+              Ok data
+          in
+          let* () =
+            if size_in_bytes >= String.length data then
+              Ok ()
+            else
+              Error (`Msg "data exceeds block size")
+          in
+          let* () = Vmm_unix.destroy_block id in
+          let* () = Vmm_unix.create_block ~data id size in
+          Ok (t, `End (`Success (`String "set block device")))
     end
   | `Old_block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
@@ -528,7 +547,7 @@ let handle_block_cmd t id = function
           | Some s -> push (Some (`Block_data (Some s)))
         in
         let* () = Vmm_unix.dump_block_stream p id in
-        Ok (t, `Stream (s, res))
+        Ok (t, `Send_stream (s, res))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;

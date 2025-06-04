@@ -26,13 +26,21 @@ val bytes_of_mb : int -> (int, [> `Msg of string ]) result
 
 val close_no_err : Unix.file_descr -> unit
 
+val create_empty_block : Name.t -> (unit, [> `Msg of string ]) result
+
 val create_block : ?data:string -> Name.t -> int -> (unit, [> `Msg of string ]) result
+
+val truncate : Name.t -> int -> (unit, [> `Msg of string ]) result
 
 val destroy_block : Name.t -> (unit, [> `Msg of string ]) result
 
 val dump_block : Name.t -> (string, [> `Msg of string ]) result
 
+val dump_file_stream : (string option -> unit) -> Fpath.t -> (unit, [> `Msg of string ]) result
+
 val dump_block_stream : (string option -> unit) -> Name.t -> (unit, [> `Msg of string ]) result
+
+val stream_to_block : int -> string Lwt_stream.t -> Name.t -> unit
 
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 
