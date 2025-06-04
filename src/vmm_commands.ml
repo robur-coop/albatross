@@ -225,10 +225,10 @@ let pp_wire ~verbose ppf (header, data) =
   | `Data d -> pp_data ppf d
 
 let endpoint = function
-  | `Unikernel_cmd _ -> `Vmmd, `End
-  | `Policy_cmd _ -> `Vmmd, `End
-  | `Block_cmd `Block_dump _ -> `Vmmd, `Read
-  | `Block_cmd _ -> `Vmmd, `End
+  | `Unikernel_cmd _ -> `Vmmd, `Single
+  | `Policy_cmd _ -> `Vmmd, `Single
+  | `Block_cmd `Block_dump _ -> `Vmmd, `Dump
+  | `Block_cmd _ -> `Vmmd, `Single
   | `Stats_cmd `Stats_subscribe -> `Stats, `Read
-  | `Stats_cmd _ -> `Stats, `End
+  | `Stats_cmd _ -> `Stats, `Single
   | `Console_cmd _ -> `Console, `Read
