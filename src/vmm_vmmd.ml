@@ -501,7 +501,7 @@ let handle_block_cmd t id = function
         let* () = Vmm_unix.create_block ~data id size in
         Ok (t, `End (`Success (`String "set block device")))
     end
-  | `Block_dump level ->
+  | `Old_block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "dump block: not found")
       | Some (_, true) -> Error (`Msg "dump block: is in use")
@@ -514,6 +514,21 @@ let handle_block_cmd t id = function
             true, Vmm_compress.compress ~level data
         in
         Ok (t, `End (`Success (`Block_device_image (compress, data))))
+    end
+  | `Block_dump _level ->
+    begin match Vmm_resources.find_block t.resources id with
+      | None -> Error (`Msg "dump block: not found")
+      | Some (_, true) -> Error (`Msg "dump block: is in use")
+      | Some (_, false) ->
+        (* TODO re-add compression *)
+        let res = `Success (`Block_device_image (false, "")) in
+        let s, push = Lwt_stream.create () in
+        let p = function
+          | None -> push (Some (`Block_data None)); push None
+          | Some s -> push (Some (`Block_data (Some s)))
+        in
+        let* () = Vmm_unix.dump_block_stream p id in
+        Ok (t, `Stream (s, res))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;

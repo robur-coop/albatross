@@ -34,17 +34,19 @@ let exit_status = function
   | Ok () -> Ok Success
   | Error e -> Ok e
 
+let filename =
+  let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
+  (fun name ->
+     Fpath.(v (Filename.get_temp_dir_name ()) / Vmm_core.Name.to_string name + ts))
+
 let output_result ((hdr, reply) as wire) =
   let verbose = match Logs.level () with Some Logs.Debug -> true | _ -> false in
   match reply with
   | `Success s ->
     Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
     let write_to_file name compressed data =
-      let filename =
-        let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
-        Fpath.(v (Filename.get_temp_dir_name ()) / Vmm_core.Name.to_string name + ts)
-      in
       let write data =
+        let filename = filename name in
         match Bos.OS.File.write filename data with
         | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
         | Error (`Msg e) -> Logs.err (fun m -> m "failed to write image: %s" e)
@@ -66,11 +68,23 @@ let output_result ((hdr, reply) as wire) =
             if String.length cfg.Vmm_core.Unikernel.image > 0 then
               write_to_file name cfg.compressed cfg.image)
           unikernels
+      | `Block_device_image (_, "") ->
+        (* TODO: compression! *)
+        ()
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image
       | _ -> ()
     end;
+    Ok ()
+  | `Data `Block_data None ->
+    Ok ()
+  | `Data `Block_data Some data ->
+    let name = hdr.Vmm_commands.name in
+    let fd = Unix.openfile (Fpath.to_string (filename name)) [ Unix.O_WRONLY ; O_APPEND ; O_CREAT ] 644 in
+    let written = Unix.write fd (Bytes.unsafe_of_string data) 0 (String.length data) in
+    assert (written = String.length data);
+    Unix.close fd;
     Ok ()
   | `Data _ ->
     Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
