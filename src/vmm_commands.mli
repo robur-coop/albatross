@@ -109,4 +109,4 @@ type wire = header * res
 
 val pp_wire : verbose:bool -> wire Fmt.t
 
-val endpoint : t -> service * [ `End | `Read ]
+val endpoint : t -> service * [ `Single | `Read | `Dump ]
