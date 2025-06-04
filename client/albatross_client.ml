@@ -73,11 +73,11 @@ let output_result state ((hdr, reply) as wire) =
               write_to_file name cfg.compressed cfg.image)
           unikernels;
         Ok `End
-      | `Block_device_image (_compressed, "") ->
+      | `Block_device_image (compressed, "") ->
         (* TODO: compression! *)
         let name = hdr.Vmm_commands.name in
         let fd = Unix.openfile (Fpath.to_string (filename name)) [ Unix.O_WRONLY ; O_CREAT ] 644 in
-        Ok (`Dump_to fd)
+        Ok (`Dump_to (compressed, fd))
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
@@ -86,7 +86,7 @@ let output_result state ((hdr, reply) as wire) =
     end
   | `Data `Block_data None ->
     (match state with
-     | `Dump_to fd ->
+     | `Dump_to (_compressed, fd) ->
        Unix.close fd;
        Ok `End
      | _ ->
@@ -95,7 +95,7 @@ let output_result state ((hdr, reply) as wire) =
        Error Communication_failed)
   | `Data `Block_data Some data ->
     (match state with
-     | `Dump_to fd ->
+     | `Dump_to (_compressed, fd) ->
        let written = Unix.write fd (Bytes.unsafe_of_string data) 0 (String.length data) in
        assert (written = String.length data);
        Ok state
@@ -300,7 +300,7 @@ let read p (fd, next) =
     | state ->
       p fd state >>= loop
   in
-  loop (next :> [ `Dump | `Single | `Read | `Dump_to of Unix.file_descr | `End ])
+  loop (next :> [ `Dump | `Single | `Read | `Dump_to of bool * Unix.file_descr | `End ])
 
 let connect_local opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
