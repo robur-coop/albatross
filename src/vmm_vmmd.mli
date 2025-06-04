@@ -31,6 +31,7 @@ val handle_command : 'a t -> Vmm_commands.wire ->
   ('a t *
    [ `Create of Name.t * Unikernel.config
    | `Loop of Vmm_commands.res
+   | `Stream of Vmm_commands.data Lwt_stream.t * Vmm_commands.res
    | `End of Vmm_commands.res
    | `Wait of Name.t * (process_exit -> Vmm_commands.res)
    | `Wait_and_create of Name.t * (Name.t * Unikernel.config)

@@ -90,6 +90,16 @@ let handle cons_out stat_out fd addr =
         | `Loop wire ->
           Lwt_mutex.unlock create_lock;
           out wire >>= loop
+        | `Stream (s, wire) ->
+          Lwt_mutex.unlock create_lock;
+          out wire >>= fun () ->
+          let rec more () =
+            Lwt_stream.get s >>= function
+            | None -> Lwt.return_unit
+            | Some wire -> out (`Data wire) >>= more
+          in
+          more () >|= fun () ->
+          `Close
         | `End wire ->
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->

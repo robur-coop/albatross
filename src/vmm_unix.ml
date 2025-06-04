@@ -486,6 +486,47 @@ let dump_block name =
   else
     Bos.OS.File.read block_name
 
+let safe_close fd =
+  Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
+
+let dump_block_stream push name =
+  let block_name = block_file name in
+  let* block_exists = Bos.OS.File.exists block_name in
+  if not block_exists then
+    Error (`Msg "file does not exist")
+  else begin
+    Lwt.async (fun () ->
+        let open Lwt.Infix in
+        Lwt.catch (fun () ->
+            Lwt_unix.openfile (Fpath.to_string block_name) [Lwt_unix.O_RDONLY] 0 >>= fun fd ->
+            Lwt.catch (fun () ->
+                Lwt_unix.stat (Fpath.to_string block_name) >>= fun stats ->
+                let size = stats.Lwt_unix.st_size in
+                let rec more off =
+                  let len = Int.min (size - off) 4096 in
+                  let buf = Bytes.create len in
+                  Lwt_unix.read fd buf 0 len >>= fun read ->
+                  let buf = if read = len then buf else Bytes.sub buf 0 read in
+                  push (Some (Bytes.unsafe_to_string buf));
+                  if read = size - off then begin
+                    push None;
+                    Lwt.return_unit
+                  end else
+                    more (off + read)
+                in
+                more 0 >>= fun () ->
+                safe_close fd)
+              (fun e ->
+                 Logs.err (fun m -> m "error reading %a: %s" Fpath.pp block_name
+                              (Printexc.to_string e));
+                 safe_close fd))
+          (fun e ->
+             Logs.err (fun m -> m "error opening %a: %s" Fpath.pp block_name
+                          (Printexc.to_string e));
+             Lwt.return_unit));
+    Ok ()
+  end
+
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then
     Error (`Msg "size is either 0 or not MB aligned")

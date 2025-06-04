@@ -106,6 +106,7 @@ type block_cmd = [
   | `Block_remove
   | `Block_set of bool * string
   | `Block_dump of int
+  | `Old_block_dump of int
 ]
 
 let pp_block_cmd ppf = function
@@ -119,6 +120,7 @@ let pp_block_cmd ppf = function
     Fmt.pf ppf "block set compressed %B %d bytes" compressed
       (String.length data)
   | `Block_dump level -> Fmt.pf ppf "block dump, compress level %d" level
+  | `Old_block_dump level -> Fmt.pf ppf "old block dump, compress level %d" level
 
 type t = [
     | `Console_cmd of console_cmd
@@ -139,6 +141,7 @@ type data = [
   | `Console_data of Ptime.t * string
   | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
+  | `Block_data of string option
 ]
 
 let pp_data ppf = function
@@ -147,6 +150,10 @@ let pp_data ppf = function
   | `Utc_console_data (ts, line) ->
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
+  | `Block_data s ->
+    Fmt.pf ppf "block data %a"
+      Fmt.(option ~none:(any "eof") (int ++ any " bytes"))
+      (Option.map String.length s)
 
 type header = {
   version : version ;
@@ -220,6 +227,7 @@ let pp_wire ~verbose ppf (header, data) =
 let endpoint = function
   | `Unikernel_cmd _ -> `Vmmd, `End
   | `Policy_cmd _ -> `Vmmd, `End
+  | `Block_cmd `Block_dump _ -> `Vmmd, `Read
   | `Block_cmd _ -> `Vmmd, `End
   | `Stats_cmd `Stats_subscribe -> `Stats, `Read
   | `Stats_cmd _ -> `Stats, `End

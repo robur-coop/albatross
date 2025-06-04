@@ -32,6 +32,8 @@ val destroy_block : Name.t -> (unit, [> `Msg of string ]) result
 
 val dump_block : Name.t -> (string, [> `Msg of string ]) result
 
+val dump_block_stream : (string option -> unit) -> Name.t -> (unit, [> `Msg of string ]) result
+
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 
 val dump : ?name:string -> string -> (unit, [> `Msg of string ]) result
