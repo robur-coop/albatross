@@ -177,6 +177,7 @@ let handle tls =
       ()
 
 let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd syslog =
+  Memtrace.trace_if_requested ~context:"albatross-tls-endpoint" ();
   if inetd then
     if syslog || Logs.level () = None then
       ()

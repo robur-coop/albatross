@@ -194,6 +194,7 @@ let jump _ systemd influx tmpdir dbdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
+  Memtrace.trace_if_requested ~context:"albatross-daemon" ();
   state := Vmm_vmmd.init_block_devices !state;
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m

@@ -1650,4 +1650,5 @@ let () =
   ] in
   let info = Cmd.info "albatross-client" ~version:Albatross_cli.version ~doc ~man ~exits in
   let group = Cmd.group ~default:help_cmd info cmds in
+  Memtrace.trace_if_requested ~context:"albatross-client" ();
   exit (Cmd.eval_value group |> exit_status_of_result)
