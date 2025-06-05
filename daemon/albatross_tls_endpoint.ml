@@ -64,7 +64,7 @@ let read_image tls =
 let read_stream_write sequence id tls fd =
   let rec loop sequence =
     Vmm_tls_lwt.read_tls tls >>= function
-    | Ok (hdr, (`Data (`Block_data data) as d)) ->
+    | Ok (_hdr, (`Data (`Block_data data) as d)) ->
       begin
         let header = Vmm_commands.header ~sequence id in
         Vmm_lwt.write_wire fd (header, d) >>= function
