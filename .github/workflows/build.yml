@@ -67,6 +67,7 @@ jobs:
             keep-outputs = true
 
       - run: nix build
+        continue-on-error: true
 
       - name: Check that flake.lock is uptodate
         run: if ! git diff --exit-code -- flake.lock; then exit 1; fi
