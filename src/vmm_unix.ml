@@ -565,7 +565,12 @@ let stream_to_block limit stream name =
                     in
                     write 0
               in
-              read_more 0)
+              read_more 0 >|= fun () ->
+              match truncate name limit with
+              | Ok () -> ()
+              | Error `Msg msg ->
+                Logs.err (fun m -> m "error truncating %a: %s"
+                             Fpath.pp block_name msg))
             (fun e ->
                Logs.err (fun m -> m "error writing %a: %s"
                             Fpath.pp block_name (Printexc.to_string e));
