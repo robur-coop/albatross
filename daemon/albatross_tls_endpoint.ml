@@ -63,21 +63,22 @@ let read_image tls =
 
 let read_stream_write sequence id tls fd =
   let rec loop sequence =
-    Vmm_tls_lwt.read_tls_chunk tls >>= function
-    | Ok data ->
+    Vmm_tls_lwt.read_tls tls >>= function
+    | Ok (hdr, (`Data (`Block_data data) as d)) ->
       begin
         let header = Vmm_commands.header ~sequence id in
-        Vmm_lwt.write_wire fd (header, `Data (`Block_data (Some data))) >>= function
-        | Ok () -> loop (Int64.succ sequence)
+        Vmm_lwt.write_wire fd (header, d) >>= function
+        | Ok () ->
+          let seq = Int64.succ sequence in
+          (match data with
+           | None -> Lwt.return (Ok seq)
+           | Some _ -> loop seq)
         | Error _ -> Lwt.return (Error (`Failure "writing block data"))
       end
-    | Error `Eof ->
-      begin
-        let header = Vmm_commands.header ~sequence id in
-        Vmm_lwt.write_wire fd (header, `Data (`Block_data None)) >|= function
-        | Ok () -> Ok (Int64.succ sequence)
-        | Error _ -> Error (`Failure "writing block data")
-      end
+    | Ok wire ->
+      Logs.err (fun m -> m "read unexpected data %a"
+                   (Vmm_commands.pp_wire ~verbose:false) wire) ;
+      Lwt.return (Error (`Failure "unexpected data"))
     | Error _ -> Lwt.return (Error (`Failure "reading tls chunk"))
   in
   loop sequence
@@ -158,7 +159,7 @@ let handle tls =
                | `Block_cmd (`Block_set (_, "")) ->
                  begin
                    read_stream_write !command name tls fd >|= function
-                   | Ok (seq) ->
+                   | Ok seq ->
                      command := seq;
                      Ok ()
                    | Error _ as e -> e
@@ -177,7 +178,6 @@ let handle tls =
       ()
 
 let jump _ cacert cert priv_key ip port_or_socket tmpdir inetd syslog =
-  Memtrace.trace_if_requested ~context:"albatross-tls-endpoint" ();
   if inetd then
     if syslog || Logs.level () = None then
       ()

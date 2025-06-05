@@ -2,4 +2,4 @@
  (name albatross_client)
  (public_name albatross-client)
  (package albatross)
- (libraries albatross.cli albatross albatross.tls happy-eyeballs-lwt http-lwt-client memtrace))
+ (libraries albatross.cli albatross albatross.tls happy-eyeballs-lwt http-lwt-client))

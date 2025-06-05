@@ -459,6 +459,7 @@ let handle_block_cmd t id = function
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         let* () = Vmm_resources.check_block t.resources id size in
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
         match data with
         | None ->
           let* () = Vmm_unix.create_block ?data id size in
@@ -467,12 +468,11 @@ let handle_block_cmd t id = function
         | Some "" ->
             (* TODO compression *)
             let* () = Vmm_unix.create_empty_block id in
-            let stream, push = Lwt_stream.create () in
-            Vmm_unix.stream_to_block size stream id;
+            let stream, push = Lwt_stream.create_bounded 2 in
+            let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
             let* resources = Vmm_resources.insert_block t.resources id size in
-            Ok ({ t with resources }, `Recv_stream (push, `Success (`String "added block device")))
+            Ok ({ t with resources }, `Recv_stream (stream_task, push, `Success (`String "added block device")))
           | Some img ->
-            let* size_in_bytes = Vmm_unix.bytes_of_mb size in
             let* img =
               if compressed then
                 Vmm_compress.uncompress img
@@ -499,10 +499,11 @@ let handle_block_cmd t id = function
         | "" ->
           let* () = Vmm_unix.destroy_block id in
           let* () = Vmm_unix.create_empty_block id in
-          let stream, push = Lwt_stream.create () in
-          Vmm_unix.stream_to_block size_in_bytes stream id;
-          let* resources = Vmm_resources.insert_block t.resources id size in
-          Ok ({ t with resources }, `Recv_stream (push, `Success (`String "set block device")))
+          let stream, push = Lwt_stream.create_bounded 2 in
+          let stream_task =
+            Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id
+          in
+          Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device")))
         | _ ->
           let* data =
             if compressed then
@@ -541,13 +542,9 @@ let handle_block_cmd t id = function
       | Some (_, false) ->
         (* TODO re-add compression *)
         let res = `Success (`Block_device_image (false, "")) in
-        let s, push = Lwt_stream.create () in
-        let p = function
-          | None -> push (Some (`Block_data None)); push None
-          | Some s -> push (Some (`Block_data (Some s)))
-        in
-        let* () = Vmm_unix.dump_block_stream p id in
-        Ok (t, `Send_stream (s, res))
+        let s, push = Lwt_stream.create_bounded 2 in
+        let* task = Vmm_unix.dump_block_stream push id in
+        Ok (t, `Send_stream (task, s, res))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;
