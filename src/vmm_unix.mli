@@ -2,6 +2,8 @@
 
 open Vmm_core
 
+val openfile : string -> Unix.open_flag list -> int -> Unix.file_descr
+
 type supported = FreeBSD | Linux
 
 val uname : supported Lazy.t
@@ -36,11 +38,11 @@ val destroy_block : Name.t -> (unit, [> `Msg of string ]) result
 
 val dump_block : Name.t -> (string, [> `Msg of string ]) result
 
-val dump_file_stream : (string option -> unit) -> Fpath.t -> (unit, [> `Msg of string ]) result
+val dump_file_stream : Unix.file_descr -> int -> string Lwt_stream.bounded_push -> Fpath.t -> unit Lwt.t
 
-val dump_block_stream : (string option -> unit) -> Name.t -> (unit, [> `Msg of string ]) result
+val dump_block_stream : string Lwt_stream.bounded_push -> Name.t -> (unit Lwt.t, [> `Msg of string ]) result
 
-val stream_to_block : int -> string Lwt_stream.t -> Name.t -> unit
+val stream_to_block : size:int -> byte_size:int -> string Lwt_stream.t -> Name.t -> unit Lwt.t
 
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 

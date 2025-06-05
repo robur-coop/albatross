@@ -90,36 +90,37 @@ let handle cons_out stat_out fd addr =
         | `Loop wire ->
           Lwt_mutex.unlock create_lock;
           out wire >>= loop
-        | `Send_stream (s, wire) ->
+        | `Send_stream (task, s, wire) ->
           Lwt_mutex.unlock create_lock;
           out wire >>= fun () ->
           let rec more () =
             Lwt_stream.get s >>= function
-            | None -> Lwt.return_unit
-            | Some wire -> out (`Data wire) >>= more
+            | None -> out (`Data (`Block_data None))
+            | Some data -> out (`Data (`Block_data (Some data))) >>= more
           in
-          more () >|= fun () ->
+          Lwt.both task (more ()) >|= fun ((), ()) ->
           `Close
-        | `Recv_stream (p, wire) ->
+        | `Recv_stream (task, p, wire) ->
           Lwt_mutex.unlock create_lock;
-          out wire >>= fun () ->
-          let rec more () =
+          let rec more p fd =
             Vmm_lwt.read_wire fd >>= function
             | Error _ ->
               Logs.err (fun m -> m "error while reading") ;
               Lwt.return `Close
             | Ok (_, `Data `Block_data None) ->
-              p None;
+              p#close;
               Lwt.return `Close
-            | Ok (_, `Data `Block_data d) ->
-              p d;
-              more ()
+            | Ok (_, `Data `Block_data Some d) ->
+              p#push d >>= fun () ->
+              more p fd
             | Ok w ->
               Logs.err (fun m -> m "unexpected data %a"
                            (Vmm_commands.pp_wire ~verbose:false) w);
               Lwt.return `Close
           in
-          more ()
+          Lwt.both task (more p fd) >>= fun ((), r) ->
+          out wire >|= fun () ->
+          r
         | `End wire ->
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->
@@ -194,7 +195,6 @@ let jump _ systemd influx tmpdir dbdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
-  Memtrace.trace_if_requested ~context:"albatross-daemon" ();
   state := Vmm_vmmd.init_block_devices !state;
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m

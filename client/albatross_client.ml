@@ -656,10 +656,9 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
       connect_local opt_sock name cmd >>= function
       | Error e -> Lwt.return (Ok e)
       | Ok (fd, next) ->
-        read process_local (fd, next) >>= fun r ->
         (match data with
-         | None -> Lwt.return_unit
-         | Some s ->
+         | None -> Lwt.return ((), ())
+         | Some (t, s) ->
            let rec more sequence =
              let header = Vmm_commands.header ~sequence name in
              Lwt_stream.get s >>= function
@@ -670,12 +669,13 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
                | Ok () -> more (Int64.succ sequence)
                | Error `Exception -> Lwt.return_unit
            in
-           more 1L) >>= fun () ->
+           Lwt.both t (more 1L)) >>= fun ((), ()) ->
+        read process_local (fd, next) >>= fun r ->
         Vmm_lwt.safe_close fd >|= fun () ->
         exit_status r)
   | `Remote endp ->
     let* cert, certs, key = read_cert_key cert key in
-    let* name =
+    let* name_str =
       match cmd, Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
       | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name))
       | _, true, Some name -> Ok name
@@ -684,7 +684,7 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
     in
     Lwt_main.run (
       let _, next = Vmm_commands.endpoint cmd in
-      match gen_cert (cert, certs, key) key_type name cmd with
+      match gen_cert (cert, certs, key) key_type name_str cmd with
       | Error `Msg msg ->
         Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
         Lwt.return (Ok Cli_failed)
@@ -692,6 +692,20 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
         connect_remote endp (cert, certs, key) ca >>= function
         | Error e -> Lwt.return (Ok e)
         | Ok fd ->
+          (match data with
+           | None -> Lwt.return ((), ())
+           | Some (t, s) ->
+             let rec more sequence =
+               let header = Vmm_commands.header ~sequence name in
+               Lwt_stream.get s >>= function
+               | None ->
+                 Vmm_tls_lwt.write_tls fd (header, `Data (`Block_data None)) >|= fun _e -> ()
+               | Some data ->
+                 Vmm_tls_lwt.write_tls fd (header, `Data (`Block_data (Some data))) >>= function
+                 | Ok () -> more (Int64.succ sequence)
+                 | Error `Exception -> Lwt.return_unit
+             in
+             Lwt.both t (more 1L)) >>= fun ((), ()) ->
           read process_remote (fd, next) >>= fun r ->
           Vmm_tls_lwt.close fd >|= fun () ->
           exit_status r)
@@ -803,14 +817,15 @@ let block_dump () compression name dst =
 let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
   let data =
     match opt_file with
-    | None -> Ok None
+    | None -> None
     | Some f ->
       let file = Fpath.v f in
-      let stream, push = Lwt_stream.create () in
-      let* () = Vmm_unix.dump_file_stream push file in
-      Ok (Some stream)
+      let stream, push = Lwt_stream.create_bounded 2 in
+      let size = Unix.(stat f).st_size in
+      let fd = Vmm_unix.openfile f [ Unix.O_RDONLY ] 0 in
+      let task = Vmm_unix.dump_file_stream fd size push file in
+      Some (task, stream)
   in
-  let* data = data in
   match create_block block_size (compress_default compression dst) opt_file with
   | Ok cmd -> jump ?data (`Block_cmd cmd) name dst cert key ca key_type tmpdir
   | Error _ as e -> e
@@ -820,9 +835,11 @@ let block_set () compression file name dst cert key ca key_type tmpdir =
     let level = compress_default compression dst in
     level > 0
   in
-  let stream, push = Lwt_stream.create () in
-  let* () = Vmm_unix.dump_file_stream push (Fpath.v file) in
-  jump ~data:stream (`Block_cmd (`Block_set (compressed, ""))) name dst
+  let stream, push = Lwt_stream.create_bounded 2 in
+  let size = Unix.(stat file).st_size in
+  let fd = Vmm_unix.openfile file [ Unix.O_RDONLY ] 0 in
+  let task = Vmm_unix.dump_file_stream fd size push (Fpath.v file) in
+  jump ~data:(task, stream) (`Block_cmd (`Block_set (compressed, ""))) name dst
     cert key ca key_type tmpdir
 
 let block_destroy () = jump (`Block_cmd `Block_remove)
@@ -1650,5 +1667,4 @@ let () =
   ] in
   let info = Cmd.info "albatross-client" ~version:Albatross_cli.version ~doc ~man ~exits in
   let group = Cmd.group ~default:help_cmd info cmds in
-  Memtrace.trace_if_requested ~context:"albatross-client" ();
   exit (Cmd.eval_value group |> exit_status_of_result)
