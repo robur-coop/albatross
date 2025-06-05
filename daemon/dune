@@ -9,7 +9,7 @@
  (public_name albatrossd)
  (package albatross)
  (modules albatrossd)
- (libraries albatross.cli albatross albatrossd_utils metrics-lwt metrics-influx))
+ (libraries albatross.cli albatross albatrossd_utils metrics-lwt metrics-influx memtrace))
 
 (executable
  (name albatross_console)
@@ -30,7 +30,7 @@
  (public_name albatross-tls-endpoint)
  (package albatross)
  (modules albatross_tls_endpoint)
- (libraries albatross_cli albatrossd_utils albatross.tls albatross tls-lwt))
+ (libraries albatross_cli albatrossd_utils albatross.tls albatross tls-lwt memtrace))
 
 (executable
  (name albatross_stats)
