@@ -459,7 +459,6 @@ let handle_block_cmd t id = function
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         let* () = Vmm_resources.check_block t.resources id size in
-        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
         match data with
         | None ->
           let* () = Vmm_unix.create_block ?data id size in
@@ -469,10 +468,11 @@ let handle_block_cmd t id = function
             (* TODO compression *)
             let* () = Vmm_unix.create_empty_block id in
             let stream, push = Lwt_stream.create () in
-            Vmm_unix.stream_to_block size_in_bytes stream id;
+            Vmm_unix.stream_to_block size stream id;
             let* resources = Vmm_resources.insert_block t.resources id size in
             Ok ({ t with resources }, `Recv_stream (push, `Success (`String "added block device")))
           | Some img ->
+            let* size_in_bytes = Vmm_unix.bytes_of_mb size in
             let* img =
               if compressed then
                 Vmm_compress.uncompress img

@@ -539,52 +539,57 @@ let dump_block_stream push name =
   let block_name = block_file name in
   dump_file_stream push block_name
 
-let stream_to_block limit stream name =
-  let block_name = block_file name in
-  Lwt.async (fun () ->
-      let open Lwt.Infix in
-      Lwt.catch (fun () ->
-          Lwt_unix.openfile (Fpath.to_string block_name)
-            [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
-          Lwt.catch (fun () ->
-              let rec read_more size =
-                Lwt_stream.get stream >>= function
-                | None -> safe_close fd
-                | Some data ->
-                  if String.length data >= limit - size then begin
-                    Logs.err (fun m -> m "stream exceeds size");
-                    Lwt.return_unit
-                  end else
-                    let rec write off =
-                      Lwt_unix.write fd (Bytes.unsafe_of_string data) off
-                        (String.length data - off) >>= fun written ->
-                      if written = String.length data - off then
-                        read_more (size + String.length data)
-                      else
-                        write (off + written)
-                    in
-                    write 0
-              in
-              read_more 0 >|= fun () ->
-              match truncate name limit with
-              | Ok () -> ()
-              | Error `Msg msg ->
-                Logs.err (fun m -> m "error truncating %a: %s"
-                             Fpath.pp block_name msg))
-            (fun e ->
-               Logs.err (fun m -> m "error writing %a: %s"
-                            Fpath.pp block_name (Printexc.to_string e));
-               safe_close fd))
-        (fun e ->
-               Logs.err (fun m -> m "error opening %a for writing: %s"
-                            Fpath.pp block_name (Printexc.to_string e));
-               Lwt.return_unit))
-
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then
     Error (`Msg "size is either 0 or not MB aligned")
   else
     Ok (size lsr 20)
+
+let stream_to_block mb_limit stream name =
+  let block_name = block_file name in
+  match bytes_of_mb mb_limit with
+  | Error `Msg msg ->
+    Logs.err (fun m -> m "error getting MB for %a: %s"
+                 Fpath.pp block_name msg)
+  | Ok limit ->
+    Lwt.async (fun () ->
+        let open Lwt.Infix in
+        Lwt.catch (fun () ->
+            Lwt_unix.openfile (Fpath.to_string block_name)
+              [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
+            Lwt.catch (fun () ->
+                let rec read_more size =
+                  Lwt_stream.get stream >>= function
+                  | None -> safe_close fd
+                  | Some data ->
+                    if String.length data >= limit - size then begin
+                      Logs.err (fun m -> m "stream exceeds size");
+                      Lwt.return_unit
+                    end else
+                      let rec write off =
+                        Lwt_unix.write fd (Bytes.unsafe_of_string data) off
+                          (String.length data - off) >>= fun written ->
+                        if written = String.length data - off then
+                          read_more (size + String.length data)
+                        else
+                          write (off + written)
+                      in
+                      write 0
+                in
+                read_more 0 >|= fun () ->
+                match truncate name mb_limit with
+                | Ok () -> ()
+                | Error `Msg msg ->
+                  Logs.err (fun m -> m "error truncating %a: %s"
+                               Fpath.pp block_name msg))
+              (fun e ->
+                 Logs.err (fun m -> m "error writing %a: %s"
+                              Fpath.pp block_name (Printexc.to_string e));
+                 safe_close fd))
+          (fun e ->
+             Logs.err (fun m -> m "error opening %a for writing: %s"
+                          Fpath.pp block_name (Printexc.to_string e));
+             Lwt.return_unit))
 
 let find_block_devices () =
   let dir = block_dir () in
