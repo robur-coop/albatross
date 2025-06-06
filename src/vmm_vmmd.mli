@@ -32,7 +32,7 @@ val handle_command : 'a t -> Vmm_commands.wire ->
    [ `Create of Name.t * Unikernel.config
    | `Loop of Vmm_commands.res
    | `Send_stream of (unit, [> `Msg of string ]) result Lwt.t * string Lwt_stream.t * Vmm_commands.res
-   | `Recv_stream of unit Lwt.t * string Lwt_stream.bounded_push * Vmm_commands.res
+   | `Recv_stream of (unit, [> `Msg of string ]) result Lwt.t * string Lwt_stream.bounded_push * Vmm_commands.res * ('a t -> ('a t, [> `Msg of string ]) result)
    | `End of Vmm_commands.res
    | `Wait of Name.t * (process_exit -> Vmm_commands.res)
    | `Wait_and_create of Name.t * (Name.t * Unikernel.config)

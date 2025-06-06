@@ -466,28 +466,32 @@ let handle_block_cmd t id = function
           let* resources = Vmm_resources.insert_block t.resources id size in
           Ok ({ t with resources }, `End (`Success (`String "added block device")))
         | Some "" ->
-            (* TODO compression *)
-            let* () = Vmm_unix.create_empty_block id in
-            let stream, push = Lwt_stream.create_bounded 2 in
-            let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
-            let* resources = Vmm_resources.insert_block t.resources id size in
-            Ok ({ t with resources }, `Recv_stream (stream_task, push, `Success (`String "added block device")))
-          | Some img ->
-            let* img =
-              if compressed then
-                Vmm_compress.uncompress img
-              else
-                Ok img
-            in
-            let* () =
-              if size_in_bytes >= String.length img then
-                Ok ()
-              else
-                Error (`Msg "data exceeds block size")
-            in
-            let* () = Vmm_unix.create_block ~data:img id size in
-            let* resources = Vmm_resources.insert_block t.resources id size in
-            Ok ({ t with resources }, `End (`Success (`String "added block device")))
+          (* TODO compression *)
+          let* resources = Vmm_resources.reserve_block t.resources id size in
+          let* () = Vmm_unix.create_empty_block id in
+          let stream, push = Lwt_stream.create_bounded 2 in
+          let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
+          let update_resources t =
+            let* resources = Vmm_resources.commit_block t.resources id in
+            Ok { t with resources }
+          in
+          Ok ({ t with resources }, `Recv_stream (stream_task, push, `Success (`String "added block device"), update_resources))
+        | Some img ->
+          let* img =
+            if compressed then
+              Vmm_compress.uncompress img
+            else
+              Ok img
+          in
+          let* () =
+            if size_in_bytes >= String.length img then
+              Ok ()
+            else
+              Error (`Msg "data exceeds block size")
+          in
+          let* () = Vmm_unix.create_block ~data:img id size in
+          let* resources = Vmm_resources.insert_block t.resources id size in
+          Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
   | `Block_set (compressed, data) ->
     begin match Vmm_resources.find_block t.resources id with
@@ -503,7 +507,7 @@ let handle_block_cmd t id = function
           let stream_task =
             Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id
           in
-          Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device")))
+          Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device"), fun t -> Ok t))
         | _ ->
           let* data =
             if compressed then
