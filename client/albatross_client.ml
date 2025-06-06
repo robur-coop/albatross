@@ -657,19 +657,26 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
       | Error e -> Lwt.return (Ok e)
       | Ok (fd, next) ->
         (match data with
-         | None -> Lwt.return ((), ())
+         | None -> Lwt.return (Ok (), 1L)
          | Some (t, s) ->
            let rec more sequence =
              let header = Vmm_commands.header ~sequence name in
+             let seq_after = Int64.succ sequence in
              Lwt_stream.get s >>= function
              | None ->
-               Vmm_lwt.write_wire fd (header, `Data (`Block_data None)) >|= fun _e -> ()
+               Vmm_lwt.write_wire fd (header, `Data (`Block_data None)) >|= fun _e ->
+               seq_after
              | Some data ->
                Vmm_lwt.write_wire fd (header, `Data (`Block_data (Some data))) >>= function
-               | Ok () -> more (Int64.succ sequence)
-               | Error `Exception -> Lwt.return_unit
+               | Ok () -> more seq_after
+               | Error `Exception -> Lwt.return seq_after
            in
-           Lwt.both t (more 1L)) >>= fun ((), ()) ->
+           Lwt.both t (more 1L)) >>= fun (r, seq) ->
+        (match r with
+         | Ok () -> Lwt.return_unit
+         | Error `Msg msg ->
+           let header = Vmm_commands.header ~sequence:seq name in
+           Vmm_lwt.write_wire fd (header, `Failure msg) >|= fun _e -> ()) >>= fun () ->
         read process_local (fd, next) >>= fun r ->
         Vmm_lwt.safe_close fd >|= fun () ->
         exit_status r)
@@ -693,19 +700,26 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
         | Error e -> Lwt.return (Ok e)
         | Ok fd ->
           (match data with
-           | None -> Lwt.return ((), ())
+           | None -> Lwt.return (Ok (), 1L)
            | Some (t, s) ->
              let rec more sequence =
                let header = Vmm_commands.header ~sequence name in
+               let seq_after = Int64.succ sequence in
                Lwt_stream.get s >>= function
                | None ->
-                 Vmm_tls_lwt.write_tls fd (header, `Data (`Block_data None)) >|= fun _e -> ()
+                 Vmm_tls_lwt.write_tls fd (header, `Data (`Block_data None)) >|= fun _e ->
+                 seq_after
                | Some data ->
                  Vmm_tls_lwt.write_tls fd (header, `Data (`Block_data (Some data))) >>= function
-                 | Ok () -> more (Int64.succ sequence)
-                 | Error `Exception -> Lwt.return_unit
+                 | Ok () -> more seq_after
+                 | Error `Exception -> Lwt.return seq_after
              in
-             Lwt.both t (more 1L)) >>= fun ((), ()) ->
+             Lwt.both t (more 1L)) >>= fun (r, seq) ->
+          (match r with
+           | Ok () -> Lwt.return_unit
+           | Error `Msg msg ->
+             let header = Vmm_commands.header ~sequence:seq name in
+             Vmm_tls_lwt.write_tls fd (header, `Failure msg) >|= fun _e -> ()) >>= fun () ->
           read process_remote (fd, next) >>= fun r ->
           Vmm_tls_lwt.close fd >|= fun () ->
           exit_status r)

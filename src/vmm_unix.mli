@@ -38,9 +38,9 @@ val destroy_block : Name.t -> (unit, [> `Msg of string ]) result
 
 val dump_block : Name.t -> (string, [> `Msg of string ]) result
 
-val dump_file_stream : Unix.file_descr -> int -> string Lwt_stream.bounded_push -> Fpath.t -> unit Lwt.t
+val dump_file_stream : Unix.file_descr -> int -> string Lwt_stream.bounded_push -> Fpath.t -> (unit, [> `Msg of string ]) result Lwt.t
 
-val dump_block_stream : string Lwt_stream.bounded_push -> Name.t -> (unit Lwt.t, [> `Msg of string ]) result
+val open_block_fd : Name.t -> (Unix.file_descr * int * Fpath.t, [> `Msg of string ]) result
 
 val stream_to_block : size:int -> byte_size:int -> string Lwt_stream.t -> Name.t -> unit Lwt.t
 
