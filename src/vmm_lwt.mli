@@ -31,3 +31,5 @@ val write_wire :
   Lwt_unix.file_descr -> Vmm_commands.wire -> (unit, [> `Exception ]) result Lwt.t
 
 val safe_close : Lwt_unix.file_descr -> unit Lwt.t
+
+val compress_stream : string Lwt_stream.t -> string Lwt_stream.t
