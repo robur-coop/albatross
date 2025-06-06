@@ -90,6 +90,51 @@ let handle cons_out stat_out fd addr =
         | `Loop wire ->
           Lwt_mutex.unlock create_lock;
           out wire >>= loop
+        | `Send_stream (task, s, wire) ->
+          Lwt_mutex.unlock create_lock;
+          out wire >>= fun () ->
+          let rec more () =
+            Lwt_stream.get s >>= function
+            | None -> out (`Data (`Block_data None))
+            | Some data -> out (`Data (`Block_data (Some data))) >>= more
+          in
+          Lwt.both task (more ()) >>= fun (r, ()) ->
+          (match r with
+           | Ok () -> Lwt.return_unit
+           | Error `Msg msg -> out (`Failure msg)) >|= fun () ->
+          `Close
+        | `Recv_stream (task, p, wire, cont) ->
+          Lwt_mutex.unlock create_lock;
+          let rec more p fd =
+            Vmm_lwt.read_wire fd >>= function
+            | Error _ ->
+              Logs.err (fun m -> m "error while reading") ;
+              p#close;
+              Lwt.return (Error (`Msg "error while reading stream"))
+            | Ok (_, `Data `Block_data None) ->
+              p#close;
+              Lwt.return (Ok ())
+            | Ok (_, `Data `Block_data Some d) ->
+              p#push d >>= fun () ->
+              more p fd
+            | Ok w ->
+              Logs.err (fun m -> m "unexpected data %a"
+                           (Vmm_commands.pp_wire ~verbose:false) w);
+              p#close;
+              Lwt.return (Error (`Msg "read unexpected command on stream"))
+          in
+          Lwt.both task (more p fd) >>= fun (t_r, r) ->
+          let wire = match t_r, r with
+            | Ok (), Ok () -> wire
+            | Error (`Msg msg), _ -> `Failure msg
+            | _, Error (`Msg msg) -> `Failure msg
+          in
+          out wire >|= fun () ->
+          (match cont !state with
+           | Ok s -> state := s
+           | Error `Msg msg ->
+             Logs.err (fun m -> m "finished receiving stream, but the resource update errored: %s" msg));
+          `Close
         | `End wire ->
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->

@@ -582,34 +582,41 @@ let policy_cmd =
 
 let block_cmd =
   let f = function
-    | `C1 () -> `Block_info
-    | `C2 size -> `Block_add (size, false, None)
-    | `C3 () -> `Block_remove
-    | `C4 (size, compress, data) -> `Block_add (size, compress, data)
-    | `C5 (compress, data) -> `Block_set (compress, data)
-    | `C6 level -> `Block_dump level
+    | `C1 `C1 () -> `Block_info
+    | `C1 `C2 size -> `Block_add (size, false, None)
+    | `C1 `C3 () -> `Block_remove
+    | `C1 `C4 (size, compress, data) -> `Block_add (size, compress, data)
+    | `C1 `C5 (compress, data) -> `Block_set (compress, data)
+    | `C1 `C6 level -> `Old_block_dump level
+    | `C2 `C1 level -> `Block_dump level
+    | `C2 `C2 () -> assert false (* placeholder *)
   and g = function
-    | `Block_info -> `C1 ()
-    | `Block_add (size, compress, data) -> `C4 (size, compress, data)
-    | `Block_remove -> `C3 ()
-    | `Block_set (compress, data) -> `C5 (compress, data)
-    | `Block_dump level -> `C6 level
+    | `Block_info -> `C1 (`C1 ())
+    | `Block_add (size, compress, data) -> `C1 (`C4 (size, compress, data))
+    | `Block_remove -> `C1 (`C3 ())
+    | `Block_set (compress, data) -> `C1 (`C5 (compress, data))
+    | `Old_block_dump level -> `C1 (`C6 level)
+    | `Block_dump level -> `C2 (`C1 level)
   in
   Asn.S.map f g @@
-  Asn.S.(choice6
-           (my_explicit 0 ~label:"info" null)
-           (my_explicit 1 ~label:"add-OLD" int)
-           (my_explicit 2 ~label:"remove" null)
-           (my_explicit 3 ~label:"add"
-              (sequence3
-                 (required ~label:"size" int)
-                 (required ~label:"compress" bool)
-                 (optional ~label:"data" octet_string)))
-           (my_explicit 4 ~label:"set"
-              (sequence2
-                 (required ~label:"compress" bool)
-                 (required ~label:"data" octet_string)))
-           (my_explicit 5 ~label:"dump" int))
+  Asn.S.(choice2
+          (choice6
+             (my_explicit 0 ~label:"info" null)
+             (my_explicit 1 ~label:"add-OLD" int)
+             (my_explicit 2 ~label:"remove" null)
+             (my_explicit 3 ~label:"add"
+                (sequence3
+                   (required ~label:"size" int)
+                   (required ~label:"compress" bool)
+                   (optional ~label:"data" octet_string)))
+             (my_explicit 4 ~label:"set"
+                (sequence2
+                   (required ~label:"compress" bool)
+                   (required ~label:"data" octet_string)))
+             (my_explicit 5 ~label:"dump" int))
+          (choice2
+             (my_explicit 6 ~label:"dump" int)
+             (my_explicit 7 ~label:"null" null)))
 
 let wire_command =
   let f = function
@@ -641,13 +648,17 @@ let data =
     | `C2 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
     | `C3 () -> Asn.S.parse_error "support for log was dropped"
     | `C4 (timestamp, data) -> `Console_data (timestamp, data)
+    | `C5 `C1 s -> `Block_data (Some s)
+    | `C5 `C2 () -> `Block_data None
   and g = function
     | `Utc_console_data (timestamp, data) -> `C1 (timestamp, data)
     | `Console_data (timestamp, data) -> `C4 (timestamp, data)
     | `Stats_data (ru, mem, ifs, vmm) -> `C2 (ru, vmm, ifs, mem)
+    | `Block_data None -> `C5 (`C2 ())
+    | `Block_data Some s -> `C5 (`C1 s)
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice5
            (my_explicit 0 ~label:"utc-console"
               (sequence2
                  (required ~label:"timestamp" utc_time)
@@ -665,7 +676,11 @@ let data =
            (my_explicit 3 ~label:"console"
               (sequence2
                  (required ~label:"timestamp" generalized_time)
-                 (required ~label:"data" utf8_string))))
+                 (required ~label:"data" utf8_string)))
+           (my_explicit 4 ~label:"block"
+              (choice2
+                 (my_explicit 0 ~label:"some data" octet_string)
+                 (my_explicit 1 ~label:"no data" null))))
 
 let old_unikernel_info2 =
   let open Unikernel in

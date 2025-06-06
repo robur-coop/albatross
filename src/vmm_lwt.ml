@@ -173,3 +173,41 @@ let write_wire s wire =
   Bytes.set_int32_be dlen 0 (Int32.of_int (String.length data)) ;
   let buf = Bytes.cat dlen (Bytes.unsafe_of_string data) in
   write_raw s buf
+
+let compress_stream ?level input =
+  let level =
+    match level with
+    | Some x when x >= 0 && x <= 9 -> x
+    | _ -> 4
+  in
+  let w = De.Lz77.make_window ~bits:15 in
+  let q = De.Queue.create 0x1000 in
+  let zl = Zl.Def.encoder `Manual `Manual ~q ~w ~level in
+  let i = Bigstringaf.create De.io_buffer_size in
+  let o = Bigstringaf.create De.io_buffer_size in
+  let r, stream = Lwt_stream.create_bounded 2 in
+  let rec loop zl =
+    match Zl.Def.encode zl with
+    | `Flush zl ->
+      let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
+      stream#push (Bigstringaf.substring o ~off:0 ~len) >>= fun () ->
+      loop (Zl.Def.dst zl o 0 (Bigstringaf.length o))
+    | `End zl ->
+      let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
+      stream#push (Bigstringaf.substring o ~off:0 ~len) >|= fun () ->
+      stream#close
+    | `Await zl ->
+      Lwt_stream.get input >>= function
+      | Some data ->
+        let off = Zl.Def.src_rem zl in
+        Bigstringaf.blit_from_string data ~src_off:0 i ~dst_off:off ~len:(String.length data);
+        let zl = Zl.Def.src zl i 0 (off + String.length data) in
+        loop zl
+      | None ->
+        let off = Zl.Def.src_rem zl in
+        let zl = Zl.Def.src zl i off 0 in
+        loop zl
+  in
+  (* XXX: cancellation *)
+  Lwt.async (fun () -> loop zl);
+  r

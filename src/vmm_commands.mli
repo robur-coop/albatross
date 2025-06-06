@@ -54,6 +54,7 @@ type block_cmd = [
   | `Block_add of int * bool * string option
   | `Block_remove
   | `Block_set of bool * string
+  | `Old_block_dump of int
   | `Block_dump of int
 ]
 
@@ -71,6 +72,7 @@ type data = [
   | `Console_data of Ptime.t * string
   | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
+  | `Block_data of string option
 ]
 
 val pp_data : data Fmt.t
@@ -107,4 +109,4 @@ type wire = header * res
 
 val pp_wire : verbose:bool -> wire Fmt.t
 
-val endpoint : t -> service * [ `End | `Read ]
+val endpoint : t -> service * [ `Single | `Read | `Dump ]
