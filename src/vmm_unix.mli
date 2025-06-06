@@ -42,7 +42,7 @@ val dump_file_stream : Unix.file_descr -> int -> string Lwt_stream.bounded_push 
 
 val open_block_fd : Name.t -> (Unix.file_descr * int * Fpath.t, [> `Msg of string ]) result
 
-val stream_to_block : size:int -> byte_size:int -> string Lwt_stream.t -> Name.t -> unit Lwt.t
+val stream_to_block : size:int -> byte_size:int -> string Lwt_stream.t -> Name.t -> (unit, [> `Msg of string ]) result Lwt.t
 
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 

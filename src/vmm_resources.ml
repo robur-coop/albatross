@@ -232,6 +232,21 @@ let insert_block t name size =
   report_unikernels t' name;
   Ok t'
 
+let reserve_block t name size =
+  let* () = check_block t name size in
+  let block_devices = fst (Vmm_trie.insert name (size, true) t.block_devices) in
+  Ok { t with block_devices }
+
+let commit_block t name =
+  match Vmm_trie.find name t.block_devices with
+  | None -> Error (`Msg ("block device " ^ Name.to_string name ^ " not in trie"))
+  | Some (size, curr) ->
+    if not curr
+    then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state inactive"))
+    else
+      let block_devices = fst (Vmm_trie.insert name (size, false) t.block_devices) in
+      Ok { t with block_devices }
+
 let check_policies_above t path sub =
   let rec go prefix =
     if Name.is_root_path prefix then

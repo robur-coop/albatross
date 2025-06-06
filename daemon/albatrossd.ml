@@ -103,29 +103,38 @@ let handle cons_out stat_out fd addr =
            | Ok () -> Lwt.return_unit
            | Error `Msg msg -> out (`Failure msg)) >|= fun () ->
           `Close
-        | `Recv_stream (task, p, wire) ->
+        | `Recv_stream (task, p, wire, cont) ->
           Lwt_mutex.unlock create_lock;
           let rec more p fd =
             Vmm_lwt.read_wire fd >>= function
             | Error _ ->
               Logs.err (fun m -> m "error while reading") ;
-              (* here we should cancel whatever we had in progress *)
-              Lwt.return `Close
+              p#close;
+              Lwt.return (Error (`Msg "error while reading stream"))
             | Ok (_, `Data `Block_data None) ->
               p#close;
-              Lwt.return `Close
+              Lwt.return (Ok ())
             | Ok (_, `Data `Block_data Some d) ->
               p#push d >>= fun () ->
               more p fd
             | Ok w ->
               Logs.err (fun m -> m "unexpected data %a"
                            (Vmm_commands.pp_wire ~verbose:false) w);
-              (* here we should cancel whatever we had in progress *)
-              Lwt.return `Close
+              p#close;
+              Lwt.return (Error (`Msg "read unexpected command on stream"))
           in
-          Lwt.both task (more p fd) >>= fun ((), r) ->
+          Lwt.both task (more p fd) >>= fun (t_r, r) ->
+          let wire = match t_r, r with
+            | Ok (), Ok () -> wire
+            | Error (`Msg msg), _ -> `Failure msg
+            | _, Error (`Msg msg) -> `Failure msg
+          in
           out wire >|= fun () ->
-          r
+          (match cont !state with
+           | Ok s -> state := s
+           | Error `Msg msg ->
+             Logs.err (fun m -> m "finished receiving stream, but the resource update errored: %s" msg));
+          `Close
         | `End wire ->
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->

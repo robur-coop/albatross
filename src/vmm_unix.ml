@@ -540,6 +540,10 @@ let mb_of_bytes size =
     Ok (size lsr 20)
 
 let stream_to_block ~size ~byte_size stream name =
+  (* what is the desired semantics for failures?
+     the current approach is that the block data will be trashed
+     we could avoid, but not easily (since that'd mean some temporary space and renaming
+     -- or if we require zfs, a snapshot and rollback! *)
   let block_name = block_file name in
   let open Lwt.Infix in
   Lwt.catch (fun () ->
@@ -547,11 +551,11 @@ let stream_to_block ~size ~byte_size stream name =
         [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
       let rec read_more size =
         Lwt_stream.get stream >>= function
-        | None -> safe_close fd
+        | None -> Lwt.return (Ok ())
         | Some data ->
           if String.length data > byte_size - size then begin
             Logs.err (fun m -> m "stream exceeds size");
-            Lwt.return_unit
+            Lwt.return (Error (`Msg "stream exceeds block size"))
           end else
             let rec write off =
               Lwt_unix.write fd (Bytes.unsafe_of_string data) off
@@ -564,20 +568,20 @@ let stream_to_block ~size ~byte_size stream name =
             write 0
       in
       Lwt.catch (fun () ->
-          read_more 0 >|= fun () ->
-          match truncate name size with
-          | Ok () -> ()
-          | Error `Msg msg ->
-            Logs.err (fun m -> m "error truncating %a: %s"
-                         Fpath.pp block_name msg))
+          read_more 0 >>= fun r ->
+          safe_close fd >|= fun () ->
+          match r with
+          | Ok () -> truncate name size
+          | Error _ as e -> e)
         (fun e ->
            Logs.err (fun m -> m "error writing %a: %s"
                         Fpath.pp block_name (Printexc.to_string e));
-           safe_close fd))
+           safe_close fd >|= fun () ->
+           Error (`Msg "error writing to block device")))
     (fun e ->
        Logs.err (fun m -> m "error opening %a for writing: %s"
                     Fpath.pp block_name (Printexc.to_string e));
-       Lwt.return_unit)
+       Lwt.return (Error (`Msg "error opening block device")))
 
 let find_block_devices () =
   let dir = block_dir () in
