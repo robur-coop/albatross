@@ -32,4 +32,4 @@ val write_wire :
 
 val safe_close : Lwt_unix.file_descr -> unit Lwt.t
 
-val compress_stream : string Lwt_stream.t -> string Lwt_stream.t
+val compress_stream : ?level:int -> string Lwt_stream.t -> string Lwt_stream.t
