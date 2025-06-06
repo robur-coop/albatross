@@ -500,8 +500,8 @@ let safe_close fd =
 
 let dump_file_stream fd size stream name =
   let open Lwt.Infix in
+  let fd = Lwt_unix.of_unix_file_descr fd in
   Lwt.catch (fun () ->
-      let fd = Lwt_unix.of_unix_file_descr fd in
       let rec more fd size stream off =
         let len = Int.min (size - off) 4096 in
         let buf = Bytes.create len in
@@ -514,19 +514,15 @@ let dump_file_stream fd size stream name =
         end else
           more fd size stream (off + read)
       in
-      Lwt.catch (fun () ->
-          more fd size stream 0 >>= fun () ->
-          safe_close fd)
-        (fun e ->
-           Logs.err (fun m -> m "error reading %a: %s" Fpath.pp name
-                        (Printexc.to_string e));
-           safe_close fd))
+      more fd size stream 0 >>= fun () ->
+      safe_close fd >|= fun () ->
+      Ok ())
     (fun e ->
-       Logs.err (fun m -> m "error opening %a: %s" Fpath.pp name
+       Logs.err (fun m -> m "error streaming %a: %s" Fpath.pp name
                     (Printexc.to_string e));
-       Lwt.return_unit)
+       Lwt.return (Error (`Msg "streaming block device")))
 
-let dump_block_stream push name =
+let open_block_fd name =
   let block_name = block_file name in
   let* exists = Bos.OS.File.exists block_name in
   if not exists then
@@ -535,7 +531,7 @@ let dump_block_stream push name =
     let name_str = Fpath.to_string block_name in
     let size = Unix.(stat name_str).st_size in
     let fd = openfile name_str [ O_RDONLY ] 0 in
-    Ok (dump_file_stream fd size push block_name)
+    Ok (fd, size, block_name)
 
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then

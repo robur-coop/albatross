@@ -541,9 +541,10 @@ let handle_block_cmd t id = function
       | Some (_, true) -> Error (`Msg "dump block: is in use")
       | Some (_, false) ->
         (* TODO re-add compression *)
+        let* fd, size, name = Vmm_unix.open_block_fd id in
         let res = `Success (`Block_device_image (false, "")) in
         let s, push = Lwt_stream.create_bounded 2 in
-        let* task = Vmm_unix.dump_block_stream push id in
+        let task = Vmm_unix.dump_file_stream fd size push name in
         Ok (t, `Send_stream (task, s, res))
     end
   | `Block_info ->
