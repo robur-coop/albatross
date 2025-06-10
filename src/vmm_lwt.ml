@@ -174,12 +174,7 @@ let write_wire s wire =
   let buf = Bytes.cat dlen (Bytes.unsafe_of_string data) in
   write_raw s buf
 
-let compress_stream ?level input =
-  let level =
-    match level with
-    | Some x when x >= 0 && x <= 9 -> x
-    | _ -> 4
-  in
+let compress_stream ~level input =
   let w = De.Lz77.make_window ~bits:15 in
   let q = De.Queue.create 0x1000 in
   let zl = Zl.Def.encoder `Manual `Manual ~q ~w ~level in
@@ -194,11 +189,14 @@ let compress_stream ?level input =
       loop (Zl.Def.dst zl o 0 (Bigstringaf.length o))
     | `End zl ->
       let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
-      stream#push (Bigstringaf.substring o ~off:0 ~len) >|= fun () ->
+      (if len > 0 then
+         stream#push (Bigstringaf.substring o ~off:0 ~len)
+       else Lwt.return_unit) >|= fun () ->
       stream#close
     | `Await zl ->
       Lwt_stream.get input >>= function
       | Some data ->
+        (* XXX(reynir): what if [data] doesn't fit?! *)
         let off = Zl.Def.src_rem zl in
         Bigstringaf.blit_from_string data ~src_off:0 i ~dst_off:off ~len:(String.length data);
         let zl = Zl.Def.src zl i 0 (off + String.length data) in
@@ -208,6 +206,39 @@ let compress_stream ?level input =
         let zl = Zl.Def.src zl i off 0 in
         loop zl
   in
-  (* XXX: cancellation *)
-  Lwt.async (fun () -> loop zl);
-  r
+  r, loop zl
+
+let uncompress_stream input =
+  let i = Bigstringaf.create De.io_buffer_size in
+  let o = Bigstringaf.create De.io_buffer_size in
+  let allocate bits = De.make_window ~bits in
+  let zl = Zl.Inf.decoder `Manual ~o ~allocate in
+  let r, stream = Lwt_stream.create_bounded 2 in
+  let rec loop zl =
+    match Zl.Inf.decode zl with
+    | `Flush zl ->
+      let len = Bigstringaf.length o - Zl.Inf.dst_rem zl in
+      stream#push (`Data (Bigstringaf.substring o ~off:0 ~len)) >>= fun () ->
+      loop (Zl.Inf.flush zl)
+    | `End zl ->
+      let len = Bigstringaf.length o - Zl.Inf.dst_rem zl in
+      (if len > 0 then
+         stream#push (`Data (Bigstringaf.substring o ~off:0 ~len))
+       else Lwt.return_unit) >|= fun () ->
+      stream#close
+    | `Malformed err ->
+      stream#push (`Malformed err) >|= fun () ->
+      stream#close
+    | `Await zl ->
+      Lwt_stream.get input >>= function
+      | Some data ->
+        (* XXX(reynir): what if [data] doesn't fit?! *)
+        let off = Zl.Inf.src_rem zl in
+        Bigstringaf.blit_from_string data ~src_off:0 i ~dst_off:off ~len:(String.length data);
+        let zl = Zl.Inf.src zl i 0 (off + String.length data) in
+        loop zl
+      | None ->
+        let off = Zl.Inf.src_rem zl in
+        loop (Zl.Inf.src zl i off 0)
+  in
+  r, loop zl
