@@ -546,13 +546,14 @@ let stream_to_block ~size ~byte_size stream name =
      -- or if we require zfs, a snapshot and rollback! *)
   let block_name = block_file name in
   let open Lwt.Infix in
+  let exception Malformed_data of string in
   Lwt.catch (fun () ->
       Lwt_unix.openfile (Fpath.to_string block_name)
         [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
       let rec read_more size =
         Lwt_stream.get stream >>= function
         | None -> Lwt.return (Ok ())
-        | Some data ->
+        | Some `Data data ->
           if String.length data > byte_size - size then begin
             Logs.err (fun m -> m "stream exceeds size");
             Lwt.return (Error (`Msg "stream exceeds block size"))
@@ -566,6 +567,8 @@ let stream_to_block ~size ~byte_size stream name =
                 write (off + written)
             in
             write 0
+        | Some `Malformed msg ->
+          raise (Malformed_data msg)
       in
       Lwt.catch (fun () ->
           read_more 0 >>= fun r ->

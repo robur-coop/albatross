@@ -470,7 +470,15 @@ let handle_block_cmd t id = function
           let* resources = Vmm_resources.reserve_block t.resources id size in
           let* () = Vmm_unix.create_empty_block id in
           let stream, push = Lwt_stream.create_bounded 2 in
+          let stream, task =
+            if compressed then
+              let stream, task = Vmm_lwt.uncompress_stream stream in
+              stream, task
+            else
+              Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
+          in
           let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
+          Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
           let update_resources t =
             let* resources = Vmm_resources.commit_block t.resources id in
             Ok { t with resources }
@@ -504,9 +512,15 @@ let handle_block_cmd t id = function
           let* () = Vmm_unix.destroy_block id in
           let* () = Vmm_unix.create_empty_block id in
           let stream, push = Lwt_stream.create_bounded 2 in
-          let stream_task =
-            Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id
+          let stream, task =
+            if compressed then
+              let stream, task = Vmm_lwt.uncompress_stream stream in
+              stream, task
+            else
+              Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
           in
+          let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
+          Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
           Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device"), fun t -> Ok t))
         | _ ->
           let* data =
@@ -539,16 +553,22 @@ let handle_block_cmd t id = function
         in
         Ok (t, `End (`Success (`Block_device_image (compress, data))))
     end
-  | `Block_dump _level ->
+  | `Block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "dump block: not found")
       | Some (_, true) -> Error (`Msg "dump block: is in use")
       | Some (_, false) ->
-        (* TODO re-add compression *)
         let* fd, size, name = Vmm_unix.open_block_fd id in
-        let res = `Success (`Block_device_image (false, "")) in
+        let res = `Success (`Block_device_image (level = 0, "")) in
         let s, push = Lwt_stream.create_bounded 2 in
         let task = Vmm_unix.dump_file_stream fd size push name in
+        let s, task' =
+          if level = 0 then
+            s, Lwt.return_unit
+          else
+            Vmm_lwt.compress_stream ~level s
+        in
+        Lwt.on_failure task (fun _ -> Lwt.cancel task');
         Ok (t, `Send_stream (task, s, res))
     end
   | `Block_info ->
