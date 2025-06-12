@@ -181,12 +181,15 @@ let compress_stream ~level input =
   let i = Bigstringaf.create De.io_buffer_size in
   let o = Bigstringaf.create De.io_buffer_size in
   let r, stream = Lwt_stream.create_bounded 2 in
-  let rec loop zl =
+  let rec loop aw zl =
     match Zl.Def.encode zl with
     | `Flush zl ->
-      let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
-      stream#push (Bigstringaf.substring o ~off:0 ~len) >>= fun () ->
-      loop (Zl.Def.dst zl o 0 (Bigstringaf.length o))
+      if aw then begin
+        let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
+        stream#push (Bigstringaf.substring o ~off:0 ~len) >>= fun () ->
+        loop aw (Zl.Def.dst zl o 0 (Bigstringaf.length o))
+      end else
+        loop aw (Zl.Def.dst zl o 0 (Bigstringaf.length o))
     | `End zl ->
       let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
       (if len > 0 then
@@ -200,13 +203,13 @@ let compress_stream ~level input =
         let off = Zl.Def.src_rem zl in
         Bigstringaf.blit_from_string data ~src_off:0 i ~dst_off:off ~len:(String.length data);
         let zl = Zl.Def.src zl i 0 (off + String.length data) in
-        loop zl
+        loop true zl
       | None ->
         let off = Zl.Def.src_rem zl in
         let zl = Zl.Def.src zl i off 0 in
-        loop zl
+        loop true zl
   in
-  r, loop zl
+  r, loop false zl
 
 let uncompress_stream input =
   let i = Bigstringaf.create De.io_buffer_size in
