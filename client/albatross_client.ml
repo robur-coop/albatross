@@ -87,7 +87,9 @@ let output_result state ((hdr, reply) as wire) =
         Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
         Lwt.async (fun () -> stream_task >|= function
           | Ok () -> Logs.app (fun m -> m "dumped to %a" Fpath.pp name)
-          | Error `Msg msg -> Logs.err (fun m -> m "error %s while dumping %a" msg Fpath.pp name));
+          | Error `Msg msg ->
+            Logs.err (fun m -> m "%s while dumping %a" msg Fpath.pp name);
+            failwith "error");
         Lwt.return (Ok (`Dump_to push))
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
