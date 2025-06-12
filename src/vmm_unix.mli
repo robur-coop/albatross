@@ -44,6 +44,8 @@ val open_block_fd : Name.t -> (Unix.file_descr * int * Fpath.t, [> `Msg of strin
 
 val stream_to_block : size:int -> byte_size:int -> [`Data of string | `Malformed of string] Lwt_stream.t -> Name.t -> (unit, [> `Msg of string ]) result Lwt.t
 
+val stream_to_fd : ?byte_size:int -> Lwt_unix.file_descr -> [`Data of string | `Malformed of string] Lwt_stream.t -> Fpath.t -> (unit, [> `Msg of string ]) result Lwt.t
+
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 
 val dump : ?name:string -> string -> (unit, [> `Msg of string ]) result

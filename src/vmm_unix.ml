@@ -539,24 +539,17 @@ let mb_of_bytes size =
   else
     Ok (size lsr 20)
 
-let stream_to_block ~size ~byte_size stream name =
-  (* what is the desired semantics for failures?
-     the current approach is that the block data will be trashed
-     we could avoid, but not easily (since that'd mean some temporary space and renaming
-     -- or if we require zfs, a snapshot and rollback! *)
-  let block_name = block_file name in
+let stream_to_fd ?(byte_size = Int.max_int) fd stream name =
   let open Lwt.Infix in
   let exception Malformed_data of string in
   Lwt.catch (fun () ->
-      Lwt_unix.openfile (Fpath.to_string block_name)
-        [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
       let rec read_more size =
         Lwt_stream.get stream >>= function
         | None -> Lwt.return (Ok ())
         | Some `Data data ->
           if String.length data > byte_size - size then begin
             Logs.err (fun m -> m "stream exceeds size");
-            Lwt.return (Error (`Msg "stream exceeds block size"))
+            Lwt.return (Error (`Msg "stream exceeds size"))
           end else
             let rec write off =
               Lwt_unix.write fd (Bytes.unsafe_of_string data) off
@@ -570,17 +563,28 @@ let stream_to_block ~size ~byte_size stream name =
         | Some `Malformed msg ->
           raise (Malformed_data msg)
       in
-      Lwt.catch (fun () ->
-          read_more 0 >>= fun r ->
-          safe_close fd >|= fun () ->
-          match r with
-          | Ok () -> truncate name size
-          | Error _ as e -> e)
-        (fun e ->
-           Logs.err (fun m -> m "error writing %a: %s"
-                        Fpath.pp block_name (Printexc.to_string e));
-           safe_close fd >|= fun () ->
-           Error (`Msg "error writing to block device")))
+      read_more 0 >>= fun r ->
+      safe_close fd >|= fun () ->
+      r)
+    (fun e ->
+       Logs.err (fun m -> m "error writing %a: %s"
+                    Fpath.pp name (Printexc.to_string e));
+       safe_close fd >|= fun () ->
+       Error (`Msg "error writing to file descriptor"))
+
+let stream_to_block ~size ~byte_size stream name =
+  (* what is the desired semantics for failures?
+     the current approach is that the block data will be trashed
+     we could avoid, but not easily (since that'd mean some temporary space and renaming
+     -- or if we require zfs, a snapshot and rollback! *)
+  let block_name = block_file name in
+  let open Lwt.Infix in
+  Lwt.catch (fun () ->
+      Lwt_unix.openfile (Fpath.to_string block_name)
+        [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
+      stream_to_fd ~byte_size fd stream block_name >|= function
+      | Ok () -> truncate name size
+      | Error _ as e -> e)
     (fun e ->
        Logs.err (fun m -> m "error opening %a for writing: %s"
                     Fpath.pp block_name (Printexc.to_string e));

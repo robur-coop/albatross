@@ -466,14 +466,12 @@ let handle_block_cmd t id = function
           let* resources = Vmm_resources.insert_block t.resources id size in
           Ok ({ t with resources }, `End (`Success (`String "added block device")))
         | Some "" ->
-          (* TODO compression *)
           let* resources = Vmm_resources.reserve_block t.resources id size in
           let* () = Vmm_unix.create_empty_block id in
           let stream, push = Lwt_stream.create_bounded 2 in
           let stream, task =
             if compressed then
-              let stream, task = Vmm_lwt.uncompress_stream stream in
-              stream, task
+              Vmm_lwt.uncompress_stream stream
             else
               Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
           in
