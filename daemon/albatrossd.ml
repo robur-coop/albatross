@@ -72,9 +72,12 @@ let handle cons_out stat_out fd addr =
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return `Close
     | Ok (hdr, wire) ->
-      let out wire' =
+      let out_raw wire' =
         (* TODO should we terminate the connection on write failure? *)
-        Vmm_lwt.write_wire fd (hdr, wire') >|= fun _ -> ()
+        Vmm_lwt.write_wire fd (hdr, wire')
+      in
+      let out wire' =
+        out_raw wire' >|= fun _ -> ()
       in
       Logs.debug (fun m -> m "read %a"
                      (Vmm_commands.pp_wire ~verbose:false) (hdr, wire));
@@ -93,12 +96,20 @@ let handle cons_out stat_out fd addr =
         | `Send_stream (task, s, wire) ->
           Lwt_mutex.unlock create_lock;
           out wire >>= fun () ->
-          let rec more () =
-            Lwt_stream.get s >>= function
-            | None -> out (`Data (`Block_data None))
-            | Some data -> out (`Data (`Block_data (Some data))) >>= more
+          let rec more mode =
+            Lwt_stream.get s >>= fun data ->
+            (* would be great if we're able to communicate the task to stop
+               filling the stream *)
+            match mode, data with
+            | `Drop, None -> Lwt.return_unit
+            | `Drop, Some _ -> more `Drop
+            | `Send, None -> out (`Data (`Block_data None))
+            | `Send, Some data ->
+              out_raw (`Data (`Block_data (Some data))) >>= function
+              | Ok () -> more `Send
+              | Error `Exception -> more `Drop
           in
-          Lwt.both task (more ()) >>= fun (r, ()) ->
+          Lwt.both task (more `Send) >>= fun (r, ()) ->
           (match r with
            | Ok () -> Lwt.return_unit
            | Error `Msg msg -> out (`Failure msg)) >|= fun () ->
