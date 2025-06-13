@@ -50,8 +50,7 @@ let read_tls t =
                       Vmm_commands.pp_version Vmm_commands.current);
       w
 
-let write_tls s wire =
-  let data = Vmm_asn.wire_to_str wire in
+let write_tls_chunk s data =
   let dlen = Bytes.create 4 in
   Bytes.set_int32_be dlen 0 (Int32.of_int (String.length data)) ;
   let buf = Bytes.unsafe_to_string dlen ^ data in
@@ -65,6 +64,10 @@ let write_tls s wire =
       | e ->
         Logs.err (fun m -> m "TLS write exception %s" (Printexc.to_string e)) ;
         Lwt.return (Error `Exception))
+
+let write_tls s wire =
+  let data = Vmm_asn.wire_to_str wire in
+  write_tls_chunk s data
 
 let close tls =
   Lwt.catch

@@ -23,6 +23,7 @@ let cert_name cert =
           | `Block_remove -> Error (`Msg "block remove may not have an empty name")
           | `Block_set _ -> Error (`Msg "block set may not have an empty name")
           | `Block_dump _ -> Error (`Msg "block dump may not have an empty name")
+          | `Old_block_dump _ -> Error (`Msg "block dump may not have an empty name")
           | `Block_info -> Ok None
         end
       | _ -> Ok None
