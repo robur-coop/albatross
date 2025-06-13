@@ -543,7 +543,7 @@ let stream_to_fd ?(byte_size = Int.max_int) fd stream name =
   let open Lwt.Infix in
   let exception Malformed_data of string in
   Lwt.catch (fun () ->
-      let rec read_more size =
+      let rec read_more fd stream size =
         Lwt_stream.get stream >>= function
         | None -> Lwt.return (Ok ())
         | Some `Data data ->
@@ -551,25 +551,31 @@ let stream_to_fd ?(byte_size = Int.max_int) fd stream name =
             Logs.err (fun m -> m "stream exceeds size");
             Lwt.return (Error (`Msg "stream exceeds size"))
           end else
-            let rec write off =
-              Lwt_unix.write fd (Bytes.unsafe_of_string data) off
-                (String.length data - off) >>= fun written ->
-              if written = String.length data - off then
-                read_more (size + String.length data)
+            let rec write fd data off len =
+              let to_write = len - off in
+              Lwt_unix.write fd data off to_write >>= fun written ->
+              if written = to_write then
+                read_more fd stream (size + len)
               else
-                write (off + written)
+                write fd data (off + written) len
             in
-            write 0
+            write fd (Bytes.unsafe_of_string data) 0 (String.length data)
         | Some `Malformed msg ->
           raise (Malformed_data msg)
       in
-      read_more 0 >>= fun r ->
+      read_more fd stream 0 >>= fun r ->
       safe_close fd >|= fun () ->
       r)
     (fun e ->
        Logs.err (fun m -> m "error writing %a: %s"
                     Fpath.pp name (Printexc.to_string e));
-       safe_close fd >|= fun () ->
+       safe_close fd >>= fun () ->
+       let rec drop_stream s =
+         Lwt_stream.get s >>= function
+         | None -> Lwt.return_unit
+         | Some _ -> drop_stream s
+       in
+       drop_stream stream >|= fun () ->
        Error (`Msg "error writing to file descriptor"))
 
 let stream_to_block ~size ~byte_size stream name =
