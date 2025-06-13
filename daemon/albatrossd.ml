@@ -117,22 +117,17 @@ let handle cons_out stat_out fd addr =
         | `Recv_stream (task, p, wire, cont) ->
           Lwt_mutex.unlock create_lock;
           let rec more p fd =
-            Vmm_lwt.read_wire fd >>= function
+            Vmm_lwt.read_chunk fd >>= function
+            | Error `Eof ->
+              p#close;
+              Lwt.return (Ok ())
             | Error _ ->
               Logs.err (fun m -> m "error while reading") ;
               p#close;
               Lwt.return (Error (`Msg "error while reading stream"))
-            | Ok (_, `Data `Block_data None) ->
-              p#close;
-              Lwt.return (Ok ())
-            | Ok (_, `Data `Block_data Some d) ->
-              p#push d >>= fun () ->
+            | Ok data ->
+              p#push data >>= fun () ->
               more p fd
-            | Ok w ->
-              Logs.err (fun m -> m "unexpected data %a"
-                           (Vmm_commands.pp_wire ~verbose:false) w);
-              p#close;
-              Lwt.return (Error (`Msg "read unexpected command on stream"))
           in
           Lwt.both task (more p fd) >>= fun (t_r, r) ->
           let wire = match t_r, r with

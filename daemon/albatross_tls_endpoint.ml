@@ -61,27 +61,19 @@ let read_image tls =
   | Ok buf -> Ok (Buffer.contents buf)
   | Error _ as e -> e
 
-let read_stream_write sequence id tls fd =
-  let rec loop sequence =
-    Vmm_tls_lwt.read_tls tls >>= function
-    | Ok (_hdr, (`Data (`Block_data data) as d)) ->
+let read_stream_write tls fd =
+  let rec loop () =
+    Vmm_tls_lwt.read_tls_chunk tls >>= function
+    | Ok data ->
       begin
-        let header = Vmm_commands.header ~sequence id in
-        Vmm_lwt.write_wire fd (header, d) >>= function
-        | Ok () ->
-          let seq = Int64.succ sequence in
-          (match data with
-           | None -> Lwt.return (Ok seq)
-           | Some _ -> loop seq)
+        Vmm_lwt.write_chunk fd data >>= function
+        | Ok () -> loop ()
         | Error _ -> Lwt.return (Error (`Failure "writing block data"))
       end
-    | Ok wire ->
-      Logs.err (fun m -> m "read unexpected data %a"
-                   (Vmm_commands.pp_wire ~verbose:false) wire) ;
-      Lwt.return (Error (`Failure "unexpected data"))
+    | Error `Eof -> Lwt.return (Ok ())
     | Error _ -> Lwt.return (Error (`Failure "reading tls chunk"))
   in
-  loop sequence
+  loop ()
 
 let handle tls =
   match Tls_lwt.Unix.epoch tls with
@@ -156,14 +148,7 @@ let handle tls =
             | Ok () ->
               (match cmd with
                | `Block_cmd (`Block_add (_, _, Some ""))
-               | `Block_cmd (`Block_set (_, "")) ->
-                 begin
-                   read_stream_write !command name tls fd >|= function
-                   | Ok seq ->
-                     command := seq;
-                     Ok ()
-                   | Error _ as e -> e
-                 end
+               | `Block_cmd (`Block_set (_, "")) -> read_stream_write tls fd
                | _ -> Lwt.return (Ok ())) >>= (function
                   | Ok () ->
                     (match next with

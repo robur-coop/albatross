@@ -21,11 +21,17 @@ val waitpid : int -> (int * Lwt_unix.process_status, unit) result Lwt.t
 
 val wait_and_clear : int -> Vmm_core.process_exit Lwt.t
 
+val read_chunk : Lwt_unix.file_descr ->
+  (string, [> `Eof | `Exception | `Toomuch ]) result Lwt.t
+
 val read_wire : Lwt_unix.file_descr ->
   (Vmm_commands.wire, [> `Eof | `Exception | `Toomuch ]) result Lwt.t
 
 val write_raw :
   Lwt_unix.file_descr -> bytes -> (unit, [> `Exception ]) result Lwt.t
+
+val write_chunk :
+  Lwt_unix.file_descr -> string -> (unit, [> `Exception ]) result Lwt.t
 
 val write_wire :
   Lwt_unix.file_descr -> Vmm_commands.wire -> (unit, [> `Exception ]) result Lwt.t
