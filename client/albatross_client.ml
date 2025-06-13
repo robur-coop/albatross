@@ -85,12 +85,14 @@ let output_result state ((hdr, reply) as wire) =
         in
         let stream_task = Vmm_unix.stream_to_fd fd stream name in
         Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
-        Lwt.async (fun () -> stream_task >|= function
+        let stream_task =
+          stream_task >|= function
           | Ok () -> Logs.app (fun m -> m "dumped to %a" Fpath.pp name)
           | Error `Msg msg ->
             Logs.err (fun m -> m "%s while dumping %a" msg Fpath.pp name);
-            failwith "error");
-        Lwt.return (Ok (`Dump_to push))
+            failwith "error"
+        in
+        Lwt.return (Ok (`Dump_to (Some stream_task, push)))
       | `Block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
@@ -99,7 +101,7 @@ let output_result state ((hdr, reply) as wire) =
     end
   | `Data `Block_data None ->
     (match state with
-     | `Dump_to p ->
+     | `Dump_to (_, p) ->
        p#close;
        Lwt.return (Ok `End)
      | _ ->
@@ -108,7 +110,7 @@ let output_result state ((hdr, reply) as wire) =
        Lwt.return (Error Communication_failed))
   | `Data `Block_data Some data ->
     (match state with
-     | `Dump_to p ->
+     | `Dump_to (_, p) ->
        p#push data >|= fun () ->
        Ok state
      | _ ->
@@ -300,14 +302,15 @@ let process_remote fd state = Vmm_tls_lwt.read_tls fd >>= to_exit_code state
 let read p (fd, next) =
   let open Lwt_result.Infix in
   (* now we busy read and process output *)
-  let rec loop state =
-    match state with
-    | `End ->
-      Lwt_result.return `End
+  let rec loop = function
+    | `End -> Lwt_result.return `End
+    | `Dump_to (Some task, s) ->
+      Lwt.bind (Lwt.both (p fd (`Dump_to (None, s)) >>= loop) task)
+        (fun (r, _) -> Lwt.return r)
     | state ->
       p fd state >>= loop
   in
-  loop (next :> [ `Dump | `Single | `Read | `Dump_to of string Lwt_stream.bounded_push | `End ])
+  loop (next :> [ `Dump | `Single | `Read | `Dump_to of unit Lwt.t option * string Lwt_stream.bounded_push | `End ])
 
 let connect_local opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
