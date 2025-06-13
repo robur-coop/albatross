@@ -382,6 +382,14 @@ let free_system_resources name taps =
       destroy_tap n)
     (Ok ()) taps
 
+let unikernel_image name =
+  let file = Name.image_file name in
+  let* exists = Bos.OS.File.exists file in
+  if exists then
+    Bos.OS.File.read file
+  else
+    Error (`Msg "unikernel image not found")
+
 let cpuset cpu =
   let cpustring = string_of_int cpu in
   match Lazy.force uname with
@@ -446,6 +454,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
     close_no_err stdout ;
     let taps = List.map (fun (_, tap, mac) -> tap, mac) bridge_taps in
     let started = Ptime_clock.now () in
+    let config = { config with image = "" } in
     Ok Unikernel.{ config ; cmd = line ; pid ; taps ; digest ; started }
   with
     Unix.Unix_error (e, _, _) ->

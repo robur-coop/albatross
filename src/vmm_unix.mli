@@ -15,6 +15,8 @@ val check_commands : unit -> (unit, [> `Msg of string ]) result
 val prepare : Name.t -> Unikernel.config ->
   ((string * string * Macaddr.t option) list * string, [> `Msg of string ]) result
 
+val unikernel_image : Name.t -> (string, [> `Msg of string ]) result
+
 val exec : Name.t -> Unikernel.config -> (string * string * Macaddr.t option) list ->
   (string * Name.t * int option) list -> string -> (Unikernel.t, [> `Msg of string ]) result
 

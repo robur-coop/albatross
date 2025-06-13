@@ -295,14 +295,13 @@ let handle_unikernel_cmd t id =
   function
   | `Old_unikernel_info1 ->
     Logs.debug (fun m -> m "old info1 %a" Name.pp id) ;
-    let empty_image unikernel = { unikernel.Unikernel.config with image = "" } in
     let unikernels =
       match Name.name id with
       | None ->
         Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, empty_image unikernel) :: unikernels) []
+          (fun id unikernel unikernels -> (id, unikernel.config) :: unikernels) []
       | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, empty_image unikernel ])
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, unikernel.Unikernel.config ])
           (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Old_unikernels unikernels)))
@@ -311,7 +310,8 @@ let handle_unikernel_cmd t id =
     begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
       | None -> Error (`Msg "get: no unikernel found")
       | Some u ->
-        Ok (t, `End (`Success (`Old_unikernels [ (id, u.Unikernel.config) ])))
+        let* image = Vmm_unix.unikernel_image id in
+        Ok (t, `End (`Success (`Old_unikernels [ (id, { u.Unikernel.config with compressed = false ; image }) ])))
     end
   | `Old_unikernel_info2 ->
     Logs.debug (fun m -> m "old info2 %a" Name.pp id) ;
@@ -351,27 +351,15 @@ let handle_unikernel_cmd t id =
     Ok (t, `End (`Success (`Unikernel_info infos)))
   | `Unikernel_get compress_level ->
     Logs.debug (fun m -> m "get %a" Name.pp id) ;
-    begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
-      | None -> Error (`Msg "get: no unikernel found")
-      | Some u ->
-        let cfg = u.Unikernel.config in
-        let img = cfg.Unikernel.image in
-        let* compress, img =
-          if cfg.Unikernel.compressed then
-            if compress_level > 0 then
-              Ok (true, img)
-            else
-              let* blob = Vmm_compress.uncompress img in
-              Ok (false, blob)
-          else
-          if compress_level = 0 then
-            Ok (false, img)
-          else
-            Ok (true, Vmm_compress.compress ~level:compress_level img)
-        in
-        let r = `Unikernel_image (compress, img) in
-        Ok (t, `End (`Success r))
-    end
+    let* image = Vmm_unix.unikernel_image id in
+    let compress, img =
+      if compress_level = 0 then
+        false, image
+      else
+        true, Vmm_compress.compress ~level:compress_level image
+    in
+    let r = `Unikernel_image (compress, img) in
+    Ok (t, `End (`Success r))
   | `Unikernel_create unikernel_config -> Ok (t, `Create (id, unikernel_config))
   | `Unikernel_force_create unikernel_config ->
     begin
