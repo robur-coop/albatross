@@ -106,8 +106,7 @@ let wait_and_clear pid =
     Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
     ret s
 
-let read_wire s =
-  let buf = Bytes.create 4 in
+let read_chunk s =
   let rec r b i l =
     Lwt.catch (fun () ->
         Lwt_unix.read s b i l >>= function
@@ -125,6 +124,7 @@ let read_wire s =
          safe_close s >|= fun () ->
          Error `Exception)
   in
+  let buf = Bytes.create 4 in
   r buf 0 4 >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
@@ -137,19 +137,24 @@ let read_wire s =
         (*          Logs.debug (fun m -> m "read hdr %a, body %a"
                          (Ohex.pp_hexdump ()) (Bytes.unsafe_to_string buf)
                          (Ohex.pp_hexdump ()) (Bytes.unsafe_to_string b)) ; *)
-        match Vmm_asn.wire_of_str (Bytes.unsafe_to_string b) with
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "error %s while parsing data" msg) ;
-          Error `Exception
-        | (Ok (hdr, _)) as w ->
-          if not Vmm_commands.(is_current hdr.version) then
-            Logs.warn (fun m -> m "version mismatch, received %a current %a"
-                          Vmm_commands.pp_version hdr.Vmm_commands.version
-                          Vmm_commands.pp_version Vmm_commands.current);
-          w
-    end else begin
+        Ok (Bytes.unsafe_to_string b)
+    end else
       Lwt.return (Error `Eof)
-    end
+
+let read_wire s =
+  read_chunk s >|= function
+  | Error _ as e -> e
+  | Ok data ->
+    match Vmm_asn.wire_of_str data with
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error %s while parsing data" msg) ;
+      Error `Exception
+    | (Ok (hdr, _)) as w ->
+      if not Vmm_commands.(is_current hdr.version) then
+        Logs.warn (fun m -> m "version mismatch, received %a current %a"
+                      Vmm_commands.pp_version hdr.Vmm_commands.version
+                      Vmm_commands.pp_version Vmm_commands.current);
+      w
 
 let write_raw s buf =
   let rec w off l =
@@ -167,12 +172,15 @@ let write_raw s buf =
   (*  Logs.debug (fun m -> m "writing %a" Ohex.pp_hexdump (Bytes.unsage_to_string buf)) ; *)
   w 0 (Bytes.length buf)
 
-let write_wire s wire =
-  let data = Vmm_asn.wire_to_str wire in
+let write_chunk s data =
   let dlen = Bytes.create 4 in
   Bytes.set_int32_be dlen 0 (Int32.of_int (String.length data)) ;
   let buf = Bytes.cat dlen (Bytes.unsafe_of_string data) in
   write_raw s buf
+
+let write_wire s wire =
+  let data = Vmm_asn.wire_to_str wire in
+  write_chunk s data
 
 let compress_stream ~level input =
   let w = De.Lz77.make_window ~bits:15 in
