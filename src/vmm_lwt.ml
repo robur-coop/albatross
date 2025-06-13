@@ -209,7 +209,7 @@ let compress_stream ~level input =
         let zl = Zl.Def.src zl i off 0 in
         loop true zl
   in
-  r, loop false zl
+  r, loop false (Zl.Def.dst zl o 0 (Bigstringaf.length o))
 
 let uncompress_stream input =
   let i = Bigstringaf.create De.io_buffer_size in
