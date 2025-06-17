@@ -61,10 +61,12 @@ let write_tls s wire =
     (function
       | Tls_lwt.Tls_failure a ->
         Logs.err (fun m -> m "tls failure: %s" (Tls.Engine.string_of_failure a)) ;
-        Lwt.return (Error `Exception)
+        Tls_lwt.Unix.close s >|= fun () ->
+        Error `Exception
       | e ->
         Logs.err (fun m -> m "TLS write exception %s" (Printexc.to_string e)) ;
-        Lwt.return (Error `Exception))
+        Tls_lwt.Unix.close s >|= fun () ->
+        Error `Exception)
 
 let close tls =
   Lwt.catch
