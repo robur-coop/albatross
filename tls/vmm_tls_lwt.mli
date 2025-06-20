@@ -6,6 +6,9 @@ val read_tls_chunk : Tls_lwt.Unix.t ->
 val read_tls : Tls_lwt.Unix.t ->
   (Vmm_commands.wire, [> `Eof | `Tls_eof | `Exception | `Toomuch ]) result Lwt.t
 
+val write_tls_chunk : Tls_lwt.Unix.t -> string ->
+  (unit, [> `Exception ]) result Lwt.t
+
 val write_tls :
   Tls_lwt.Unix.t -> Vmm_commands.wire -> (unit, [> `Exception ]) result Lwt.t
 

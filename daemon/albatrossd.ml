@@ -72,9 +72,12 @@ let handle cons_out stat_out fd addr =
       Logs.err (fun m -> m "error while reading") ;
       Lwt.return `Close
     | Ok (hdr, wire) ->
-      let out wire' =
+      let out_raw wire' =
         (* TODO should we terminate the connection on write failure? *)
-        Vmm_lwt.write_wire fd (hdr, wire') >|= fun _ -> ()
+        Vmm_lwt.write_wire fd (hdr, wire')
+      in
+      let out wire' =
+        out_raw wire' >|= fun _ -> ()
       in
       Logs.debug (fun m -> m "read %a"
                      (Vmm_commands.pp_wire ~verbose:false) (hdr, wire));
@@ -90,6 +93,54 @@ let handle cons_out stat_out fd addr =
         | `Loop wire ->
           Lwt_mutex.unlock create_lock;
           out wire >>= loop
+        | `Send_stream (task, s, wire) ->
+          Lwt_mutex.unlock create_lock;
+          out wire >>= fun () ->
+          let rec more mode =
+            Lwt_stream.get s >>= fun data ->
+            (* would be great if we're able to communicate the task to stop
+               filling the stream *)
+            match mode, data with
+            | `Drop, None -> Lwt.return_unit
+            | `Drop, Some _ -> more `Drop
+            | `Send, None -> out (`Data (`Block_data None))
+            | `Send, Some data ->
+              out_raw (`Data (`Block_data (Some data))) >>= function
+              | Ok () -> more `Send
+              | Error `Exception -> more `Drop
+          in
+          Lwt.both task (more `Send) >>= fun (r, ()) ->
+          (match r with
+           | Ok () -> Lwt.return_unit
+           | Error `Msg msg -> out (`Failure msg)) >|= fun () ->
+          `Close
+        | `Recv_stream (task, p, wire, cont) ->
+          Lwt_mutex.unlock create_lock;
+          let rec more p fd =
+            Vmm_lwt.read_chunk fd >>= function
+            | Error `Eof ->
+              p#close;
+              Lwt.return (Ok ())
+            | Error _ ->
+              Logs.err (fun m -> m "error while reading") ;
+              p#close;
+              Lwt.return (Error (`Msg "error while reading stream"))
+            | Ok data ->
+              p#push data >>= fun () ->
+              more p fd
+          in
+          Lwt.both task (more p fd) >>= fun (t_r, r) ->
+          let wire = match t_r, r with
+            | Ok (), Ok () -> wire
+            | Error (`Msg msg), _ -> `Failure msg
+            | _, Error (`Msg msg) -> `Failure msg
+          in
+          out wire >|= fun () ->
+          (match cont !state with
+           | Ok s -> state := s
+           | Error `Msg msg ->
+             Logs.err (fun m -> m "finished receiving stream, but the resource update errored: %s" msg));
+          `Close
         | `End wire ->
           Lwt_mutex.unlock create_lock;
           out wire >|= fun () ->
