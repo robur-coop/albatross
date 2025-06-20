@@ -14,7 +14,7 @@ let init_influx name data =
     Metrics_lwt.init_periodic (fun () -> Lwt_unix.sleep 10.);
     Metrics_lwt.periodically (Metrics_rusage.rusage_src ~tags:[]);
     Metrics_lwt.periodically (Metrics_rusage.kinfo_mem_src ~tags:[]);
-    let get_cache, reporter = Metrics.cache_reporter () in
+    let reporter = Metrics.cache_reporter () in
     Metrics.set_reporter reporter;
     let fd = ref None in
     let rec report () =
@@ -32,13 +32,15 @@ let init_influx name data =
         | None -> Lwt.return_unit
         | Some socket ->
           let tag = process name in
-          let datas = Metrics.SM.fold (fun src (tags, data) acc ->
-              match Metrics.Data.fields data with
-              | [] -> acc
-              | _ ->
-                let name = Metrics.Src.name src in
-                Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
-              (get_cache ()) []
+          let datas = Metrics.SM.fold (fun src measurements acc ->
+              List.fold_left (fun acc (tags, data) ->
+                  match Metrics.Data.fields data with
+                  | [] -> acc
+                  | _ ->
+                    let name = Metrics.Src.name src in
+                    Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
+                acc measurements)
+              (Metrics.get_cache ()) []
           in
           let datas = String.concat "" datas in
           Vmm_lwt.write_raw socket (Bytes.unsafe_of_string datas) >|= function
