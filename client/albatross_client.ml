@@ -33,7 +33,6 @@ let classify_tls_error = function
 let exit_status = function
   | Ok `End -> Ok Success
   | Ok _state ->
-    (* TODO: [Protocol_failure]? *)
     Ok Communication_failed
   | Error e -> Ok e
 
@@ -106,7 +105,6 @@ let output_result state ((hdr, reply) as wire) =
        Lwt.return (Ok `End)
      | _ ->
        Logs.warn (fun m -> m "Unexpected block dump EOF received");
-       (* TODO: New [Protocol_failure] error? *)
        Lwt.return (Error Communication_failed))
   | `Data `Block_data Some data ->
     (match state with
@@ -115,7 +113,6 @@ let output_result state ((hdr, reply) as wire) =
        Ok state
      | _ ->
        Logs.warn (fun m -> m "Unexpected block dump data received");
-       (* TODO: New [Protocol_failure] error? *)
        Lwt.return (Error Communication_failed))
   | `Data _ ->
     (match state with
@@ -124,7 +121,6 @@ let output_result state ((hdr, reply) as wire) =
        Lwt.return (Ok state)
      | _ ->
        Logs.warn (fun m -> m "Unexpected console data received");
-       (* TODO: New [Protocol_failure] error? *)
        Lwt.return (Error Communication_failed))
   | `Failure _ ->
     Logs.warn (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
