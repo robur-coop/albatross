@@ -26,16 +26,14 @@ let read version fd tls =
   let rec loop () =
     Vmm_lwt.read_wire fd >>= function
     | Error _ -> Lwt.return (`Failure "exception while reading from fd")
+    | Ok (_hdr, (`Data `Block_data None as pay)) ->
+      Lwt.return pay
     | Ok (hdr, pay) ->
       Logs.debug (fun m -> m "read proxying %a"
                      (Vmm_commands.pp_wire ~verbose:false) (hdr, pay)) ;
       let wire = { hdr with version }, pay in
       Vmm_tls_lwt.write_tls tls wire >>= function
-      | Ok () ->
-        begin match pay with
-          | `Data `Block_data None -> Lwt.return (`Success `Empty) (* TODO? *)
-          | _ -> loop ()
-        end
+      | Ok () -> loop ()
       | Error `Exception -> Lwt.return (`Failure "exception")
   in
   loop ()
