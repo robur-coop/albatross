@@ -96,20 +96,25 @@ let handle cons_out stat_out fd addr =
         | `Send_stream (task, s, wire) ->
           Lwt_mutex.unlock create_lock;
           out wire >>= fun () ->
-          let rec more mode =
+          let rec more () =
             Lwt_stream.get s >>= fun data ->
-            (* would be great if we're able to communicate the task to stop
-               filling the stream *)
-            match mode, data with
-            | `Drop, None -> Lwt.return_unit
-            | `Drop, Some _ -> more `Drop
-            | `Send, None -> out (`Data (`Block_data None))
-            | `Send, Some data ->
+            match data with
+            | None -> out (`Data (`Block_data None))
+            | Some data ->
               out_raw (`Data (`Block_data (Some data))) >>= function
-              | Ok () -> more `Send
-              | Error `Exception -> more `Drop
+              | Ok () -> more ()
+              | Error `Exception ->
+                Lwt.cancel task;
+                Lwt.return_unit
           in
-          Lwt.both task (more `Send) >>= fun (r, ()) ->
+          (* We need to wrap [task] so we don't cancel [Lwt.both _ _] when we
+             cancel [task] above. *)
+          Lwt.both
+            (Lwt.catch (fun () -> task)
+               (function
+                 | Lwt.Canceled -> Lwt.return (Error (`Msg "cancelled"))
+                 | e -> Lwt.reraise e))
+            (more ()) >>= fun (r, ()) ->
           (match r with
            | Ok () -> Lwt.return_unit
            | Error `Msg msg -> out (`Failure msg)) >|= fun () ->
