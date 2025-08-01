@@ -517,7 +517,11 @@ let dump_file_stream fd size stream name =
       more fd size stream 0 >>= fun () ->
       safe_close fd >|= fun () ->
       Ok ())
-    (fun e ->
+    (function
+      | Lwt.Canceled ->
+        (* We assume error reporting is done by the canceller *)
+        Lwt.return (Ok ())
+      | e ->
        Logs.err (fun m -> m "error streaming %a: %s" Fpath.pp name
                     (Printexc.to_string e));
        Lwt.return (Error (`Msg "streaming block device")))
