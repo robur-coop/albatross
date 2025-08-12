@@ -549,7 +549,7 @@ let handle_block_cmd t id = function
           else
             true, Vmm_compress.compress ~level data
         in
-        Ok (t, `End (`Success (`Block_device_image (compress, data))))
+        Ok (t, `End (`Success (`Old_block_device_image (compress, data))))
     end
   | `Block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
@@ -557,7 +557,7 @@ let handle_block_cmd t id = function
       | Some (_, true) -> Error (`Msg "dump block: is in use")
       | Some (_, false) ->
         let* fd, size, name = Vmm_unix.open_block_fd id in
-        let res = `Success (`Block_device_image (level <> 0, "")) in
+        let res = `Success (`Block_device_image (level <> 0)) in
         let s, push = Lwt_stream.create_bounded 2 in
         let task = Vmm_unix.dump_file_stream fd size push name in
         let s, task' =

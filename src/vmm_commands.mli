@@ -95,7 +95,8 @@ type success = [
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of bool * string
+  | `Old_block_device_image of bool * string
+  | `Block_device_image of bool
 ]
 
 type res = [

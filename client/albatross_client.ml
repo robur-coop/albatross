@@ -72,7 +72,7 @@ let output_result state ((hdr, reply) as wire) =
               write_to_file name cfg.compressed cfg.image)
           unikernels;
         Lwt.return (Ok `End)
-      | `Block_device_image (compressed, "") ->
+      | `Block_device_image compressed ->
         let name = filename hdr.Vmm_commands.name in
         Lwt_unix.openfile (Fpath.to_string name) [ Unix.O_WRONLY ; O_CREAT ] 0o644 >>= fun fd ->
         let stream, push = Lwt_stream.create_bounded 2 in
@@ -92,7 +92,7 @@ let output_result state ((hdr, reply) as wire) =
             failwith "error"
         in
         Lwt.return (Ok (`Dump_to (Some stream_task, push)))
-      | `Block_device_image (compressed, image) ->
+      | `Old_block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)

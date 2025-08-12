@@ -858,9 +858,10 @@ let success name =
     | `C1 `C5 blocks -> `Block_devices blocks
     | `C1 `C6 unikernels -> `Old_unikernel_info2 unikernels
     | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
-    | `C2 `C2 (compress, data) -> `Block_device_image (compress, data)
+    | `C2 `C2 (compress, data) -> `Old_block_device_image (compress, data)
     | `C2 `C3 unikernels -> `Old_unikernel_info3 unikernels
     | `C2 `C4 unikernels -> `Old_unikernel_info3 unikernels
+    | `C2 `C5 compress -> `Block_device_image compress
   and g = function
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
@@ -869,9 +870,10 @@ let success name =
     | `Block_devices blocks -> `C1 (`C5 blocks)
     | `Old_unikernel_info2 unikernels -> `C1 (`C6 unikernels)
     | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
-    | `Block_device_image (compress, data) -> `C2 (`C2 (compress, data))
+    | `Old_block_device_image (compress, data) -> `C2 (`C2 (compress, data))
     | `Old_unikernel_info3 unikernels -> `C2 (`C3 unikernels)
     | `Unikernel_info unikernels -> `C2 (`C4 unikernels)
+    | `Block_device_image compress -> `C2 (`C5 compress)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
@@ -899,12 +901,12 @@ let success name =
                    (sequence2
                       (required ~label:"name" name)
                       (required ~label:"info" old_unikernel_info2)))))
-          (choice4
+          (choice5
              (my_explicit 6 ~label:"unikernel-image"
                 (sequence2
                    (required ~label:"compressed" bool)
                    (required ~label:"image" octet_string)))
-             (my_explicit 7 ~label:"block-device-image"
+             (my_explicit 7 ~label:"old-block-device-image"
                 (sequence2
                    (required ~label:"compressed" bool)
                    (required ~label:"image" octet_string)))
@@ -917,7 +919,8 @@ let success name =
                 (sequence_of
                    (sequence2
                       (required ~label:"name" name)
-                      (required ~label:"info" unikernel_info))))))
+                      (required ~label:"info" unikernel_info))))
+             (my_explicit 10 ~label:"block-device-image" bool)))
 
 let payload name =
   let f = function

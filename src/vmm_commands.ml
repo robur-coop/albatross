@@ -173,7 +173,8 @@ type success = [
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of bool * string
+  | `Old_block_device_image of bool * string
+  | `Block_device_image of bool
 ]
 
 let pp_block ppf (id, size, active) =
@@ -203,9 +204,11 @@ let pp_success ~verbose ppf = function
     Fmt.pf ppf "image (compression %B) %d bytes"
       compressed (String.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
-  | `Block_device_image (compressed, data) ->
-    Fmt.pf ppf "block device compressed %B, %d bytes"
+  | `Old_block_device_image (compressed, data) ->
+    Fmt.pf ppf "old block device compressed %B, %d bytes"
       compressed (String.length data)
+  | `Block_device_image compressed ->
+    Fmt.pf ppf "block device compressed %B" compressed
 
 type res = [
   | `Command of t
