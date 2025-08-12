@@ -102,25 +102,29 @@ let pp_policy_cmd ppf = function
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * bool * string option
+  | `Old_block_add of int * bool * string option
   | `Block_remove
-  | `Block_set of bool * string
+  | `Old_block_set of bool * string
   | `Block_dump of int
   | `Old_block_dump of int
+  | `Block_add of int
+  | `Block_set of bool
 ]
 
 let pp_block_cmd ppf = function
   | `Block_info -> Fmt.string ppf "block info"
   | `Block_remove -> Fmt.string ppf "block remove"
-  | `Block_add (size, compressed, data) ->
-    Fmt.pf ppf "block add %d (compressed %B data %a)"
+  | `Old_block_add (size, compressed, data) ->
+    Fmt.pf ppf "old block add %d (compressed %B data %a)"
       size compressed
       Fmt.(option ~none:(any "no data") int) (Option.map String.length data)
-  | `Block_set (compressed, data) ->
-    Fmt.pf ppf "block set compressed %B %d bytes" compressed
+  | `Old_block_set (compressed, data) ->
+    Fmt.pf ppf "old block set compressed %B %d bytes" compressed
       (String.length data)
   | `Block_dump level -> Fmt.pf ppf "block dump, compress level %d" level
   | `Old_block_dump level -> Fmt.pf ppf "old block dump, compress level %d" level
+  | `Block_add size -> Fmt.pf ppf "block add %d" size
+  | `Block_set compressed -> Fmt.pf ppf "block set compressed %B" compressed
 
 type t = [
     | `Console_cmd of console_cmd

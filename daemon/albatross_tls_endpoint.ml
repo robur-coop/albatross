@@ -145,8 +145,9 @@ let handle tls =
               `Failure "couldn't write unikernel to VMMD"
             | Ok () ->
               (match cmd with
-               | `Block_cmd (`Block_add (_, _, Some ""))
-               | `Block_cmd (`Block_set (_, "")) -> read_stream_write tls fd
+               | `Block_cmd (`Old_block_add (_, _, Some ""))
+               | `Block_cmd (`Block_set _)
+               | `Block_cmd (`Old_block_set (_, "")) -> read_stream_write tls fd
                | _ -> Lwt.return (Ok ())) >>= (function
                   | Ok () ->
                     (match next with

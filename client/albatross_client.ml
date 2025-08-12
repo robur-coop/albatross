@@ -263,18 +263,6 @@ let create_unikernel force image cpuid memory argv block_devices bridges compres
   let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
-let create_block size compression opt_file =
-  let ( let* ) = Result.bind in
-  match opt_file with
-  | None -> Ok (`Block_add (size, false, None))
-  | Some f ->
-    let* size_in_mb = Vmm_unix.bytes_of_mb size in
-    if size_in_mb >= Unix.(stat f).st_size then
-      let compressed = compression > 0 in
-      Ok (`Block_add (size, compressed, Some ""))
-    else
-      Error (`Msg "data exceeds size")
-
 let policy unikernels memory cpus block bridgesl =
   let bridges = Vmm_core.String_set.of_list bridgesl
   and cpuids = Vmm_core.IS.of_list cpus
@@ -669,16 +657,30 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
       | Ok (fd, next) ->
         (match data with
          | None -> Lwt.return (Ok (), ())
-         | Some (t, s) ->
-           let rec more () =
-             Lwt_stream.get s >>= function
-             | None -> Vmm_lwt.write_chunk fd "" >|= ignore
-             | Some data ->
-               Vmm_lwt.write_chunk fd data >>= function
-               | Ok () -> more ()
-               | Error `Exception -> Lwt.return_unit
-           in
-           Lwt.both t (more ())) >>= fun (r, ()) ->
+         | Some (cmd, t, s) ->
+           (match cmd with
+            | None -> Lwt.return (Ok ())
+            | Some cmd ->
+              let wire =
+                let header = Vmm_commands.header name in
+                header, `Command cmd
+              in
+              Vmm_lwt.write_wire fd wire >>= function
+              | Error `Exception ->
+                Lwt.return (Error (`Msg "command failed"))
+              | Ok () -> Lwt.return (Ok ())) >>= function
+           | Error _ as e ->
+             Lwt.return (e, ())
+           | Ok () ->
+             let rec more () =
+               Lwt_stream.get s >>= function
+               | None -> Vmm_lwt.write_chunk fd "" >|= ignore
+               | Some data ->
+                 Vmm_lwt.write_chunk fd data >>= function
+                 | Ok () -> more ()
+                 | Error `Exception -> Lwt.return_unit
+             in
+             Lwt.both t (more ())) >>= fun (r, ()) ->
         (match r with
          | Ok () -> Lwt.return_unit
          | Error `Msg msg ->
@@ -708,7 +710,21 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
         | Ok fd ->
           (match data with
            | None -> Lwt.return (Ok (), ())
-           | Some (t, s) ->
+           | Some (cmd, t, s) ->
+             (match cmd with
+              | None -> Lwt.return (Ok ())
+              | Some cmd ->
+                let wire =
+                  let header = Vmm_commands.header name in
+                  header, `Command cmd
+                in
+                Vmm_tls_lwt.write_tls fd wire >>= function
+                | Error `Exception ->
+                  Lwt.return (Error (`Msg "command failed"))
+              | Ok () -> Lwt.return (Ok ())) >>= function
+             | Error _ as e ->
+               Lwt.return (e, ())
+           | Ok () ->
              let rec more () =
                Lwt_stream.get s >>= function
                | None -> Vmm_tls_lwt.write_tls_chunk fd "" >|= ignore
@@ -832,11 +848,19 @@ let block_dump () compression name dst =
   jump (`Block_cmd (`Block_dump (compress_default compression dst))) name dst
 
 let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
+  let ( let* ) = Result.bind in
   let level = compress_default compression dst in
-  let data =
+  let* data =
     match opt_file with
-    | None -> None
+    | None -> Ok None
     | Some f ->
+      let* size_in_mb = Vmm_unix.bytes_of_mb block_size in
+      let* () =
+        if size_in_mb < Unix.(stat f).st_size then
+          Error (`Msg "data exceeds size")
+        else
+          Ok ()
+      in
       let file = Fpath.v f in
       let stream, push = Lwt_stream.create_bounded 2 in
       let size = Unix.(stat f).st_size in
@@ -849,11 +873,10 @@ let block_create () block_size compression opt_file name dst cert key ca key_typ
           Vmm_lwt.compress_stream ~level stream
       in
       Lwt.on_failure task (fun _ -> Lwt.cancel task');
-      Some (task, stream)
+      Ok (Some (Some (`Block_cmd (`Block_set (level > 0))), task, stream))
   in
-  match create_block block_size level opt_file with
-  | Ok cmd -> jump ?data (`Block_cmd cmd) name dst cert key ca key_type tmpdir
-  | Error _ as e -> e
+  let cmd = `Block_add block_size in
+  jump ?data (`Block_cmd cmd) name dst cert key ca key_type tmpdir
 
 let block_set () compression file name dst cert key ca key_type tmpdir =
   let level = compress_default compression dst in
@@ -869,7 +892,7 @@ let block_set () compression file name dst cert key ca key_type tmpdir =
       Vmm_lwt.compress_stream ~level stream
   in
   Lwt.on_failure task (fun _ -> Lwt.cancel task');
-  jump ~data:(task, stream) (`Block_cmd (`Block_set (compressed, ""))) name dst
+  jump ~data:(None, task, stream) (`Block_cmd (`Block_set compressed)) name dst
     cert key ca key_type tmpdir
 
 let block_destroy () = jump (`Block_cmd `Block_remove)

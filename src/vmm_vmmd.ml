@@ -449,7 +449,7 @@ let handle_block_cmd t id = function
         let* resources = Vmm_resources.remove_block t.resources id in
         Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
-  | `Block_add (size, compressed, data) ->
+  | `Old_block_add (size, compressed, data) ->
     begin
       Logs.debug (fun m -> m "insert block %a: %dMB (data: %a)"
                      Name.pp id size
@@ -499,43 +499,58 @@ let handle_block_cmd t id = function
           let* resources = Vmm_resources.insert_block t.resources id size in
           Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
-  | `Block_set (compressed, data) ->
+  | `Block_add size ->
+    begin
+      Logs.debug (fun m -> m "insert block %a: %dMB" Name.pp id size);
+      match Vmm_resources.find_block t.resources id with
+      | Some _ -> Error (`Msg "block device with same name already exists")
+      | None ->
+        let* () = Vmm_resources.check_block t.resources id size in
+        let* () = Vmm_unix.create_block id size in
+        let* resources = Vmm_resources.insert_block t.resources id size in
+        Ok ({ t with resources }, `End (`Success (`String "added block device")))
+    end
+  | `Old_block_set (compressed, data) ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "set block: not found")
       | Some (_, true) -> Error (`Msg "set block: is in use")
       | Some (size, false) ->
         let* size_in_bytes = Vmm_unix.bytes_of_mb size in
-        match data with
-        | "" ->
-          let* () = Vmm_unix.destroy_block id in
-          let* () = Vmm_unix.create_empty_block id in
-          let stream, push = Lwt_stream.create_bounded 2 in
-          let stream, task =
-            if compressed then
-              let stream, task = Vmm_lwt.uncompress_stream stream in
-              stream, task
-            else
-              Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
-          in
-          let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
-          Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
-          Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device"), fun t -> Ok t))
-        | _ ->
-          let* data =
-            if compressed then
-              Vmm_compress.uncompress data
-            else
-              Ok data
-          in
-          let* () =
-            if size_in_bytes >= String.length data then
-              Ok ()
-            else
-              Error (`Msg "data exceeds block size")
-          in
-          let* () = Vmm_unix.destroy_block id in
-          let* () = Vmm_unix.create_block ~data id size in
-          Ok (t, `End (`Success (`String "set block device")))
+        let* data =
+          if compressed then
+            Vmm_compress.uncompress data
+          else
+            Ok data
+        in
+        let* () =
+          if size_in_bytes >= String.length data then
+            Ok ()
+          else
+            Error (`Msg "data exceeds block size")
+        in
+        let* () = Vmm_unix.destroy_block id in
+        let* () = Vmm_unix.create_block ~data id size in
+        Ok (t, `End (`Success (`String "set block device")))
+    end
+  | `Block_set compressed ->
+    begin match Vmm_resources.find_block t.resources id with
+      | None -> Error (`Msg "set block: not found")
+      | Some (_, true) -> Error (`Msg "set block: is in use")
+      | Some (size, false) ->
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+        let* () = Vmm_unix.destroy_block id in
+        let* () = Vmm_unix.create_empty_block id in
+        let stream, push = Lwt_stream.create_bounded 2 in
+        let stream, task =
+          if compressed then
+            let stream, task = Vmm_lwt.uncompress_stream stream in
+            stream, task
+          else
+            Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
+        in
+        let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
+        Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
+        Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device"), fun t -> Ok t))
     end
   | `Old_block_dump level ->
     begin match Vmm_resources.find_block t.resources id with

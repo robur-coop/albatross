@@ -51,11 +51,13 @@ type policy_cmd = [
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * bool * string option
+  | `Old_block_add of int * bool * string option
   | `Block_remove
-  | `Block_set of bool * string
+  | `Old_block_set of bool * string
   | `Old_block_dump of int
   | `Block_dump of int
+  | `Block_add of int
+  | `Block_set of bool
 ]
 
 type t = [

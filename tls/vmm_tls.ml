@@ -20,8 +20,10 @@ let cert_name cert =
       | Ok (_, `Block_cmd bc) ->
         begin match bc with
           | `Block_add _ -> Error (`Msg "block add may not have an empty name")
+          | `Old_block_add _ -> Error (`Msg "old block add may not have an empty name")
           | `Block_remove -> Error (`Msg "block remove may not have an empty name")
           | `Block_set _ -> Error (`Msg "block set may not have an empty name")
+          | `Old_block_set _ -> Error (`Msg "old block set may not have an empty name")
           | `Block_dump _ -> Error (`Msg "block dump may not have an empty name")
           | `Old_block_dump _ -> Error (`Msg "block dump may not have an empty name")
           | `Block_info -> Ok None
