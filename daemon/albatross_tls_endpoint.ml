@@ -66,9 +66,14 @@ let read_stream_write tls fd =
       begin
         Vmm_lwt.write_chunk fd data >>= function
         | Ok () -> loop ()
-        | Error _ -> Lwt.return (Error (`Failure "writing block data"))
+        | Error `Exception -> Lwt.return (Error (`Failure "writing block data"))
       end
-    | Error `Eof -> Lwt.return (Ok ())
+    | Error `Eof ->
+      begin
+        Vmm_lwt.write_chunk fd "" >|= function
+        | Ok () -> Ok ()
+        | Error `Exception -> Error (`Failure "writing block data")
+      end
     | Error _ -> Lwt.return (Error (`Failure "reading tls chunk"))
   in
   loop ()
