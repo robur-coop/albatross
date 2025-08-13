@@ -657,30 +657,16 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
       | Ok (fd, next) ->
         (match data with
          | None -> Lwt.return (Ok (), ())
-         | Some (cmd, t, s) ->
-           (match cmd with
-            | None -> Lwt.return (Ok ())
-            | Some cmd ->
-              let wire =
-                let header = Vmm_commands.header name in
-                header, `Command cmd
-              in
-              Vmm_lwt.write_wire fd wire >>= function
-              | Error `Exception ->
-                Lwt.return (Error (`Msg "command failed"))
-              | Ok () -> Lwt.return (Ok ())) >>= function
-           | Error _ as e ->
-             Lwt.return (e, ())
-           | Ok () ->
-             let rec more () =
-               Lwt_stream.get s >>= function
-               | None -> Vmm_lwt.write_chunk fd "" >|= ignore
-               | Some data ->
-                 Vmm_lwt.write_chunk fd data >>= function
-                 | Ok () -> more ()
-                 | Error `Exception -> Lwt.return_unit
-             in
-             Lwt.both t (more ())) >>= fun (r, ()) ->
+         | Some (t, s) ->
+           let rec more () =
+             Lwt_stream.get s >>= function
+             | None -> Vmm_lwt.write_chunk fd "" >|= ignore
+             | Some data ->
+               Vmm_lwt.write_chunk fd data >>= function
+               | Ok () -> more ()
+               | Error `Exception -> Lwt.return_unit
+           in
+           Lwt.both t (more ())) >>= fun (r, ()) ->
         (match r with
          | Ok () -> Lwt.return_unit
          | Error `Msg msg ->
@@ -710,21 +696,7 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
         | Ok fd ->
           (match data with
            | None -> Lwt.return (Ok (), ())
-           | Some (cmd, t, s) ->
-             (match cmd with
-              | None -> Lwt.return (Ok ())
-              | Some cmd ->
-                let wire =
-                  let header = Vmm_commands.header name in
-                  header, `Command cmd
-                in
-                Vmm_tls_lwt.write_tls fd wire >>= function
-                | Error `Exception ->
-                  Lwt.return (Error (`Msg "command failed"))
-              | Ok () -> Lwt.return (Ok ())) >>= function
-             | Error _ as e ->
-               Lwt.return (e, ())
-           | Ok () ->
+           | Some (t, s) ->
              let rec more () =
                Lwt_stream.get s >>= function
                | None -> Vmm_tls_lwt.write_tls_chunk fd "" >|= ignore
@@ -861,7 +833,7 @@ let block_set () compression file name dst cert key ca key_type tmpdir =
       Vmm_lwt.compress_stream ~level stream
   in
   Lwt.on_failure task (fun _ -> Lwt.cancel task');
-  jump ~data:(None, task, stream) (`Block_cmd (`Block_set compressed)) name dst
+  jump ~data:(task, stream) (`Block_cmd (`Block_set compressed)) name dst
     cert key ca key_type tmpdir
 
 let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
