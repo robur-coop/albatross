@@ -847,37 +847,6 @@ let block_info () = jump (`Block_cmd `Block_info)
 let block_dump () compression name dst =
   jump (`Block_cmd (`Block_dump (compress_default compression dst))) name dst
 
-let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
-  let ( let* ) = Result.bind in
-  let level = compress_default compression dst in
-  let* data =
-    match opt_file with
-    | None -> Ok None
-    | Some f ->
-      let* size_in_mb = Vmm_unix.bytes_of_mb block_size in
-      let* () =
-        if size_in_mb < Unix.(stat f).st_size then
-          Error (`Msg "data exceeds size")
-        else
-          Ok ()
-      in
-      let file = Fpath.v f in
-      let stream, push = Lwt_stream.create_bounded 2 in
-      let size = Unix.(stat f).st_size in
-      let fd = Vmm_unix.openfile f [ Unix.O_RDONLY ] 0 in
-      let task = Vmm_unix.dump_file_stream fd size push file in
-      let stream, task' =
-        if level = 0 then
-          stream, Lwt.return_unit
-        else
-          Vmm_lwt.compress_stream ~level stream
-      in
-      Lwt.on_failure task (fun _ -> Lwt.cancel task');
-      Ok (Some (Some (`Block_cmd (`Block_set (level > 0))), task, stream))
-  in
-  let cmd = `Block_add block_size in
-  jump ?data (`Block_cmd cmd) name dst cert key ca key_type tmpdir
-
 let block_set () compression file name dst cert key ca key_type tmpdir =
   let level = compress_default compression dst in
   let compressed = level > 0 in
@@ -894,6 +863,26 @@ let block_set () compression file name dst cert key ca key_type tmpdir =
   Lwt.on_failure task (fun _ -> Lwt.cancel task');
   jump ~data:(None, task, stream) (`Block_cmd (`Block_set compressed)) name dst
     cert key ca key_type tmpdir
+
+let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
+  let ( let* ) = Result.bind in
+  let* () =
+    match opt_file with
+    | None -> Ok ()
+    | Some f ->
+      let* size_in_mb = Vmm_unix.bytes_of_mb block_size in
+      if size_in_mb < Unix.(stat f).st_size then
+        Error (`Msg "data exceeds size")
+      else
+        Ok ()
+  in
+  let* r =
+    jump (`Block_cmd (`Block_add block_size)) name dst cert key ca key_type tmpdir
+  in
+  match opt_file with
+  | None -> Ok r
+  | Some file ->
+    block_set () compression file name dst cert key ca key_type tmpdir
 
 let block_destroy () = jump (`Block_cmd `Block_remove)
 
