@@ -457,6 +457,13 @@ let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
       (fun e -> `Msg (Fmt.to_to_string X509.Validation.pp_signature_error e))
       (X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
   in
+  let* () =
+    let encoded = X509.Certificate.encode_der mycert in
+    if String.length encoded > 1 lsl 24 then
+      Error (`Msg "certificate too big for TLS")
+    else
+      Ok ()
+  in
   Ok (mycert, cert :: certs, tmpkey)
 
 let read_cert_key cert key =
