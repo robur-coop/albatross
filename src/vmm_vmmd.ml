@@ -465,23 +465,6 @@ let handle_block_cmd t id = function
           let* () = Vmm_unix.create_block ?data id size in
           let* resources = Vmm_resources.insert_block t.resources id size in
           Ok ({ t with resources }, `End (`Success (`String "added block device")))
-        | Some "" ->
-          let* resources = Vmm_resources.reserve_block t.resources id size in
-          let* () = Vmm_unix.create_empty_block id in
-          let stream, push = Lwt_stream.create_bounded 2 in
-          let stream, task =
-            if compressed then
-              Vmm_lwt.uncompress_stream stream
-            else
-              Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
-          in
-          let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
-          Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
-          let update_resources t =
-            let* resources = Vmm_resources.commit_block t.resources id in
-            Ok { t with resources }
-          in
-          Ok ({ t with resources }, `Recv_stream (stream_task, push, `Success (`String "added block device"), update_resources))
         | Some img ->
           let* img =
             if compressed then
