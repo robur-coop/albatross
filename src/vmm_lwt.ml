@@ -248,8 +248,13 @@ let uncompress_stream input =
        else Lwt.return_unit) >|= fun () ->
       stream#close
     | `Malformed err ->
-      stream#push (`Malformed err) >|= fun () ->
-      stream#close
+      stream#push (`Malformed err) >>= fun () ->
+      begin
+        (* This is needed so we can drain [input] *)
+        Lwt_stream.get input >>= function
+        | Some _ -> loop zl rem
+        | None -> stream#close; Lwt.return_unit
+      end
     | `Await zl when is_it_anything_left rem ->
       let (str, src_off, str_len) = Option.get rem in
       let len = Int.min str_len (Bigstringaf.length i) in
