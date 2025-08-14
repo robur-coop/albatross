@@ -20,38 +20,82 @@ let read_console id name ring fd =
   Lwt.catch (fun () ->
       Lwt_unix.wait_read fd >>= fun () ->
       let channel = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
-      let rec loop () =
-        Lwt_io.read_line channel >>= fun line ->
-        Logs.debug (fun m -> m "read %s" line) ;
+      let rec loop mode slack =
+        Lwt_io.read ~count:512 channel >>= fun data ->
+        if data = "" then raise End_of_file;
+        let data = if slack <> "" then slack ^ data else data in
+        let get_slack lines =
+            match List.rev lines with
+            | [] | [ _ ] -> lines, ""
+            | slack::tl -> List.rev tl, slack
+        in
+        let mode, lines, slack =
+          (* anything exceeding 512 bytes get dropped until a newline is read *)
+          match mode with
+          | `Drop ->
+            (* look for newline *)
+            (match String.index_opt data '\n' with
+             | None ->
+               (* if not present: continue drop *)
+               `Drop, [], ""
+             | Some idx ->
+               (* if present, take the remainder as next lines, and go to `Read *)
+               let data = String.sub data idx (String.length data - idx) in
+               let lines, slack = get_slack (String.split_on_char '\n' data) in
+               `Read, lines, slack)
+          | `Read ->
+            (* split on newline character *)
+            match String.split_on_char '\n' data with
+            | [] -> assert false
+            | [ x ] ->
+              (* if there is no newline, drop *)
+              `Drop, [ x ^ " [truncated]" ], ""
+            | lines ->
+              (* otherwise continue normal operations *)
+              let lines, slack = get_slack lines in
+              `Read, lines, slack
+        in
+        (* filter empty lines, they're not worth it *)
+        (* XXX(reynir): but that changes the output :/
+           the empty lines might have some semantic meaning *)
+        let lines = List.filter (fun s -> not (String.equal "" s)) lines in
+        Logs.debug (fun m -> m "read %u lines %u slack" (List.length lines) (String.length slack)) ;
         let t = Ptime_clock.now () in
-        Vmm_ring.write ring (t, line) ;
+        List.iter (fun line -> Vmm_ring.write ring (t, line)) lines;
         let f (version, utc, fd) =
            let header = Vmm_commands.header ~version id in
-           let data =
-             if utc then
-               `Data (`Utc_console_data (t, line))
-             else
-               `Data (`Console_data (t, line))
-           in
-           Vmm_lwt.write_wire fd (header, data) >>= function
-           | Error _ ->
-             Vmm_lwt.safe_close fd >|= fun () ->
-             let update s =
-               let s = Option.value ~default:[] s in
-               let s' = List.filter (fun (_v, _u, fd') -> fd != fd') s in
-               if s' = [] then
-                 None
-               else
-                 Some s'
-             in
-             active := Vmm_core.String_map.update name update !active
-           | Ok () -> Lwt.return_unit
+           Lwt_list.fold_left_s (fun fd line ->
+               match fd with
+               | None -> Lwt.return None
+               | Some fd ->
+                 let data =
+                   if utc then
+                     `Data (`Utc_console_data (t, line))
+                   else
+                     `Data (`Console_data (t, line))
+                 in
+                 Vmm_lwt.write_wire fd (header, data) >>= function
+                 | Error _ ->
+                   Vmm_lwt.safe_close fd >|= fun () ->
+                   let update s =
+                     let s = Option.value ~default:[] s in
+                     let s' = List.filter (fun (_v, _u, fd') -> fd != fd') s in
+                     if s' = [] then
+                       None
+                     else
+                       Some s'
+                   in
+                   active := Vmm_core.String_map.update name update !active;
+                   None
+                 | Ok () -> Lwt.return (Some fd))
+             (Some fd) lines
         in
-        Lwt_list.iter_p f
+        Lwt_list.iter_p (fun data -> f data >|= ignore)
           (Vmm_core.String_map.find_opt name !active |> Option.value ~default:[])
-        >>= loop
+        >>= Lwt.pause
+        >>= fun () -> loop mode slack
       in
-      loop ())
+      loop `Read "")
     (fun e ->
        begin match e with
          | Unix.Unix_error (e, f, _) ->

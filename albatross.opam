@@ -12,6 +12,7 @@ depends: [
   "dune-configurator"
   "conf-pkg-config" {build}
   "conf-libnl3" {os = "linux"}
+  "conf-libev"
   "lwt" {>= "3.0.0"}
   "ipaddr" {>= "5.3.0"}
   "logs"
