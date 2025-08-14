@@ -449,7 +449,7 @@ let handle_block_cmd t id = function
         let* resources = Vmm_resources.remove_block t.resources id in
         Ok ({ t with resources }, `End (`Success (`String "removed block")))
     end
-  | `Block_add (size, compressed, data) ->
+  | `Old_block_add (size, compressed, data) ->
     begin
       Logs.debug (fun m -> m "insert block %a: %dMB (data: %a)"
                      Name.pp id size
@@ -459,38 +459,52 @@ let handle_block_cmd t id = function
       | Some _ -> Error (`Msg "block device with same name already exists")
       | None ->
         let* () = Vmm_resources.check_block t.resources id size in
-        let* data =
-          match data with
-          | None -> Ok None
-          | Some img ->
-            let* img =
-              if compressed then
-                Vmm_compress.uncompress img
-              else
-                Ok img
-            in
-            let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+        match data with
+        | None ->
+          let* () = Vmm_unix.create_block ?data id size in
+          let* resources = Vmm_resources.insert_block t.resources id size in
+          Ok ({ t with resources }, `End (`Success (`String "added block device")))
+        | Some img ->
+          let* img =
+            if compressed then
+              Vmm_compress.uncompress img
+            else
+              Ok img
+          in
+          let* () =
             if size_in_bytes >= String.length img then
-              Ok (Some img)
+              Ok ()
             else
               Error (`Msg "data exceeds block size")
-        in
-        let* () = Vmm_unix.create_block ?data id size in
+          in
+          let* () = Vmm_unix.create_block ~data:img id size in
+          let* resources = Vmm_resources.insert_block t.resources id size in
+          Ok ({ t with resources }, `End (`Success (`String "added block device")))
+    end
+  | `Block_add size ->
+    begin
+      Logs.debug (fun m -> m "insert block %a: %dMB" Name.pp id size);
+      match Vmm_resources.find_block t.resources id with
+      | Some _ -> Error (`Msg "block device with same name already exists")
+      | None ->
+        let* () = Vmm_resources.check_block t.resources id size in
+        let* () = Vmm_unix.create_block id size in
         let* resources = Vmm_resources.insert_block t.resources id size in
         Ok ({ t with resources }, `End (`Success (`String "added block device")))
     end
-  | `Block_set (compressed, data) ->
+  | `Old_block_set (compressed, data) ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "set block: not found")
       | Some (_, true) -> Error (`Msg "set block: is in use")
       | Some (size, false) ->
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
         let* data =
           if compressed then
             Vmm_compress.uncompress data
           else
             Ok data
         in
-        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
         let* () =
           if size_in_bytes >= String.length data then
             Ok ()
@@ -501,7 +515,27 @@ let handle_block_cmd t id = function
         let* () = Vmm_unix.create_block ~data id size in
         Ok (t, `End (`Success (`String "set block device")))
     end
-  | `Block_dump level ->
+  | `Block_set compressed ->
+    begin match Vmm_resources.find_block t.resources id with
+      | None -> Error (`Msg "set block: not found")
+      | Some (_, true) -> Error (`Msg "set block: is in use")
+      | Some (size, false) ->
+        let* size_in_bytes = Vmm_unix.bytes_of_mb size in
+        let* () = Vmm_unix.destroy_block id in
+        let* () = Vmm_unix.create_empty_block id in
+        let stream, push = Lwt_stream.create_bounded 2 in
+        let stream, task =
+          if compressed then
+            let stream, task = Vmm_lwt.uncompress_stream stream in
+            stream, task
+          else
+            Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
+        in
+        let stream_task = Vmm_unix.stream_to_block ~size ~byte_size:size_in_bytes stream id in
+        Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
+        Ok (t, `Recv_stream (stream_task, push, `Success (`String "set block device"), fun t -> Ok t))
+    end
+  | `Old_block_dump level ->
     begin match Vmm_resources.find_block t.resources id with
       | None -> Error (`Msg "dump block: not found")
       | Some (_, true) -> Error (`Msg "dump block: is in use")
@@ -513,7 +547,25 @@ let handle_block_cmd t id = function
           else
             true, Vmm_compress.compress ~level data
         in
-        Ok (t, `End (`Success (`Block_device_image (compress, data))))
+        Ok (t, `End (`Success (`Old_block_device_image (compress, data))))
+    end
+  | `Block_dump level ->
+    begin match Vmm_resources.find_block t.resources id with
+      | None -> Error (`Msg "dump block: not found")
+      | Some (_, true) -> Error (`Msg "dump block: is in use")
+      | Some (_, false) ->
+        let* fd, size, name = Vmm_unix.open_block_fd id in
+        let res = `Success (`Block_device_image (level <> 0)) in
+        let s, push = Lwt_stream.create_bounded 2 in
+        let task = Vmm_unix.dump_file_stream fd size push name in
+        let s, task' =
+          if level = 0 then
+            s, Lwt.return_unit
+          else
+            Vmm_lwt.compress_stream ~level s
+        in
+        Lwt.on_failure task (fun _ -> Lwt.cancel task');
+        Ok (t, `Send_stream (task, s, res))
     end
   | `Block_info ->
     Logs.debug (fun m -> m "block %a" Name.pp id) ;

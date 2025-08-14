@@ -102,23 +102,29 @@ let pp_policy_cmd ppf = function
 
 type block_cmd = [
   | `Block_info
-  | `Block_add of int * bool * string option
+  | `Old_block_add of int * bool * string option
   | `Block_remove
-  | `Block_set of bool * string
+  | `Old_block_set of bool * string
   | `Block_dump of int
+  | `Old_block_dump of int
+  | `Block_add of int
+  | `Block_set of bool
 ]
 
 let pp_block_cmd ppf = function
   | `Block_info -> Fmt.string ppf "block info"
   | `Block_remove -> Fmt.string ppf "block remove"
-  | `Block_add (size, compressed, data) ->
-    Fmt.pf ppf "block add %d (compressed %B data %a)"
+  | `Old_block_add (size, compressed, data) ->
+    Fmt.pf ppf "old block add %d (compressed %B data %a)"
       size compressed
       Fmt.(option ~none:(any "no data") int) (Option.map String.length data)
-  | `Block_set (compressed, data) ->
-    Fmt.pf ppf "block set compressed %B %d bytes" compressed
+  | `Old_block_set (compressed, data) ->
+    Fmt.pf ppf "old block set compressed %B %d bytes" compressed
       (String.length data)
   | `Block_dump level -> Fmt.pf ppf "block dump, compress level %d" level
+  | `Old_block_dump level -> Fmt.pf ppf "old block dump, compress level %d" level
+  | `Block_add size -> Fmt.pf ppf "block add %d" size
+  | `Block_set compressed -> Fmt.pf ppf "block set compressed %B" compressed
 
 type t = [
     | `Console_cmd of console_cmd
@@ -139,6 +145,7 @@ type data = [
   | `Console_data of Ptime.t * string
   | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
+  | `Block_data of string option
 ]
 
 let pp_data ppf = function
@@ -147,6 +154,10 @@ let pp_data ppf = function
   | `Utc_console_data (ts, line) ->
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
+  | `Block_data s ->
+    Fmt.pf ppf "block data %a"
+      Fmt.(option ~none:(any "eof") (int ++ any " bytes"))
+      (Option.map String.length s)
 
 type header = {
   version : version ;
@@ -166,7 +177,8 @@ type success = [
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
-  | `Block_device_image of bool * string
+  | `Old_block_device_image of bool * string
+  | `Block_device_image of bool
 ]
 
 let pp_block ppf (id, size, active) =
@@ -196,9 +208,11 @@ let pp_success ~verbose ppf = function
     Fmt.pf ppf "image (compression %B) %d bytes"
       compressed (String.length image)
   | `Block_devices blocks -> my_fmt_list "no block devices" pp_block ppf blocks
-  | `Block_device_image (compressed, data) ->
-    Fmt.pf ppf "block device compressed %B, %d bytes"
+  | `Old_block_device_image (compressed, data) ->
+    Fmt.pf ppf "old block device compressed %B, %d bytes"
       compressed (String.length data)
+  | `Block_device_image compressed ->
+    Fmt.pf ppf "block device compressed %B" compressed
 
 type res = [
   | `Command of t
@@ -218,9 +232,10 @@ let pp_wire ~verbose ppf (header, data) =
   | `Data d -> pp_data ppf d
 
 let endpoint = function
-  | `Unikernel_cmd _ -> `Vmmd, `End
-  | `Policy_cmd _ -> `Vmmd, `End
-  | `Block_cmd _ -> `Vmmd, `End
+  | `Unikernel_cmd _ -> `Vmmd, `Single
+  | `Policy_cmd _ -> `Vmmd, `Single
+  | `Block_cmd `Block_dump _ -> `Vmmd, `Dump
+  | `Block_cmd _ -> `Vmmd, `Single
   | `Stats_cmd `Stats_subscribe -> `Stats, `Read
-  | `Stats_cmd _ -> `Stats, `End
+  | `Stats_cmd _ -> `Stats, `Single
   | `Console_cmd _ -> `Console, `Read

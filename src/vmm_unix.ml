@@ -461,7 +461,7 @@ let bytes_of_mb size =
   else
     Error (`Msg "overflow while computing bytes")
 
-let create_block ?data name size =
+let create_empty_block name =
   let block_name = block_file name in
   let* block_exists = Bos.OS.File.exists block_name in
   if block_exists then
@@ -470,10 +470,19 @@ let create_block ?data name size =
     let dir = block_dir () in
     let* dir_exists = Bos.OS.Path.exists dir in
     let* _ = (if dir_exists then Ok true else Bos.OS.Dir.create ~mode:0o700 dir) in
-    let data = Option.value ~default:"" data in
-    let* () = Bos.OS.File.write ~mode:0o600 block_name data in
-    let* size' = bytes_of_mb size in
-    Bos.OS.File.truncate block_name size'
+    Bos.OS.File.write ~mode:0o600 block_name ""
+
+let truncate name size =
+  let block_name = block_file name in
+  let* size' = bytes_of_mb size in
+  Bos.OS.File.truncate block_name size'
+
+let create_block ?data name size =
+  let* () = create_empty_block name in
+  let block_name = block_file name in
+  let data = Option.value ~default:"" data in
+  let* () = Bos.OS.File.write ~mode:0o600 block_name data in
+  truncate name size
 
 let destroy_block name =
   Bos.OS.File.delete (block_file name)
@@ -486,11 +495,110 @@ let dump_block name =
   else
     Bos.OS.File.read block_name
 
+let safe_close fd =
+  Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
+
+let dump_file_stream fd size stream name =
+  let open Lwt.Infix in
+  let fd = Lwt_unix.of_unix_file_descr fd in
+  Lwt.catch (fun () ->
+      let rec more fd size stream off =
+        let len = Int.min (size - off) 4096 in
+        let buf = Bytes.create len in
+        Lwt_unix.read fd buf 0 len >>= fun read ->
+        let buf = if read = len then buf else Bytes.sub buf 0 read in
+        stream#push (Bytes.unsafe_to_string buf) >>= fun () ->
+        if read = size - off then begin
+          stream#close;
+          Lwt.return_unit
+        end else
+          more fd size stream (off + read)
+      in
+      more fd size stream 0 >>= fun () ->
+      safe_close fd >|= fun () ->
+      Ok ())
+    (function
+      | Lwt.Canceled ->
+        (* We assume error reporting is done by the canceller *)
+        Lwt.return (Ok ())
+      | e ->
+       Logs.err (fun m -> m "error streaming %a: %s" Fpath.pp name
+                    (Printexc.to_string e));
+       Lwt.return (Error (`Msg "streaming block device")))
+
+let open_block_fd name =
+  let block_name = block_file name in
+  let* exists = Bos.OS.File.exists block_name in
+  if not exists then
+    Error (`Msg "file does not exist")
+  else
+    let name_str = Fpath.to_string block_name in
+    let size = Unix.(stat name_str).st_size in
+    let fd = openfile name_str [ O_RDONLY ] 0 in
+    Ok (fd, size, block_name)
+
 let mb_of_bytes size =
   if size = 0 || size land 0xFFFFF <> 0 then
     Error (`Msg "size is either 0 or not MB aligned")
   else
     Ok (size lsr 20)
+
+let stream_to_fd ?(byte_size = Int.max_int) fd stream name =
+  let open Lwt.Infix in
+  let exception Malformed_data of string in
+  Lwt.catch (fun () ->
+      let rec read_more fd stream size =
+        Lwt_stream.get stream >>= function
+        | None -> Lwt.return (Ok ())
+        | Some `Data data ->
+          if String.length data > byte_size - size then begin
+            Logs.err (fun m -> m "stream exceeds size");
+            Lwt.return (Error (`Msg "stream exceeds size"))
+          end else
+            let rec write fd data off len =
+              let to_write = len - off in
+              Lwt_unix.write fd data off to_write >>= fun written ->
+              if written = to_write then
+                read_more fd stream (size + len)
+              else
+                write fd data (off + written) len
+            in
+            write fd (Bytes.unsafe_of_string data) 0 (String.length data)
+        | Some `Malformed msg ->
+          raise (Malformed_data msg)
+      in
+      read_more fd stream 0 >>= fun r ->
+      safe_close fd >|= fun () ->
+      r)
+    (fun e ->
+       Logs.err (fun m -> m "error writing %a: %s"
+                    Fpath.pp name (Printexc.to_string e));
+       safe_close fd >>= fun () ->
+       let rec drop_stream s =
+         Lwt_stream.get s >>= function
+         | None -> Lwt.return_unit
+         | Some _ -> drop_stream s
+       in
+       drop_stream stream >|= fun () ->
+       Error (`Msg "error writing to file descriptor"))
+
+let stream_to_block ~size ~byte_size stream name =
+  (* what is the desired semantics for failures?
+     the current approach is that the block data will be trashed
+     we could avoid, but not easily (since that'd mean some temporary space and renaming
+     -- or if we require zfs, a snapshot and rollback! *)
+  let block_name = block_file name in
+  let open Lwt.Infix in
+  Lwt.catch (fun () ->
+      Lwt_unix.openfile (Fpath.to_string block_name)
+        [ Unix.O_WRONLY ; Unix.O_CREAT ] 0o600 >>= fun fd ->
+      stream_to_fd ~byte_size fd stream block_name >|= function
+      | Ok () -> truncate name size
+      | Error _ as e -> e)
+    (fun e ->
+       Logs.err (fun m -> m "error opening %a for writing: %s"
+                    Fpath.pp block_name (Printexc.to_string e));
+       Lwt.return (Error (`Msg "error opening block device")))
 
 let find_block_devices () =
   let dir = block_dir () in

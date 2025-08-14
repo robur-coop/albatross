@@ -26,6 +26,8 @@ let read version fd tls =
   let rec loop () =
     Vmm_lwt.read_wire fd >>= function
     | Error _ -> Lwt.return (`Failure "exception while reading from fd")
+    | Ok (_hdr, (`Data `Block_data None as pay)) ->
+      Lwt.return pay
     | Ok (hdr, pay) ->
       Logs.debug (fun m -> m "read proxying %a"
                      (Vmm_commands.pp_wire ~verbose:false) (hdr, pay)) ;
@@ -57,6 +59,25 @@ let read_image tls =
   | Ok buf -> Ok (Buffer.contents buf)
   | Error _ as e -> e
 
+let read_stream_write tls fd =
+  let rec loop () =
+    Vmm_tls_lwt.read_tls_chunk tls >>= function
+    | Ok data ->
+      begin
+        Vmm_lwt.write_chunk fd data >>= function
+        | Ok () -> loop ()
+        | Error `Exception -> Lwt.return (Error (`Failure "writing block data"))
+      end
+    | Error `Eof ->
+      begin
+        Vmm_lwt.write_chunk fd "" >|= function
+        | Ok () -> Ok ()
+        | Error `Exception -> Error (`Failure "writing block data")
+      end
+    | Error _ -> Lwt.return (Error (`Failure "reading tls chunk"))
+  in
+  loop ()
+
 let handle tls =
   match Tls_lwt.Unix.epoch tls with
   | Error () -> Lwt.fail_with "error while getting epoch"
@@ -84,22 +105,6 @@ let handle tls =
                Lwt.fail_with "error retrieving unikernel image"
            else
              Lwt.return cmd
-         | `Block_cmd (`Block_add (size, compressed, Some "")) ->
-           begin
-             read_image tls >>= function
-             | Ok data ->
-               Lwt.return (`Block_cmd (`Block_add (size, compressed, Some data)))
-             | Error _ ->
-               Lwt.fail_with "error retrieving block data"
-           end
-         | `Block_cmd (`Block_set (compressed, "")) ->
-           begin
-             read_image tls >>= function
-             | Ok data ->
-               Lwt.return (`Block_cmd (`Block_set (compressed, data)))
-             | Error _ ->
-               Lwt.fail_with "error retrieving block data"
-           end
          | _ -> Lwt.return cmd) >>= fun cmd ->
         let sock, next = Vmm_commands.endpoint cmd in
         let sockaddr = Lwt_unix.ADDR_UNIX (Vmm_core.socket_path sock) in
@@ -144,9 +149,16 @@ let handle tls =
               Vmm_lwt.safe_close fd >|= fun () ->
               `Failure "couldn't write unikernel to VMMD"
             | Ok () ->
-              (match next with
-               | `Read -> read version fd tls
-               | `End -> process fd) >>= fun res ->
+              (match cmd with
+               | `Block_cmd (`Old_block_add (_, _, Some ""))
+               | `Block_cmd (`Block_set _)
+               | `Block_cmd (`Old_block_set (_, "")) -> read_stream_write tls fd
+               | _ -> Lwt.return (Ok ())) >>= (function
+                  | Ok () ->
+                    (match next with
+                     | `Read | `Dump -> read version fd tls
+                     | `Single -> process fd)
+                  | Error e -> Lwt.return e) >>= fun res ->
               Vmm_lwt.safe_close fd >|= fun () ->
               res
       end >>= fun reply ->

@@ -1,9 +1,4 @@
-let compress ?level input =
-  let level =
-    match level with
-    | Some x when x >= 0 && x <= 9 -> x
-    | _ -> 4
-  in
+let compress ~level input =
   let w = De.Lz77.make_window ~bits:15 in
   let q = De.Queue.create 0x1000 in
   let i = Bigstringaf.create De.io_buffer_size in

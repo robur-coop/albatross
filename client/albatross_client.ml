@@ -31,20 +31,24 @@ let classify_tls_error = function
     Communication_failed
 
 let exit_status = function
-  | Ok () -> Ok Success
+  | Ok `End -> Ok Success
+  | Ok _state ->
+    Ok Communication_failed
   | Error e -> Ok e
 
-let output_result ((hdr, reply) as wire) =
+let filename =
+  let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
+  (fun name ->
+     Fpath.(v (Filename.get_temp_dir_name ()) / Vmm_core.Name.to_string name + ts))
+
+let output_result state ((hdr, reply) as wire) =
   let verbose = match Logs.level () with Some Logs.Debug -> true | _ -> false in
   match reply with
   | `Success s ->
     Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
     let write_to_file name compressed data =
-      let filename =
-        let ts = Ptime.to_rfc3339 (Ptime_clock.now ()) in
-        Fpath.(v (Filename.get_temp_dir_name ()) / Vmm_core.Name.to_string name + ts)
-      in
       let write data =
+        let filename = filename name in
         match Bos.OS.File.write filename data with
         | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
         | Error (`Msg e) -> Logs.err (fun m -> m "failed to write image: %s" e)
@@ -60,28 +64,71 @@ let output_result ((hdr, reply) as wire) =
     begin match s with
       | `Unikernel_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
-        write_to_file name compressed image
+        write_to_file name compressed image;
+        Lwt.return (Ok `End)
       | `Old_unikernels unikernels ->
         List.iter (fun (name, cfg) ->
             if String.length cfg.Vmm_core.Unikernel.image > 0 then
               write_to_file name cfg.compressed cfg.image)
-          unikernels
-      | `Block_device_image (compressed, image) ->
+          unikernels;
+        Lwt.return (Ok `End)
+      | `Block_device_image compressed ->
+        let name = filename hdr.Vmm_commands.name in
+        Lwt_unix.openfile (Fpath.to_string name) [ Unix.O_WRONLY ; O_CREAT ] 0o644 >>= fun fd ->
+        let stream, push = Lwt_stream.create_bounded 2 in
+        let stream, task =
+          if compressed then
+            Vmm_lwt.uncompress_stream stream
+          else
+            Lwt_stream.map (fun s -> `Data s) stream, Lwt.return_unit
+        in
+        let stream_task = Vmm_unix.stream_to_fd fd stream name in
+        Lwt.on_failure stream_task (fun _ -> Lwt.cancel task);
+        let stream_task =
+          stream_task >|= function
+          | Ok () -> Logs.app (fun m -> m "dumped to %a" Fpath.pp name)
+          | Error `Msg msg ->
+            Logs.err (fun m -> m "%s while dumping %a" msg Fpath.pp name);
+            failwith "error"
+        in
+        Lwt.return (Ok (`Dump_to (Some stream_task, push)))
+      | `Old_block_device_image (compressed, image) ->
         let name = hdr.Vmm_commands.name in
-        write_to_file name compressed image
-      | _ -> ()
-    end;
-    Ok ()
+        write_to_file name compressed image;
+        Lwt.return (Ok `End)
+      | _ -> Lwt.return (Ok `End)
+    end
+  | `Data `Block_data None ->
+    (match state with
+     | `Dump_to (_, p) ->
+       p#close;
+       Lwt.return (Ok `End)
+     | _ ->
+       Logs.warn (fun m -> m "Unexpected block dump EOF received");
+       Lwt.return (Error Communication_failed))
+  | `Data `Block_data Some data ->
+    (match state with
+     | `Dump_to (_, p) ->
+       p#push data >|= fun () ->
+       Ok state
+     | _ ->
+       Logs.warn (fun m -> m "Unexpected block dump data received");
+       Lwt.return (Error Communication_failed))
   | `Data _ ->
-    Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
-    Ok ()
+    (match state with
+     | `Read ->
+       Logs.app (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
+       Lwt.return (Ok state)
+     | _ ->
+       Logs.warn (fun m -> m "Unexpected console data received");
+       Lwt.return (Error Communication_failed))
   | `Failure _ ->
     Logs.warn (fun m -> m "%a" (Vmm_commands.pp_wire ~verbose) wire);
-    Error Remote_command_failed
+    Lwt.return (Error Remote_command_failed)
   | `Command _ ->
     Logs.err (fun m -> m "received unexpected command %a"
                  (Vmm_commands.pp_wire ~verbose) wire);
-    Error Internal_error
+    Lwt.return (Error Internal_error)
 
 let job_and_build loc =
   match String.split_on_char '/' loc with
@@ -216,23 +263,6 @@ let create_unikernel force image cpuid memory argv block_devices bridges compres
   let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
-let create_block size compression data =
-  let ( let* ) = Result.bind in
-  match data with
-  | None -> Ok (`Block_add (size, false, None))
-  | Some image ->
-    let* size_in_mb = Vmm_unix.bytes_of_mb size in
-    if size_in_mb >= String.length image then
-      let compressed, img =
-        if compression > 0 then
-          true, Vmm_compress.compress ~level:compression image
-        else
-          false, image
-      in
-      Ok (`Block_add (size, compressed, Some img))
-    else
-      Error (`Msg "data exceeds size")
-
 let policy unikernels memory cpus block bridgesl =
   let bridges = Vmm_core.String_set.of_list bridgesl
   and cpuids = Vmm_core.IS.of_list cpus
@@ -243,25 +273,28 @@ let policy unikernels memory cpus block bridgesl =
     Logs.warn (fun m -> m "CPUids is not a set");
   Vmm_core.Policy.{ unikernels ; cpuids ; memory ; block ; bridges }
 
-let to_exit_code = function
-  | Error `Eof -> Error Success
-  | Error `Tls_eof -> Error Success
-  | Error _ -> Error Communication_failed
-  | Ok wire -> output_result wire
+let to_exit_code state = function
+  | Error `Eof -> Lwt.return (Error Success)
+  | Error `Tls_eof -> Lwt.return (Error Success)
+  | Error _ -> Lwt.return (Error Communication_failed)
+  | Ok wire -> output_result state wire
 
-let process_local fd = Vmm_lwt.read_wire fd >|= to_exit_code
+let process_local fd state = Vmm_lwt.read_wire fd >>= to_exit_code state
 
-let process_remote fd = Vmm_tls_lwt.read_tls fd >|= to_exit_code
+let process_remote fd state = Vmm_tls_lwt.read_tls fd >>= to_exit_code state
 
 let read p (fd, next) =
   let open Lwt_result.Infix in
   (* now we busy read and process output *)
-  let rec loop () =
-    p fd >>= loop
+  let rec loop = function
+    | `End -> Lwt_result.return `End
+    | `Dump_to (Some task, s) ->
+      Lwt.bind (Lwt.both (p fd (`Dump_to (None, s)) >>= loop) task)
+        (fun (r, _) -> Lwt.return r)
+    | state ->
+      p fd state >>= loop
   in
-  match next with
-  | `Read -> loop ()
-  | `End -> p fd
+  loop (next :> [ `Dump | `Single | `Read | `Dump_to of unit Lwt.t option * string Lwt_stream.bounded_push | `End ])
 
 let connect_local opt_socket name (cmd : Vmm_commands.t) =
   let sock, next = Vmm_commands.endpoint cmd in
@@ -423,6 +456,13 @@ let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
     Result.map_error
       (fun e -> `Msg (Fmt.to_to_string X509.Validation.pp_signature_error e))
       (X509.Signing_request.sign csr ~valid_from ~valid_until ~extensions key issuer)
+  in
+  let* () =
+    let encoded = X509.Certificate.encode_der mycert in
+    if String.length encoded > 1 lsl 24 then
+      Error (`Msg "certificate too big for TLS")
+    else
+      Ok ()
   in
   Ok (mycert, cert :: certs, tmpkey)
 
@@ -614,7 +654,7 @@ let csr priv name cmd =
   let extensions = X509.Signing_request.Ext.(singleton Extensions ext) in
   X509.Signing_request.create name ~extensions priv
 
-let jump cmd name d cert key ca key_type tmpdir =
+let jump ?data cmd name d cert key ca key_type tmpdir =
   match d with
   | `Local opt_sock ->
     Albatross_cli.set_tmpdir tmpdir;
@@ -622,12 +662,29 @@ let jump cmd name d cert key ca key_type tmpdir =
       connect_local opt_sock name cmd >>= function
       | Error e -> Lwt.return (Ok e)
       | Ok (fd, next) ->
+        (match data with
+         | None -> Lwt.return (Ok (), ())
+         | Some (t, s) ->
+           let rec more () =
+             Lwt_stream.get s >>= function
+             | None -> Vmm_lwt.write_chunk fd "" >|= ignore
+             | Some data ->
+               Vmm_lwt.write_chunk fd data >>= function
+               | Ok () -> more ()
+               | Error `Exception -> Lwt.return_unit
+           in
+           Lwt.both t (more ())) >>= fun (r, ()) ->
+        (match r with
+         | Ok () -> Lwt.return_unit
+         | Error `Msg msg ->
+           let header = Vmm_commands.header name in
+           Vmm_lwt.write_wire fd (header, `Failure msg) >|= fun _e -> ()) >>= fun () ->
         read process_local (fd, next) >>= fun r ->
         Vmm_lwt.safe_close fd >|= fun () ->
         exit_status r)
   | `Remote endp ->
     let* cert, certs, key = read_cert_key cert key in
-    let* name =
+    let* name_str =
       match cmd, Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
       | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name))
       | _, true, Some name -> Ok name
@@ -636,7 +693,7 @@ let jump cmd name d cert key ca key_type tmpdir =
     in
     Lwt_main.run (
       let _, next = Vmm_commands.endpoint cmd in
-      match gen_cert (cert, certs, key) key_type name cmd with
+      match gen_cert (cert, certs, key) key_type name_str cmd with
       | Error `Msg msg ->
         Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
         Lwt.return (Ok Cli_failed)
@@ -644,6 +701,23 @@ let jump cmd name d cert key ca key_type tmpdir =
         connect_remote endp (cert, certs, key) ca >>= function
         | Error e -> Lwt.return (Ok e)
         | Ok fd ->
+          (match data with
+           | None -> Lwt.return (Ok (), ())
+           | Some (t, s) ->
+             let rec more () =
+               Lwt_stream.get s >>= function
+               | None -> Vmm_tls_lwt.write_tls_chunk fd "" >|= ignore
+               | Some data ->
+                 Vmm_tls_lwt.write_tls_chunk fd data >>= function
+                 | Ok () -> more ()
+                 | Error `Exception -> Lwt.return_unit
+             in
+             Lwt.both t (more ())) >>= fun (r, ()) ->
+          (match r with
+           | Ok () -> Lwt.return_unit
+           | Error `Msg msg ->
+             let header = Vmm_commands.header name in
+             Vmm_tls_lwt.write_tls fd (header, `Failure msg) >|= fun _e -> ()) >>= fun () ->
           read process_remote (fd, next) >>= fun r ->
           Vmm_tls_lwt.close fd >|= fun () ->
           exit_status r)
@@ -752,20 +826,42 @@ let block_info () = jump (`Block_cmd `Block_info)
 let block_dump () compression name dst =
   jump (`Block_cmd (`Block_dump (compress_default compression dst))) name dst
 
-let block_create () block_size compression block_data name dst cert key ca key_type tmpdir =
-  match create_block block_size (compress_default compression dst) block_data with
-  | Ok cmd -> jump (`Block_cmd cmd) name dst cert key ca key_type tmpdir
-  | Error _ as e -> e
-
-let block_set () compression block_data name dst =
-  let compressed, data =
-    let level = compress_default compression dst in
-    if level > 0 then
-      true, Vmm_compress.compress ~level block_data
+let block_set () compression file name dst cert key ca key_type tmpdir =
+  let level = compress_default compression dst in
+  let compressed = level > 0 in
+  let stream, push = Lwt_stream.create_bounded 2 in
+  let size = Unix.(stat file).st_size in
+  let fd = Vmm_unix.openfile file [ Unix.O_RDONLY ] 0 in
+  let task = Vmm_unix.dump_file_stream fd size push (Fpath.v file) in
+  let stream, task' =
+    if level = 0 then
+      stream, Lwt.return_unit
     else
-      false, block_data
+      Vmm_lwt.compress_stream ~level stream
   in
-  jump (`Block_cmd (`Block_set (compressed, data))) name dst
+  Lwt.on_failure task (fun _ -> Lwt.cancel task');
+  jump ~data:(task, stream) (`Block_cmd (`Block_set compressed)) name dst
+    cert key ca key_type tmpdir
+
+let block_create () block_size compression opt_file name dst cert key ca key_type tmpdir =
+  let ( let* ) = Result.bind in
+  let* () =
+    match opt_file with
+    | None -> Ok ()
+    | Some f ->
+      let* size_in_mb = Vmm_unix.bytes_of_mb block_size in
+      if size_in_mb < Unix.(stat f).st_size then
+        Error (`Msg "data exceeds size")
+      else
+        Ok ()
+  in
+  let* r =
+    jump (`Block_cmd (`Block_add block_size)) name dst cert key ca key_type tmpdir
+  in
+  match opt_file with
+  | None -> Ok r
+  | Some file ->
+    block_set () compression file name dst cert key ca key_type tmpdir
 
 let block_destroy () = jump (`Block_cmd `Block_remove)
 
@@ -781,11 +877,11 @@ let one_jump :
       Albatross_cli.set_tmpdir tmpdir;
       connect_local opt_sock name cmd >>= (function
         | Error e -> Lwt.return (Error (`Connect e))
-        | Ok (fd, `End) ->
+        | Ok (fd, `Single) ->
           Vmm_lwt.read_wire fd >>= fun r ->
           Vmm_lwt.safe_close fd >|= fun () ->
           r
-        | Ok (_fd, `Read) ->
+        | Ok (_fd, (`Read | `Dump)) ->
           assert false)
   | `Remote endp ->
     fun cmd name cert key ca key_type _tmpdir ->
@@ -806,7 +902,7 @@ let one_jump :
            Lwt.return (Error (`Msg "non-empty path"))
       in
       let _, next = Vmm_commands.endpoint cmd in
-      assert (next = `End);
+      assert (next = `Single);
       (match gen_cert (cert, certs, key) key_type name cmd with
       | Error `Msg msg ->
         Logs.err (fun m -> m "couldn't generate certificate chain: %s" msg);
@@ -835,7 +931,8 @@ let update () host dryrun compression name d cert key ca key_type tmpdir =
         one_jump d (`Unikernel_cmd cmd) name cert key ca key_type tmpdir >>= fun r ->
         match r with
         | Ok w ->
-          Lwt.return (exit_status (output_result w))
+          output_result `Single w >|= fun r ->
+          exit_status r
         | Error _ ->
           Logs.err (fun m -> m "received error from albatross");
           Lwt.return (Error Remote_command_failed)
@@ -1021,21 +1118,13 @@ let block_size =
   let doc = "Block storage (in MB)." in
   Arg.(required & pos 1 (some int) None & info [] ~doc ~docv:"BLOCK-SIZE")
 
-let data_c =
-  let parse s =
-    Bos.OS.File.read (Fpath.v s)
-  and pp ppf data =
-    Format.fprintf ppf "file with %u bytes" (String.length data)
-  in
-  Arg.conv (parse, pp)
-
 let block_data =
   let doc = "Block device content (filename)." in
-  Arg.(required & pos 1 (some data_c) None & info [] ~doc ~docv:"FILE")
+  Arg.(required & pos 1 (some file) None & info [] ~doc ~docv:"FILE")
 
 let opt_block_data =
   let doc = "Block device content (filename)." in
-  Arg.(value & opt (some data_c) None & info [ "data" ] ~doc ~docv:"FILE")
+  Arg.(value & opt (some file) None & info [ "data" ] ~doc ~docv:"FILE")
 
 let opt_block_size =
   let doc = "Block storage to allow (in MB)." in

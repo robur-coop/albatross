@@ -106,8 +106,7 @@ let wait_and_clear pid =
     Logs.debug (fun m -> m "pid %d exited: %a" pid pp_process_status s) ;
     ret s
 
-let read_wire s =
-  let buf = Bytes.create 4 in
+let read_chunk s =
   let rec r b i l =
     Lwt.catch (fun () ->
         Lwt_unix.read s b i l >>= function
@@ -125,6 +124,7 @@ let read_wire s =
          safe_close s >|= fun () ->
          Error `Exception)
   in
+  let buf = Bytes.create 4 in
   r buf 0 4 >>= function
   | Error e -> Lwt.return (Error e)
   | Ok () ->
@@ -137,19 +137,24 @@ let read_wire s =
         (*          Logs.debug (fun m -> m "read hdr %a, body %a"
                          (Ohex.pp_hexdump ()) (Bytes.unsafe_to_string buf)
                          (Ohex.pp_hexdump ()) (Bytes.unsafe_to_string b)) ; *)
-        match Vmm_asn.wire_of_str (Bytes.unsafe_to_string b) with
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "error %s while parsing data" msg) ;
-          Error `Exception
-        | (Ok (hdr, _)) as w ->
-          if not Vmm_commands.(is_current hdr.version) then
-            Logs.warn (fun m -> m "version mismatch, received %a current %a"
-                          Vmm_commands.pp_version hdr.Vmm_commands.version
-                          Vmm_commands.pp_version Vmm_commands.current);
-          w
-    end else begin
+        Ok (Bytes.unsafe_to_string b)
+    end else
       Lwt.return (Error `Eof)
-    end
+
+let read_wire s =
+  read_chunk s >|= function
+  | Error _ as e -> e
+  | Ok data ->
+    match Vmm_asn.wire_of_str data with
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "error %s while parsing data" msg) ;
+      Error `Exception
+    | (Ok (hdr, _)) as w ->
+      if not Vmm_commands.(is_current hdr.version) then
+        Logs.warn (fun m -> m "version mismatch, received %a current %a"
+                      Vmm_commands.pp_version hdr.Vmm_commands.version
+                      Vmm_commands.pp_version Vmm_commands.current);
+      w
 
 let write_raw s buf =
   let rec w off l =
@@ -167,9 +172,102 @@ let write_raw s buf =
   (*  Logs.debug (fun m -> m "writing %a" Ohex.pp_hexdump (Bytes.unsage_to_string buf)) ; *)
   w 0 (Bytes.length buf)
 
-let write_wire s wire =
-  let data = Vmm_asn.wire_to_str wire in
+let write_chunk s data =
   let dlen = Bytes.create 4 in
   Bytes.set_int32_be dlen 0 (Int32.of_int (String.length data)) ;
   let buf = Bytes.cat dlen (Bytes.unsafe_of_string data) in
   write_raw s buf
+
+let write_wire s wire =
+  let data = Vmm_asn.wire_to_str wire in
+  write_chunk s data
+
+let compress_stream ~level input =
+  let w = De.Lz77.make_window ~bits:15 in
+  let q = De.Queue.create 0x1000 in
+  let o = Bigstringaf.create De.io_buffer_size in
+  let zl = Zl.Def.encoder `Manual `Manual ~q ~w ~level in
+  let zl = Zl.Def.dst zl o 0 (Bigstringaf.length o) in
+  let i = Bigstringaf.create De.io_buffer_size in
+  let r, stream = Lwt_stream.create_bounded 2 in
+  let is_it_anything_left = function
+    | Some (_, _, len) -> len > 0
+    | None -> false in
+  let rec loop zl rem =
+    match Zl.Def.encode zl with
+    | `Flush zl ->
+      let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
+      stream#push (Bigstringaf.substring o ~off:0 ~len) >>= fun () ->
+      loop (Zl.Def.dst zl o 0 (Bigstringaf.length o)) rem
+    | `End zl ->
+      let len = Bigstringaf.length o - Zl.Def.dst_rem zl in
+      (if len > 0 then
+         stream#push (Bigstringaf.substring o ~off:0 ~len)
+       else Lwt.return_unit) >|= fun () ->
+      stream#close
+    | `Await zl when is_it_anything_left rem ->
+      let (str, src_off, str_len) = Option.get rem in
+      let len = Int.min str_len (Bigstringaf.length i) in
+      Bigstringaf.blit_from_string str ~src_off i ~dst_off:0 ~len;
+      let rem = Some (str, src_off + len, str_len - len) in
+      loop zl rem
+    | `Await zl ->
+      Lwt_stream.get input >>= function
+      | Some str ->
+        let len = Int.min (String.length str) (Bigstringaf.length i) in
+        Bigstringaf.blit_from_string str ~src_off:0 i ~dst_off:0 ~len;
+        let rem = Some (str, len, String.length str - len) in
+        let zl = Zl.Def.src zl i 0 len in
+        loop zl rem
+      | None ->
+          (* NOTE(dinosaure): with [Zl.Def.src zl i 0 0], we should
+             never have the [`Await] case again. *)
+          loop (Zl.Def.src zl i 0 0) None
+  in
+  r, loop zl None
+
+let uncompress_stream input =
+  let i = Bigstringaf.create De.io_buffer_size in
+  let o = Bigstringaf.create De.io_buffer_size in
+  let allocate bits = De.make_window ~bits in
+  let zl = Zl.Inf.decoder `Manual ~o ~allocate in
+  let r, stream = Lwt_stream.create_bounded 2 in
+  let is_it_anything_left = function
+    | Some (_, _, len) -> len > 0
+    | None -> false in
+  let rec loop zl rem =
+    match Zl.Inf.decode zl with
+    | `Flush zl ->
+      let len = Bigstringaf.length o - Zl.Inf.dst_rem zl in
+      stream#push (`Data (Bigstringaf.substring o ~off:0 ~len)) >>= fun () ->
+      loop (Zl.Inf.flush zl) rem
+    | `End zl ->
+      let len = Bigstringaf.length o - Zl.Inf.dst_rem zl in
+      (if len > 0 then
+         stream#push (`Data (Bigstringaf.substring o ~off:0 ~len))
+       else Lwt.return_unit) >|= fun () ->
+      stream#close
+    | `Malformed err ->
+      stream#push (`Malformed err) >>= fun () ->
+      begin
+        (* This is needed so we can drain [input] *)
+        Lwt_stream.get input >>= function
+        | Some _ -> loop zl rem
+        | None -> stream#close; Lwt.return_unit
+      end
+    | `Await zl when is_it_anything_left rem ->
+      let (str, src_off, str_len) = Option.get rem in
+      let len = Int.min str_len (Bigstringaf.length i) in
+      Bigstringaf.blit_from_string str ~src_off i ~dst_off:0 ~len;
+      let rem = Some (str, src_off + len, str_len - len) in
+      loop zl rem
+    | `Await zl ->
+      Lwt_stream.get input >>= function
+      | Some str ->
+        let len = Int.min (String.length str) (Bigstringaf.length i) in
+        Bigstringaf.blit_from_string str ~src_off:0 i ~dst_off:0 ~len;
+        let rem = Some (str, len, String.length str - len) in
+        let zl = Zl.Inf.src zl i 0 len in
+        loop zl rem
+      | None -> loop (Zl.Inf.src zl i 0 0) None in
+  r, loop zl None

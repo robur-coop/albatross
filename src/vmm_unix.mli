@@ -2,6 +2,8 @@
 
 open Vmm_core
 
+val openfile : string -> Unix.open_flag list -> int -> Unix.file_descr
+
 type supported = FreeBSD | Linux
 
 val uname : supported Lazy.t
@@ -26,11 +28,23 @@ val bytes_of_mb : int -> (int, [> `Msg of string ]) result
 
 val close_no_err : Unix.file_descr -> unit
 
+val create_empty_block : Name.t -> (unit, [> `Msg of string ]) result
+
 val create_block : ?data:string -> Name.t -> int -> (unit, [> `Msg of string ]) result
+
+val truncate : Name.t -> int -> (unit, [> `Msg of string ]) result
 
 val destroy_block : Name.t -> (unit, [> `Msg of string ]) result
 
 val dump_block : Name.t -> (string, [> `Msg of string ]) result
+
+val dump_file_stream : Unix.file_descr -> int -> string Lwt_stream.bounded_push -> Fpath.t -> (unit, [> `Msg of string ]) result Lwt.t
+
+val open_block_fd : Name.t -> (Unix.file_descr * int * Fpath.t, [> `Msg of string ]) result
+
+val stream_to_block : size:int -> byte_size:int -> [`Data of string | `Malformed of string] Lwt_stream.t -> Name.t -> (unit, [> `Msg of string ]) result Lwt.t
+
+val stream_to_fd : ?byte_size:int -> Lwt_unix.file_descr -> [`Data of string | `Malformed of string] Lwt_stream.t -> Fpath.t -> (unit, [> `Msg of string ]) result Lwt.t
 
 val find_block_devices : unit -> ((Name.t * int) list, [> `Msg of string ]) result
 
