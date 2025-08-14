@@ -1,3 +1,22 @@
+# v2.5.0 (2025-08-14)
+
+* Console: fix an out of memory issue (reading lines) reported by @edwintorok,
+  now only the first 512 bytes of each line is displayed, the rest is dropped
+* Update: accept old_unikernel_info{2,3} replies (#210 @hannesm)
+* Streaming unikernels and block devices:
+  Instead of providing unikernel images and block device data as a big blob in
+  memory (or the certificate), these commands now work in streaming mode:
+   - TLS endpoint upon receiving a Unikernel_{force_}create if the image is the
+     empty string, it reads data on the TLS flow (everything chunked with a 4
+     byte length prefix, until a 0 chunk is received) #211 @reynir @hannesm
+   - Block_set as well carries the data as a stream on the communication channel
+     - please note this is carried forward from the TLS endpoint to albatrossd
+   - Block_dump delivers the block data as a stream
+     (of `Block_data of string option)
+  #216 @hannesm @reynir @dinosaure
+* Support metris 0.5 (#220 @hannesm)
+* Update Nix flake (#218 @Julow)
+
 # v2.4.1 (2025-02-11)
 
 * Re-add ptime 1.1.0 compatibility (dune-universe/opam-overlays only ships 1.1.0)
