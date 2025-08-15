@@ -967,6 +967,38 @@ let inspect_dump _ name dbdir =
         ps;
       Success
 
+let extract_dump _ name dbdir unikernel_name =
+  Albatross_cli.set_dbdir dbdir;
+  match Vmm_unix.restore ?name () with
+  | Error `NoFile ->
+    Logs.err (fun m -> m "dump file not found");
+    Cli_failed
+  | Error (`Msg msg) ->
+    Logs.err (fun m -> m "error while reading dump file: %s" msg);
+    Cli_failed
+  | Ok data -> match Vmm_asn.state_of_str data with
+    | Error (`Msg msg) ->
+      Logs.err (fun m -> m "couldn't parse dump file: %s" msg);
+      Cli_failed
+    | Ok (unikernels, _policies) ->
+      match Vmm_trie.find unikernel_name unikernels with
+      | None ->
+        Logs.err (fun m -> m "unikernel not found");
+        Cli_failed
+      | Some u ->
+        let filename = filename unikernel_name in
+        let image =
+          if u.Vmm_core.Unikernel.compressed then
+            Result.get_ok (Vmm_compress.uncompress u.image)
+          else
+            u.image
+        in
+        (match Bos.OS.File.write filename image with
+         | Ok () -> Logs.app (fun m -> m "dumped image to %a" Fpath.pp filename)
+         | Error (`Msg e) -> Logs.err (fun m -> m "failed to write image: %s" e));
+        Logs.app (fun m -> m "%a" Vmm_core.Unikernel.pp_config_with_argv u);
+        Success
+
 let cert () dst server_ca cert key =
   let* dst =
     Option.to_result ~none:(`Msg "no destination provided") dst
@@ -1579,6 +1611,17 @@ let inspect_dump_cmd =
   in
   Cmd.v info term
 
+let extract_dump_cmd =
+  let doc = "Extracts a unikernel from an albatross dump file." in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Extracts a unikernel from an albatross dump file."]
+  in
+  let term = Term.(const extract_dump $ (Albatross_cli.setup_log (const false)) $ file $ Albatross_cli.dbdir $ unikernel_name)
+  and info = Cmd.info "extract-dump" ~doc ~man ~exits
+  in
+  Cmd.v info term
+
 let client_cert =
   let doc = "Use this client certificate chain." in
   Arg.(required & pos 0 (some file) None & info [] ~doc ~docs:s_keys ~docv:"CERT")
@@ -1673,7 +1716,7 @@ let cmds = [
   block_set_cmd ; block_dump_cmd ;
   console_cmd ;
   stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ;
-  update_cmd ; inspect_dump_cmd ; cert_cmd ;
+  update_cmd ; inspect_dump_cmd ; extract_dump_cmd ; cert_cmd ;
   sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)
 ]
 
