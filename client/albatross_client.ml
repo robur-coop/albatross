@@ -96,7 +96,7 @@ let output_result state ((hdr, reply) as wire) =
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)
-      | _ -> Lwt.return (Ok `End)
+      | _ -> Lwt.return (Ok state)
     end
   | `Data `Block_data None ->
     (match state with
