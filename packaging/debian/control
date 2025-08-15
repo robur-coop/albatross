@@ -8,7 +8,7 @@ Homepage: https://github.com/robur-coop/albatross
 Vcs-Browser: https://github.com/robur-coop/albatross
 Vcs-Git: https://github.com/robur-coop/albatross.git
 Architecture: all
-Depends: libgmp10, libnl-3-200, libnl-route-3-200
+Depends: libgmp10, libnl-3-200, libnl-route-3-200, libev-dev
 Description: Albatross - orchestrate and manage MirageOS unikernels with Solo5
   The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
   unikernels using [Solo5](https://github.com/solo5/solo5). Resources managed
