@@ -14,7 +14,7 @@
    - Block_dump delivers the block data as a stream
      (of `Block_data of string option)
   #216 @hannesm @reynir @dinosaure
-* Support metris 0.5 (#220 @hannesm)
+* Support metrics 0.5 (#220 @hannesm)
 * Update Nix flake (#218 @Julow)
 
 # v2.4.1 (2025-02-11)
