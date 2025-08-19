@@ -12,7 +12,11 @@ categories:   [local]
 deps {
         gmp {
         origin = "math/gmp";
-        version = "6.2.1";
+        version = "6.3.0";
+    },
+        libev {
+        origin = "devel/libev";
+        version = "4.33";
     }
 }
 scripts : {
