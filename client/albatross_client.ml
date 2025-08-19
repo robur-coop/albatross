@@ -96,7 +96,14 @@ let output_result state ((hdr, reply) as wire) =
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)
-      | _ -> Lwt.return (Ok state)
+      | `Block_devices _ | `Empty | `String _ | `Old_unikernel_info3 _
+      | `Old_unikernel_info2 _ | `Unikernel_info _ | `Policies _ ->
+        begin match state with
+          | `Single | `End -> Lwt.return (Ok `End)
+          | `Dump | `Dump_to _ | `Read as state ->
+            (* XXX(reynir): some of the states ([`Dump], [`Dump_to]) may be questionable. *)
+            Lwt.return (Ok state)
+        end
     end
   | `Data `Block_data None ->
     (match state with
