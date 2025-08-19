@@ -1615,7 +1615,8 @@ let extract_dump_cmd =
   let doc = "Extracts a unikernel from an albatross dump file." in
   let man =
     [`S "DESCRIPTION";
-     `P "Extracts a unikernel from an albatross dump file."]
+     `P "Extracts a unikernel from an albatross dump file. \
+         The unikernel configuration is printed to stdout and the image is dumped to disk."]
   in
   let term = Term.(const extract_dump $ (Albatross_cli.setup_log (const false)) $ file $ Albatross_cli.dbdir $ unikernel_name)
   and info = Cmd.info "extract-dump" ~doc ~man ~exits
