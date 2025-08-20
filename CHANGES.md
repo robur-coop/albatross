@@ -1,3 +1,11 @@
+# v2.5.1 (2025-08-20)
+
+* client: fix console reading, do not close the connection prematurly
+  (#223 @reynir @hannesm)
+* client: provide an extract-dump subcommand to extract a single unikernel from
+  a state dump (#224 @hannesm @reynir)
+* packaging: register libev as dependency (#222 @reynir @hannesm)
+
 # v2.5.0 (2025-08-14)
 
 * Console: fix an out of memory issue (reading lines) reported by @edwintorok,
