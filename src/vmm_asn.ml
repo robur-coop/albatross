@@ -46,13 +46,9 @@ let ( let* ) = Result.bind
 let version =
   let f data = match data with
     | 5 -> `AV5
-    | 4 -> `AV4
-    | 3 -> `AV3
     | x -> Asn.S.parse_error "unknown version number 0x%X" x
   and g = function
     | `AV5 -> 5
-    | `AV4 -> 4
-    | `AV3 -> 3
   in
   Asn.S.map f g Asn.S.int
 
@@ -293,15 +289,6 @@ let stats_cmd =
            (my_explicit 1 ~label:"remove" null)
            (my_explicit 2 ~label:"subscribe" null)
            (my_explicit 3 ~label:"initial" null))
-
-let old_name =
-  let f list =
-    match Name.of_string (String.concat "." list) with
-    | Error (`Msg msg) -> Asn.S.error (`Parse msg)
-    | Ok name -> name
-  and g = Name.to_list
-  in
-  Asn.S.(map f g (sequence_of utf8_string))
 
 let name =
   let f str =
@@ -984,7 +971,7 @@ let unikernel_info =
          @ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string)))
         -@ (optional ~label:"started" (my_explicit 3 generalized_time)))
 
-let header name =
+let header =
   let f (version, sequence, name) = { version ; sequence ; name }
   and g { version ; sequence ; name } = version, sequence, name
   in
@@ -994,7 +981,7 @@ let header name =
            (required ~label:"sequence" int64)
            (required ~label:"name" name))
 
-let success name =
+let success =
   let f = function
     | `C1 `C1 () -> `Empty
     | `C1 `C2 str -> `String str
@@ -1074,7 +1061,7 @@ let success name =
                       (required ~label:"name" name)
                       (required ~label:"info" unikernel_info))))))
 
-let payload name =
+let payload =
   let f = function
     | `C1 cmd -> `Command cmd
     | `C2 s -> `Success s
@@ -1089,27 +1076,23 @@ let payload name =
   Asn.S.map f g @@
   Asn.S.(choice4
            (my_explicit 0 ~label:"command" wire_command)
-           (my_explicit 1 ~label:"reply" (success name))
+           (my_explicit 1 ~label:"reply" success)
            (my_explicit 2 ~label:"failure" utf8_string)
            (my_explicit 3 ~label:"data" data))
 
-let wire name =
+let wire =
   Asn.S.(sequence2
-           (required ~label:"header" (header name))
-           (required ~label:"payload" (payload name)))
+           (required ~label:"header" header)
+           (required ~label:"payload" payload))
 
 let wire_of_str, wire_to_str =
-  let dec, enc = projections_of (wire name)
-  and dec_old, enc_old = projections_of (wire old_name)
-  in
+  let dec, enc = projections_of wire in
   (fun buf ->
     let* version = decode_wire_version buf in
     match version with
-    | `AV3 | `AV4 -> dec_old buf
     | `AV5 -> dec buf),
   (fun (header, payload) ->
     match header.version with
-    | `AV3 | `AV4 -> enc_old (header, payload)
     | `AV5 -> enc (header, payload))
 
 let trie e =

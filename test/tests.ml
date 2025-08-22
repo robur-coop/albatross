@@ -535,44 +535,6 @@ let test_header =
   in
   Alcotest.testable pp_header eq_header
 
-let console_subscribe_v4 () =
-  (* output of "albatross-client-local console foo --socket -" *)
-  let data =
-    Ohex.decode {|
-30 21 30 14 02 01 04 04  08 00 00 00 00 00 00 00
-00 30 05 0c 03 66 6f 6f  a0 09 a0 07 a1 05 a1 03
-02 01 14|}
-  in
-  match Vmm_asn.wire_of_str data with
-  | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
-  | Ok ((hdr, cmd) as w) ->
-    Alcotest.check test_header "header is equal"
-      (Vmm_commands.header ~version:`AV4 (n_o_s "foo"))
-      hdr;
-    match cmd with
-    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
-    | _ -> Alcotest.failf "expected console_subscribe, got %a"
-             (Vmm_commands.pp_wire ~verbose:true) w
-
-let console_subscribe_v4_2 () =
-  (* output of "albatross-client-local console foo.bar --socket -" *)
-  let data =
-    Ohex.decode {|
-30 26 30 19 02 01 04 04  08 00 00 00 00 00 00 00
-00 30 0a 0c 03 66 6f 6f  0c 03 62 61 72 a0 09 a0
-07 a1 05 a1 03 02 01 14|}
-  in
-  match Vmm_asn.wire_of_str data with
-  | Error `Msg m -> Alcotest.failf "expected ok, got error %s" m
-  | Ok ((hdr, cmd) as w) ->
-    Alcotest.check test_header "header is equal"
-      (Vmm_commands.header ~version:`AV4 (n_o_s "foo.bar"))
-      hdr;
-    match cmd with
-    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
-    | _ -> Alcotest.failf "expected console_subscribe, got %a"
-             (Vmm_commands.pp_wire ~verbose:true) w
-
 let console_subscribe_v5 () =
   (* output of "albatross-client-local console foo --socket -" *)
   let data =
@@ -613,110 +575,6 @@ let console_subscribe_v5_2 () =
 
 let to_cert s =
   Result.get_ok (X509.Certificate.decode_pem s)
-
-let bistro_console_subscribe_v4 () =
-  (* albatross-client-bistro console foo --destination="-:1025" *)
-  let leaf = {|-----BEGIN CERTIFICATE-----
-MIIBbzCCASGgAwIBAgIJAOSnq8MWYF6kMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0
-LWNhMB4XDTIyMDQyMjExMDc0MloXDTIyMDQyMjExMTI1MlowDjEMMAoGA1UEAwwD
-Zm9vMCowBQYDK2VwAyEA1aQ0uXWJFl7jEYzrb6+R1IcIYxfqG8Qj38+l/kM34sSj
-gZcwgZQwGwYJKwYBBAGDhSwqBA4wDAIBBKAHoQWhAwIBFDAdBgNVHQ4EFgQU2m/k
-/dUYBNbkBn21KDhC//i8pY4wDwYDVR0PAQH/BAUDAwegADAMBgNVHRMBAf8EAjAA
-MB8GA1UdIwQYMBaAFIT1p3rnp/+V5ayQcz/BwRHYRAWeMBYGA1UdJQEB/wQMMAoG
-CCsGAQUFBwMCMAUGAytlcANBAP1eGsGgUDKDexmYYblpFvsFI5tW1RCftrnfc8JS
-KCx1B5lB+gIwj833/FzrM+RVptlvb3aIpTvscVo9fbdV+Qo=
------END CERTIFICATE-----|}
-  and intermediate = {|-----BEGIN CERTIFICATE-----
-MIH9MIGwoAMCAQICCBy3qcitklRSMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0LWNh
-MB4XDTIyMDQyMjExMDQ1NVoXDTMyMDQxOTExMDQ1NVowEjEQMA4GA1UEAwwHdGVz
-dC1jYTAqMAUGAytlcAMhAPsaXyTVVd4qThsmkmEdDKF2U/71RLS71Up0i9PwlSBV
-oyQwIjAPBgNVHQ8BAf8EBQMDB8YAMA8GA1UdEwEB/wQFMAMBAf8wBQYDK2VwA0EA
-33bFmS2UjE9fDZjJUgAfdZZPo1e4beaqtQ5UE2198SQfc2Xv8axiXY6R1pT5wAOm
-HUBeGB+KSdPOX8zc8taDCQ==
------END CERTIFICATE-----|}
-  in
-  let chain = [ to_cert leaf ; to_cert intermediate ] in
-  match Vmm_tls.handle chain with
-  | Error `Msg m -> Alcotest.failf "expected ok, got %s" m
-  | Ok (name, pols, version, command) ->
-    Alcotest.check test_name "name is foo" (n_o_s "foo") name;
-    Alcotest.check test_version "version is 4" `AV4 version;
-    Alcotest.(check bool "pols is empty" true (pols = []));
-    match command with
-    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
-    | _ -> Alcotest.failf "expected console subscribe command, got %a"
-             (Vmm_commands.pp ~verbose:true) command
-
-let bistro_console_subscribe_v4_2 () =
-  (* albatross-client-bistro console foo.bar --destination="-:1025" *)
-  let leaf = {|-----BEGIN CERTIFICATE-----
-MIIBcjCCASSgAwIBAgIISLUDAK4z5h8wBQYDK2VwMBIxEDAOBgNVBAMMB3Rlc3Qt
-Y2EwHhcNMjIwNDIyMTEyOTU3WhcNMjIwNDIyMTEzNTA3WjASMRAwDgYDVQQDDAdm
-b28uYmFyMCowBQYDK2VwAyEAgvPFL+rH9qZTOeUQ4C2jDy5mWi1/ifPzX/cEn6ZU
-FeGjgZcwgZQwGwYJKwYBBAGDhSwqBA4wDAIBBKAHoQWhAwIBFDAdBgNVHQ4EFgQU
-//qX1UoUdCbfgI7XPInJlKrKbS4wDwYDVR0PAQH/BAUDAwegADAMBgNVHRMBAf8E
-AjAAMB8GA1UdIwQYMBaAFIT1p3rnp/+V5ayQcz/BwRHYRAWeMBYGA1UdJQEB/wQM
-MAoGCCsGAQUFBwMCMAUGAytlcANBAEFaMmq8fYFeO9CUWpa0XDo2PZ9FRqpsD70+
-UGW9OzSTXh6U+mOCJoOJMiNBOqZrgiHw4arg6LHasfprSsT+NQ0=
------END CERTIFICATE-----|}
-  and intermediate = {|-----BEGIN CERTIFICATE-----
-MIH9MIGwoAMCAQICCBy3qcitklRSMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0LWNh
-MB4XDTIyMDQyMjExMDQ1NVoXDTMyMDQxOTExMDQ1NVowEjEQMA4GA1UEAwwHdGVz
-dC1jYTAqMAUGAytlcAMhAPsaXyTVVd4qThsmkmEdDKF2U/71RLS71Up0i9PwlSBV
-oyQwIjAPBgNVHQ8BAf8EBQMDB8YAMA8GA1UdEwEB/wQFMAMBAf8wBQYDK2VwA0EA
-33bFmS2UjE9fDZjJUgAfdZZPo1e4beaqtQ5UE2198SQfc2Xv8axiXY6R1pT5wAOm
-HUBeGB+KSdPOX8zc8taDCQ==
------END CERTIFICATE-----|}
-  in
-  let chain = [ to_cert leaf ; to_cert intermediate ] in
-  match Vmm_tls.handle chain with
-  | Error `Msg m -> Alcotest.failf "expected ok, got %s" m
-  | Ok (name, pols, version, command) ->
-    Alcotest.check test_name "name is foo.bar" (n_o_s "foo.bar") name;
-    Alcotest.check test_version "version is 4" `AV4 version;
-    Alcotest.(check bool "pols is empty" true (pols = []));
-    match command with
-    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
-    | _ -> Alcotest.failf "expected console subscribe command, got %a"
-             (Vmm_commands.pp ~verbose:true) command
-
-let bistro_console_subscribe_v4_3 () =
-  (* albatross-client-bistro console foo.bar --destination="-:1025" --ca sub.pem --ca-key sub.key *)
-  let leaf = {|-----BEGIN CERTIFICATE-----
-MIIBbjCCASCgAwIBAgIIOLOs/78zKW0wBQYDK2VwMA4xDDAKBgNVBAMMA3N1YjAe
-Fw0yMjA0MjIxMTQ2NTFaFw0yMjA0MjIxMTUyMDFaMBIxEDAOBgNVBAMMB2Zvby5i
-YXIwKjAFBgMrZXADIQAd9uuIZ1bKa3cpFFhYX9x9epscBtLlpp9M5vL/strc4aOB
-lzCBlDAbBgkrBgEEAYOFLCoEDjAMAgEEoAehBaEDAgEUMB0GA1UdDgQWBBSf9P6X
-RJ5p6jvpdgKzbTFI6JKEwjAPBgNVHQ8BAf8EBQMDB6AAMAwGA1UdEwEB/wQCMAAw
-HwYDVR0jBBgwFoAUlUrkht7zqebuZLz89gymJzJ7N90wFgYDVR0lAQH/BAwwCgYI
-KwYBBQUHAwIwBQYDK2VwA0EA/jvGy/e1brKUzXmb40VfI5z+VvS2zXUkJAvqFNUg
-w/5z4MxE/aLJCjl2RpwxcYe9uR78BbZtaSSMQShw++zmDw==
------END CERTIFICATE-----|}
-  and intermediate = {|-----BEGIN CERTIFICATE-----
-MIIBYjCCARSgAwIBAgIJANFuucGvXz3GMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0
-LWNhMB4XDTIyMDQyMjExNDYxM1oXDTIzMDQyMjExNDYxM1owDjEMMAoGA1UEAwwD
-c3ViMCowBQYDK2VwAyEA8bft2CF5sLVRsKRe6/lP6g7nXPt1u228XjwGVWeXFvej
-gYowgYcwIwYJKwYBBAGDhSwqBBYwFAIBBKQPoQ0wCzAAAgEKAgICADAAMB0GA1Ud
-DgQWBBSVSuSG3vOp5u5kvPz2DKYnMns33TAPBgNVHQ8BAf8EBQMDB8YAMA8GA1Ud
-EwEB/wQFMAMBAf8wHwYDVR0jBBgwFoAUhPWneuen/5XlrJBzP8HBEdhEBZ4wBQYD
-K2VwA0EAZ6KBIJ+Nf2AhN1R/3OoRqRV4vVp14by2Dmqrb8sqZ4NfYDbUVYrxFLH4
-s2bwQQncdiUHfYEPbuMIo7WxjT0WBw==
------END CERTIFICATE-----|}
-  in
-  let chain = [ to_cert leaf ; to_cert intermediate ] in
-  match Vmm_tls.handle chain with
-  | Error `Msg m -> Alcotest.failf "expected ok, got %s" m
-  | Ok (name, pols, version, command) ->
-    Alcotest.check test_name "name is sub:foo.bar" (n_o_s "sub:foo.bar") name;
-    Alcotest.check test_version "version is 4" `AV4 version;
-    Alcotest.(check bool "pols has one thing" true
-                (match pols with [ _ ] -> true | _ -> false));
-    let path, _pol = List.hd pols in
-    Alcotest.check test_path "path is sub" (p_o_s "sub") path;
-    match command with
-    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
-    | _ -> Alcotest.failf "expected console subscribe command, got %a"
-             (Vmm_commands.pp ~verbose:true) command
 
 let bistro_console_subscribe_v5 () =
   (* albatross-client-bistro console foo --destination="-:1025" *)
@@ -823,13 +681,8 @@ BgMrZXADQQAZXTUICXOZCD1lFuRKi+zT0qQ2n0+AjluPM4Q+PUVjmqfLqau/2KHc
              (Vmm_commands.pp ~verbose:true) command
 
 let command_tests = [
-  "console subscribe foo version 4", `Quick, console_subscribe_v4 ;
-  "console subscribe foo.bar version 4", `Quick, console_subscribe_v4_2 ;
   "console subscribe foo version 5", `Quick, console_subscribe_v5 ;
   "console subscribe foo.bar version 5", `Quick, console_subscribe_v5_2 ;
-  "bistro console subscribe foo version 4", `Quick, bistro_console_subscribe_v4 ;
-  "bistro console subscribe foo.bar version 4", `Quick, bistro_console_subscribe_v4_2 ;
-  "bistro console subscribe sub:foo.bar version 4", `Quick, bistro_console_subscribe_v4_3 ;
   "bistro console subscribe foo version 5", `Quick, bistro_console_subscribe_v5 ;
   "bistro console subscribe foo.bar version 5", `Quick, bistro_console_subscribe_v5_2 ;
   "bistro console subscribe subv5:foo.bar version 5", `Quick, bistro_console_subscribe_v5_3 ;
