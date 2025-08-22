@@ -286,7 +286,7 @@ let test_resources =
 let u =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "" ;
-    fail_behaviour = `Quit ; cpuid = 0 ; memory = 10 ;
+    fail_behaviour = `Quit ; startup = None ; cpuid = 0 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", None, None ] ;
     argv = Some [ "-l *:debug" ] ;
@@ -845,7 +845,7 @@ let dec_b64_unik data =
 let u1_3 =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "" ;
-    fail_behaviour = `Quit ; cpuid = 0 ; memory = 1 ;
+    fail_behaviour = `Quit ; startup = None ; cpuid = 0 ; memory = 1 ;
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
@@ -854,7 +854,7 @@ let u1_3 =
 let u2_3 =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "" ;
-    fail_behaviour = `Quit ; cpuid = 2 ; memory = 10 ;
+    fail_behaviour = `Quit ; startup = None ; cpuid = 2 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;

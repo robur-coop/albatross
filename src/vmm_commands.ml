@@ -65,6 +65,7 @@ type unikernel_cmd = [
   | `Old_unikernel_info1
   | `Old_unikernel_info2
   | `Old_unikernel_info3
+  | `Old_unikernel_info4
   | `Old_unikernel_get
 ]
 
@@ -87,6 +88,7 @@ let pp_unikernel_cmd ~verbose ppf = function
   | `Old_unikernel_info1 -> Fmt.string ppf "old unikernel info1"
   | `Old_unikernel_info2 -> Fmt.string ppf "old unikernel info2"
   | `Old_unikernel_info3 -> Fmt.string ppf "old unikernel info3"
+  | `Old_unikernel_info4 -> Fmt.string ppf "old unikernel info4"
   | `Old_unikernel_get -> Fmt.string ppf "old unikernel get"
 
 type policy_cmd = [
@@ -172,13 +174,14 @@ type success = [
   | `String of string
   | `Policies of (Name.t * Policy.t) list
   | `Old_unikernels of (Name.t * Unikernel.config) list
-  | `Unikernel_info of (Name.t * Unikernel.info) list
+  | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info2 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
   | `Old_block_device_image of bool * string
   | `Block_device_image of bool
+  | `Unikernel_info of (Name.t * Unikernel.info) list
 ]
 
 let pp_block ppf (id, size, active) =
@@ -199,7 +202,7 @@ let pp_success ~verbose ppf = function
       Fmt.(pair ~sep:(any ": ") Name.pp
              (if verbose then Unikernel.pp_config_with_argv else Unikernel.pp_config))
       ppf unikernels
-  | `Unikernel_info infos | `Old_unikernel_info2 infos | `Old_unikernel_info3 infos ->
+  | `Unikernel_info infos | `Old_unikernel_info2 infos | `Old_unikernel_info3 infos | `Old_unikernel_info4 infos ->
     my_fmt_list "no unikernels"
       Fmt.(pair ~sep:(any ": ") Name.pp
              (if verbose then Unikernel.pp_info_with_argv else Unikernel.pp_info))

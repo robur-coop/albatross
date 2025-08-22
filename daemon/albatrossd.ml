@@ -292,10 +292,18 @@ let jump _ systemd influx tmpdir dbdir =
                Logs.err (fun m -> m "error while writing to stats: %s" msg);
                stats_fd := None
          in
+         let old_unikernels =
+           List.sort
+             (fun (_, (u : Unikernel.config)) (_, u') ->
+                Int.compare
+                  (Option.value ~default:50 u.Unikernel.startup)
+                  (Option.value ~default:50 u'.Unikernel.startup))
+             (Vmm_trie.all old_unikernels)
+         in
          Lwt_list.iter_s (fun (name, config) ->
              Lwt_mutex.with_lock create_lock (fun () ->
                  create stat_out cons_out stub_data_out name config))
-           (Vmm_trie.all old_unikernels) >>= fun () ->
+           old_unikernels >>= fun () ->
          Lwt.catch (fun () ->
              let rec loop () =
                Lwt_unix.accept ss >>= fun (fd, addr) ->
