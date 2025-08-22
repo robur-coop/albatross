@@ -312,7 +312,7 @@ let connect_local opt_socket name (cmd : Vmm_commands.t) =
   match opt_socket with
   | Some "-" ->
     let data = Vmm_asn.wire_to_str wire in
-    Logs.app (fun m -> m "out: %a" (Ohex.pp_hexdump ()) data);
+    Logs.app (fun m -> m "out:@.%a" (Ohex.pp_hexdump ()) data);
     Lwt.return (Error Communication_failed)
   | _ ->
     let sockaddr = Lwt_unix.ADDR_UNIX (Option.value ~default:(Vmm_core.socket_path sock) opt_socket) in
@@ -346,22 +346,29 @@ let connect_remote ?(happy_eyeballs = Happy_eyeballs_lwt.create ()) (host, port)
       Lwt.return (Error Chain_failure)
     | Ok _ ->
       let certificates = `Single (cert :: certs, key) in
-      Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
-      | Error `Msg msg ->
-        Logs.err (fun m -> m "connect failed with %s" msg);
-        Lwt.return (Error Connect_failed)
-      | Ok ((ip, port), fd) ->
-        Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
-        match Tls.Config.client ~certificates ~authenticator () with
+      if String.equal "-" host then begin
+        Logs.app (fun m -> m "intermediate:@.%a@.leaf:@.%s"
+                     Fmt.(list ~sep:(any "@.@.") string)
+                     (List.map X509.Certificate.encode_pem certs)
+                     (X509.Certificate.encode_pem cert));
+        Lwt.return (Error Communication_failed)
+      end else
+        Happy_eyeballs_lwt.connect happy_eyeballs host [port] >>= function
         | Error `Msg msg ->
-          Logs.err (fun m -> m "tls configuration failed: %s" msg);
-          Lwt.return (Error Cli_failed)
-        | Ok client ->
-          Lwt.catch (fun () ->
-              Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
-              Logs.debug (fun m -> m "finished tls handshake") ;
-              Ok fd)
-            (fun exn -> Lwt.return (Error (classify_tls_error exn)))
+          Logs.err (fun m -> m "connect failed with %s" msg);
+        Lwt.return (Error Connect_failed)
+        | Ok ((ip, port), fd) ->
+          Logs.debug (fun m -> m "connected to remote host %a:%d" Ipaddr.pp ip port) ;
+          match Tls.Config.client ~certificates ~authenticator () with
+          | Error `Msg msg ->
+            Logs.err (fun m -> m "tls configuration failed: %s" msg);
+            Lwt.return (Error Cli_failed)
+          | Ok client ->
+            Lwt.catch (fun () ->
+                Tls_lwt.Unix.client_of_fd client (* TODO ~host *) fd >|= fun fd ->
+                Logs.debug (fun m -> m "finished tls handshake") ;
+                Ok fd)
+              (fun exn -> Lwt.return (Error (classify_tls_error exn)))
 
 let timestamps validity =
   let now = Ptime_clock.now () in
@@ -1324,7 +1331,7 @@ let remote_host default_port =
         end
     in
     match
-      Ipaddr.of_string host,
+      (if String.equal host "-" then Ok Ipaddr.(V4 V4.any) else Ipaddr.of_string host),
       Result.bind (Domain_name.of_string host) Domain_name.host
     with
     | Ok _, _
