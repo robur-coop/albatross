@@ -3,7 +3,7 @@
 open Vmm_core
 
 (** The type of versions of the grammar defined below. *)
-type version = [ `AV3 | `AV4 | `AV5 ]
+type version = [ `AV5 ]
 
 (** [current] is the current version. *)
 val current : version
