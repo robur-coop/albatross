@@ -536,11 +536,11 @@ let test_header =
   Alcotest.testable pp_header eq_header
 
 let console_subscribe_v5 () =
-  (* output of "albatross-client-local console foo --socket -" *)
+  (* output of "albatross-client console foo --socket -" *)
   let data =
     Ohex.decode {|
 30 20 30 13 02 01 05 04  08 00 00 00 00 00 00 00
-00 0c 04 3a 66 6f 6f a0  09 a0 07 a1 05 a1 03 02
+00 0c 04 3a 66 6f 6f a0  09 a0 07 a2 05 a1 03 02
 01 14|}
   in
   match Vmm_asn.wire_of_str data with
@@ -550,16 +550,16 @@ let console_subscribe_v5 () =
       (Vmm_commands.header ~version:`AV5 (n_o_s "foo"))
       hdr;
     match cmd with
-    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
+    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console_subscribe, got %a"
              (Vmm_commands.pp_wire ~verbose:true) w
 
 let console_subscribe_v5_2 () =
-  (* output of "albatross-client-local console foo.bar --socket -" *)
+  (* output of "albatross-client console foo.bar --socket -" *)
   let data =
     Ohex.decode {|
 30 24 30 17 02 01 05 04  08 00 00 00 00 00 00 00
-00 0c 08 3a 66 6f 6f 2e  62 61 72 a0 09 a0 07 a1
+00 0c 08 3a 66 6f 6f 2e  62 61 72 a0 09 a0 07 a2
 05 a1 03 02 01 14|}
   in
   match Vmm_asn.wire_of_str data with
@@ -569,7 +569,7 @@ let console_subscribe_v5_2 () =
       (Vmm_commands.header ~version:`AV5 (n_o_s "foo.bar"))
       hdr;
     match cmd with
-    | `Command `Console_cmd `Old_console_subscribe `Count 20 -> ()
+    | `Command `Console_cmd `Console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console_subscribe, got %a"
              (Vmm_commands.pp_wire ~verbose:true) w
 
@@ -577,24 +577,24 @@ let to_cert s =
   Result.get_ok (X509.Certificate.decode_pem s)
 
 let bistro_console_subscribe_v5 () =
-  (* albatross-client-bistro console foo --destination="-:1025" *)
+  (* albatross-client console foo --destination="-:1025" *)
   let leaf = {|-----BEGIN CERTIFICATE-----
-MIIBbzCCASGgAwIBAgIJAMSxbzk/WA4oMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0
-LWNhMB4XDTIyMDQyMjEyNTcyNVoXDTIyMDQyMjEzMDIzNVowDjEMMAoGA1UEAwwD
-Zm9vMCowBQYDK2VwAyEACL/w7fc1EEAAIwwSE4NfrxUTaaYCN0ZPENcIr2iN/XOj
-gZcwgZQwGwYJKwYBBAGDhSwqBA4wDAIBBaAHoQWhAwIBFDAdBgNVHQ4EFgQUKKJm
-FQmi0fBXVcGYbFSTfNOr4dcwDwYDVR0PAQH/BAUDAwegADAMBgNVHRMBAf8EAjAA
-MB8GA1UdIwQYMBaAFIT1p3rnp/+V5ayQcz/BwRHYRAWeMBYGA1UdJQEB/wQMMAoG
-CCsGAQUFBwMCMAUGAytlcANBADRy6KIZf5bv4VW1//j5ViY1gEGmO2yBjELemQtO
-Hzl4keDaQEZXnlX//uRPLFELm16hIAbdZzdhmLerPjcdnQo=
+MIIBbTCCAR+gAwIBAgIKLHSHRhf1S5D1UzAFBgMrZXAwDzENMAsGA1UEAwwEdGVz
+dDAeFw0yNTA4MjIxMzA0NDNaFw0yNTA4MjIxMzA5NTNaMA4xDDAKBgNVBAMMA2Zv
+bzAqMAUGAytlcAMhAFsZpbMxev94GVj97+smmhODzZ2CrxAsi/lOUoUG9uVVo4GX
+MIGUMBsGCSsGAQQBg4UsKgQOMAwCAQWgB6IFoQMCARQwHQYDVR0OBBYEFJxFqlNd
+rlLWdFsNf7mWgg8hm8FYMA8GA1UdDwEB/wQFAwMHoAAwDAYDVR0TAQH/BAIwADAf
+BgNVHSMEGDAWgBQCxCFnXSmiNqa1/mJJiIk9+S5WdDAWBgNVHSUBAf8EDDAKBggr
+BgEFBQcDAjAFBgMrZXADQQCyfjvcrw+fW10k2ILdbCilN6Sa3QeWAYPUrn8GXrkm
+WDD2QZ/J2IkHqQjaKhWKM3JuXoedaAPglFo5kT51/4sO
 -----END CERTIFICATE-----|}
   and intermediate = {|-----BEGIN CERTIFICATE-----
-MIH9MIGwoAMCAQICCBy3qcitklRSMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0LWNh
-MB4XDTIyMDQyMjExMDQ1NVoXDTMyMDQxOTExMDQ1NVowEjEQMA4GA1UEAwwHdGVz
-dC1jYTAqMAUGAytlcAMhAPsaXyTVVd4qThsmkmEdDKF2U/71RLS71Up0i9PwlSBV
-oyQwIjAPBgNVHQ8BAf8EBQMDB8YAMA8GA1UdEwEB/wQFMAMBAf8wBQYDK2VwA0EA
-33bFmS2UjE9fDZjJUgAfdZZPo1e4beaqtQ5UE2198SQfc2Xv8axiXY6R1pT5wAOm
-HUBeGB+KSdPOX8zc8taDCQ==
+MIH4MIGroAMCAQICCQD6RjTirifFBzAFBgMrZXAwDzENMAsGA1UEAwwEdGVzdDAe
+Fw0yNDA5MDEyMTI1MjhaFw0zNDA4MzAyMTI1MzhaMA8xDTALBgNVBAMMBHRlc3Qw
+KjAFBgMrZXADIQANhHei4mGRrTK7O1IMnDxVvB7G+G6QvktsqYWEJlQhd6MkMCIw
+DwYDVR0PAQH/BAUDAwfGADAPBgNVHRMBAf8EBTADAQH/MAUGAytlcANBABhZ4MtA
+m0m4oiZ49HMddw1Tx1/ZOuqCA3XBs5cOasG4tT5A2nVAlqb81i77Bjjn7BA39uMW
+dNbaaTD7bRGS7gY=
 -----END CERTIFICATE-----|}
   in
   let chain = [ to_cert leaf ; to_cert intermediate ] in
@@ -605,29 +605,29 @@ HUBeGB+KSdPOX8zc8taDCQ==
     Alcotest.check test_version "version is 5" `AV5 version;
     Alcotest.(check bool "pols is empty" true (pols = []));
     match command with
-    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
+    | `Console_cmd `Console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
 let bistro_console_subscribe_v5_2 () =
-  (* albatross-client-bistro console foo.bar --destination="-:1025" *)
+  (* albatross-client console foo.bar --destination="-:1025" *)
   let leaf = {|-----BEGIN CERTIFICATE-----
-MIIBcjCCASSgAwIBAgIIdTzV9lbfxGwwBQYDK2VwMBIxEDAOBgNVBAMMB3Rlc3Qt
-Y2EwHhcNMjIwNDIyMTI1ODU0WhcNMjIwNDIyMTMwNDA0WjASMRAwDgYDVQQDDAdm
-b28uYmFyMCowBQYDK2VwAyEAHU76jUK8NdzuEEMAopSfMk3zOm1ZYGk//d57BN2c
-hLejgZcwgZQwGwYJKwYBBAGDhSwqBA4wDAIBBaAHoQWhAwIBFDAdBgNVHQ4EFgQU
-ki3gqyCKieTrQap2US8Ipugryz0wDwYDVR0PAQH/BAUDAwegADAMBgNVHRMBAf8E
-AjAAMB8GA1UdIwQYMBaAFIT1p3rnp/+V5ayQcz/BwRHYRAWeMBYGA1UdJQEB/wQM
-MAoGCCsGAQUFBwMCMAUGAytlcANBAFEYz1AnK7R9tbBlhCIOkaPzoSa3LmyQRQ4d
-tw2nRnnBkbsu4q+mh8zHFLTVSSM9Z3l4XBogCAOJXX9TBQsvwQM=
+MIIBcjCCASSgAwIBAgILANIKiz/uOL82yFIwBQYDK2VwMA8xDTALBgNVBAMMBHRl
+c3QwHhcNMjUwODIyMTMwNTQ4WhcNMjUwODIyMTMxMDU4WjASMRAwDgYDVQQDDAdm
+b28uYmFyMCowBQYDK2VwAyEAimBWk1NZTXS2TEnTeCoZ7+qVFe2vwNn6x3u2rJeW
+OgOjgZcwgZQwGwYJKwYBBAGDhSwqBA4wDAIBBaAHogWhAwIBFDAdBgNVHQ4EFgQU
+kJQme+tCxnWLyoj+Pj9NUWmfAWIwDwYDVR0PAQH/BAUDAwegADAMBgNVHRMBAf8E
+AjAAMB8GA1UdIwQYMBaAFALEIWddKaI2prX+YkmIiT35LlZ0MBYGA1UdJQEB/wQM
+MAoGCCsGAQUFBwMCMAUGAytlcANBAB2DKHYBTxxe1pkGhsfvNsqFuBMFBk+S/tsH
+EbM5TCweXEPIuGP13EFrfP4lvUgmvemfx7ARd29Pe48GbdQ4VAo=
 -----END CERTIFICATE-----|}
   and intermediate = {|-----BEGIN CERTIFICATE-----
-MIH9MIGwoAMCAQICCBy3qcitklRSMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0LWNh
-MB4XDTIyMDQyMjExMDQ1NVoXDTMyMDQxOTExMDQ1NVowEjEQMA4GA1UEAwwHdGVz
-dC1jYTAqMAUGAytlcAMhAPsaXyTVVd4qThsmkmEdDKF2U/71RLS71Up0i9PwlSBV
-oyQwIjAPBgNVHQ8BAf8EBQMDB8YAMA8GA1UdEwEB/wQFMAMBAf8wBQYDK2VwA0EA
-33bFmS2UjE9fDZjJUgAfdZZPo1e4beaqtQ5UE2198SQfc2Xv8axiXY6R1pT5wAOm
-HUBeGB+KSdPOX8zc8taDCQ==
+MIH4MIGroAMCAQICCQD6RjTirifFBzAFBgMrZXAwDzENMAsGA1UEAwwEdGVzdDAe
+Fw0yNDA5MDEyMTI1MjhaFw0zNDA4MzAyMTI1MzhaMA8xDTALBgNVBAMMBHRlc3Qw
+KjAFBgMrZXADIQANhHei4mGRrTK7O1IMnDxVvB7G+G6QvktsqYWEJlQhd6MkMCIw
+DwYDVR0PAQH/BAUDAwfGADAPBgNVHRMBAf8EBTADAQH/MAUGAytlcANBABhZ4MtA
+m0m4oiZ49HMddw1Tx1/ZOuqCA3XBs5cOasG4tT5A2nVAlqb81i77Bjjn7BA39uMW
+dNbaaTD7bRGS7gY=
 -----END CERTIFICATE-----|}
   in
   let chain = [ to_cert leaf ; to_cert intermediate ] in
@@ -638,45 +638,45 @@ HUBeGB+KSdPOX8zc8taDCQ==
     Alcotest.check test_version "version is 5" `AV5 version;
     Alcotest.(check bool "pols is empty" true (pols = []));
     match command with
-    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
+    | `Console_cmd `Console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
 let bistro_console_subscribe_v5_3 () =
-  (* albatross-client-bistro console foo.bar --destination="-:1025" --ca subv5.pem --ca-key subv5.key *)
+  (* albatross-client console foo.bar --destination="-:1025" --ca arc.pem --ca-key arc.key *)
   let leaf = {|-----BEGIN CERTIFICATE-----
-MIIBcDCCASKgAwIBAgIISQoa5TLZ8V4wBQYDK2VwMBAxDjAMBgNVBAMMBXN1YnY1
-MB4XDTIyMDQyMjEzMDEwNloXDTIyMDQyMjEzMDYxNlowEjEQMA4GA1UEAwwHZm9v
-LmJhcjAqMAUGAytlcAMhAGg60IgirUeUwgmFAw+cUYujqvyNBJ8uj5w+pNIQkT3v
-o4GXMIGUMBsGCSsGAQQBg4UsKgQOMAwCAQWgB6EFoQMCARQwHQYDVR0OBBYEFJG5
-x4oj6mbMaJDUMfJct+LdQwDyMA8GA1UdDwEB/wQFAwMHoAAwDAYDVR0TAQH/BAIw
-ADAfBgNVHSMEGDAWgBQZNO4z3ApLB9fqXyVDGWtXlIzfPzAWBgNVHSUBAf8EDDAK
-BggrBgEFBQcDAjAFBgMrZXADQQBa4s6Q7stGbQfZTdxTinOjp43nY+63c1uFAKX7
-s8hEQYy88BaOepxuPuHLxz2V6hgTlOMIPv6Yp/hBQaEXptAM
+MIIBcDCCASKgAwIBAgIKaiG2kEbWoHyzcTAFBgMrZXAwDjEMMAoGA1UEAwwDYXJj
+MB4XDTI1MDgyMjEzMDc1MVoXDTI1MDgyMjEzMTMwMVowEjEQMA4GA1UEAwwHZm9v
+LmJhcjAqMAUGAytlcAMhAOWYGadt+97/9wuR4++i9Veb9OepoNfkRwTRNUYuVKCy
+o4GXMIGUMBsGCSsGAQQBg4UsKgQOMAwCAQWgB6IFoQMCARQwHQYDVR0OBBYEFCKo
+67jzXpOuWaPbPdkP/i1yjRKcMA8GA1UdDwEB/wQFAwMHoAAwDAYDVR0TAQH/BAIw
+ADAfBgNVHSMEGDAWgBSaqyQZndjermkv4rkpOZzJVYDPgjAWBgNVHSUBAf8EDDAK
+BggrBgEFBQcDAjAFBgMrZXADQQDlwgds2aozkiSFHF7SIoL/mxxY504gDNWufy93
+/ZmMSFewOcziPXKEaX97hVx0BB716v7K9/xRID+HDTtqdMsF
 -----END CERTIFICATE-----|}
   and intermediate = {|-----BEGIN CERTIFICATE-----
-MIIBZDCCARagAwIBAgIJAO+gkvm6piwGMAUGAytlcDASMRAwDgYDVQQDDAd0ZXN0
-LWNhMB4XDTIyMDQyMjEyNDkyMVoXDTIzMDQyMjEyNDkyMVowEDEOMAwGA1UEAwwF
-c3VidjUwKjAFBgMrZXADIQCHs6E8bjq4BqFVqUdQLP6LpkrVtoU4YwHkGfqryJ/j
-fKOBijCBhzAjBgkrBgEEAYOFLCoEFjAUAgEFpA+hDTALMAACAQMCAgIAMAAwHQYD
-VR0OBBYEFBk07jPcCksH1+pfJUMZa1eUjN8/MA8GA1UdDwEB/wQFAwMHxgAwDwYD
-VR0TAQH/BAUwAwEB/zAfBgNVHSMEGDAWgBSE9ad656f/leWskHM/wcER2EQFnjAF
-BgMrZXADQQAZXTUICXOZCD1lFuRKi+zT0qQ2n0+AjluPM4Q+PUVjmqfLqau/2KHc
-7XUhRc5aZgULhbG4wnXwEXYXj81fjD0C
+MIIBYTCCAROgAwIBAgIIay3ysLfD+84wBQYDK2VwMA8xDTALBgNVBAMMBHRlc3Qw
+HhcNMjQwOTAxMjEzODUzWhcNMjUwOTAxMjEzOTAzWjAOMQwwCgYDVQQDDANhcmMw
+KjAFBgMrZXADIQBhG5Yw1x+I3I0DCDUtvgiBG9UqToBhSELUw8R2vDoUj6OBjTCB
+ijAmBgkrBgEEAYOFLCoEGTAXAgEFpBKhEDAOMAMCAQACAQECAgIAMAAwHQYDVR0O
+BBYEFJqrJBmd2N6uaS/iuSk5nMlVgM+CMA8GA1UdDwEB/wQFAwMHxgAwDwYDVR0T
+AQH/BAUwAwEB/zAfBgNVHSMEGDAWgBQCxCFnXSmiNqa1/mJJiIk9+S5WdDAFBgMr
+ZXADQQBrIW2z2wCPYXciyYCxKz42s1IlDzRoX6h6ni+aObA0i0tg5cKswkMQNn+p
+O9vbiRV+lcZ5EI+LAnoXuiCMixAH
 -----END CERTIFICATE-----|}
   in
   let chain = [ to_cert leaf ; to_cert intermediate ] in
   match Vmm_tls.handle chain with
   | Error `Msg m -> Alcotest.failf "expected ok, got %s" m
   | Ok (name, pols, version, command) ->
-    Alcotest.check test_name "name is subv5:foo.bar" (n_o_s "subv5:foo.bar") name;
+    Alcotest.check test_name "name is arc:foo.bar" (n_o_s "arc:foo.bar") name;
     Alcotest.check test_version "version is 5" `AV5 version;
     Alcotest.(check bool "pols has one thing" true
                 (match pols with [ _ ] -> true | _ -> false));
     let path, _pol = List.hd pols in
-    Alcotest.check test_path "path is subv5" (p_o_s "subv5") path;
+    Alcotest.check test_path "path is arc" (p_o_s "arc") path;
     match command with
-    | `Console_cmd `Old_console_subscribe `Count 20 -> ()
+    | `Console_cmd `Console_subscribe `Count 20 -> ()
     | _ -> Alcotest.failf "expected console subscribe command, got %a"
              (Vmm_commands.pp ~verbose:true) command
 
@@ -685,7 +685,7 @@ let command_tests = [
   "console subscribe foo.bar version 5", `Quick, console_subscribe_v5_2 ;
   "bistro console subscribe foo version 5", `Quick, bistro_console_subscribe_v5 ;
   "bistro console subscribe foo.bar version 5", `Quick, bistro_console_subscribe_v5_2 ;
-  "bistro console subscribe subv5:foo.bar version 5", `Quick, bistro_console_subscribe_v5_3 ;
+  "bistro console subscribe arc:foo.bar version 5", `Quick, bistro_console_subscribe_v5_3 ;
 ]
 
 let test_unikernels =

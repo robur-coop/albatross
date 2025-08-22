@@ -20,7 +20,6 @@ type since_count = [ `Since of Ptime.t | `Count of int ]
 type console_cmd = [
   | `Console_add
   | `Console_subscribe of since_count
-  | `Old_console_subscribe of since_count
 ]
 
 type stats_cmd = [
@@ -73,7 +72,6 @@ val pp : verbose:bool -> t Fmt.t
 
 type data = [
   | `Console_data of Ptime.t * string
-  | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
   | `Block_data of string option
 ]
