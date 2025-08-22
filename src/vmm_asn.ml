@@ -373,9 +373,10 @@ let v0_unikernel_config =
     let typ = `Solo5
     and compressed = match fst image with `Hvt_amd64_compressed -> true | _ -> false
     and image = snd image
+    and startup = None
     and fail_behaviour = `Quit (* TODO maybe set to restart by default :) *)
     in
-    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g _unikernel = failwith "cannot encode v0 unikernel configs"
   in
   Asn.S.map f g @@
@@ -394,8 +395,9 @@ let v1_unikernel_config =
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
     let bridges = match bridges with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
+    and startup = None
     in
-    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g _unikernel = failwith "cannot encode v1 unikernel configs"
   in
   Asn.S.(map f g @@ sequence @@
@@ -414,8 +416,9 @@ let v2_unikernel_config =
   let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
     let bridges = match bridges with None -> [] | Some xs -> List.map (fun (a, b) -> (a, b, None)) xs
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
+    and startup = None
     in
-    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (unikernel : config) =
     let bridges =
       match unikernel.bridges with
@@ -444,20 +447,21 @@ let v2_unikernel_config =
 
 let unikernel_config =
   let open Unikernel in
-  let f (typ, (compressed, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))) =
+  let f (typ, (compressed, (startup, (image, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
-    { typ ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv))))))))
+    (unikernel.typ, (unikernel.compressed, (unikernel.startup, (unikernel.image, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv)))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
          @ (required ~label:"compressed" bool)
+         @ (optional ~label:"startup" int)
          @ (required ~label:"image" octet_string)
          @ (required ~label:"fail-behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
@@ -702,8 +706,9 @@ let old_unikernel_info2 =
             size = 0 })
         xs
     and started = Ptime.epoch
+    and startup = None
     in
-    { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
+    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -758,8 +763,9 @@ let old_unikernel_info3 =
             size = 0 })
         xs
     and started = Option.value ~default:Ptime.epoch started
+    and startup = None
     in
-    { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
+    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -795,7 +801,7 @@ let old_unikernel_info3 =
 
 let unikernel_info =
   let open Unikernel in
-  let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started)))))))) =
+  let f (typ, (startup, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started))))))))) =
     let bridges = match bridges with None -> [] | Some xs ->
       List.map (fun (unikernel_device, host_device, mac) ->
           { unikernel_device ; host_device ; mac })
@@ -806,7 +812,7 @@ let unikernel_info =
         xs
     and started = Option.value ~default:Ptime.epoch started
     in
-    { typ ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
+    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -817,10 +823,11 @@ let unikernel_info =
       | xs -> Some (List.map (fun { unikernel_device ; host_device ; sector_size ; size } ->
           unikernel_device, host_device, sector_size, size) xs)
     in
-    (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, Some unikernel.started))))))))
+    (unikernel.typ, (unikernel.startup, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, Some unikernel.started)))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
+         @ (optional ~label:"startup" int)
          @ (required ~label:"fail-behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
@@ -1007,8 +1014,8 @@ let state =
            (my_explicit 0 ~label:"unikernel-OLD1" version1_unikernels)
            (my_explicit 1 ~label:"unikernel-OLD0" version0_unikernels)
            (my_explicit 2 ~label:"unikernel-OLD2" version2_unikernels)
-           (my_explicit 3 ~label:"unikernel" version3_unikernels)
-           (my_explicit 4 ~label:"unikernel and policy"
+           (my_explicit 3 ~label:"unikernel-OLD3" version3_unikernels)
+           (my_explicit 4 ~label:"unikernel and policy OLD"
               (sequence2
                  (required ~label:"unikernels" version3_unikernels)
                  (required ~label:"policies" policies)))

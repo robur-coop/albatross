@@ -106,6 +106,7 @@ module Unikernel : sig
     compressed : bool ;
     image : string  ;
     fail_behaviour : fail_behaviour;
+    startup : int option ;
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
@@ -163,6 +164,7 @@ module Unikernel : sig
   type info = {
     typ : typ ;
     fail_behaviour : fail_behaviour;
+    startup : int option ;
     cpuid : int ;
     memory : int ;
     block_devices : block_info list ;
