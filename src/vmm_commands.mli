@@ -40,6 +40,7 @@ type unikernel_cmd = [
   | `Old_unikernel_info1
   | `Old_unikernel_info2
   | `Old_unikernel_info3
+  | `Old_unikernel_info4
   | `Old_unikernel_get
 ]
 
@@ -94,6 +95,7 @@ type success = [
   | `Old_unikernels of (Name.t * Unikernel.config) list
   | `Old_unikernel_info2 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
+  | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list

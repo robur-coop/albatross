@@ -96,8 +96,9 @@ let output_result state ((hdr, reply) as wire) =
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)
-      | `Block_devices _ | `Empty | `String _ | `Old_unikernel_info3 _
-      | `Old_unikernel_info2 _ | `Unikernel_info _ | `Policies _ ->
+      | `Empty | `String _ | `Block_devices _ | `Old_unikernel_info2 _
+      | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Unikernel_info _
+      | `Policies _ ->
         begin match state with
           | `Single | `End -> Lwt.return (Ok `End)
           | `Dump | `Dump_to _ | `Read as state ->
