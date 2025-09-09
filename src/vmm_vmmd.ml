@@ -413,9 +413,17 @@ let handle_unikernel_cmd t id =
               argv = a.argv }
         in
         let* () =
+          let* image =
+            if config.compressed then
+              match Vmm_compress.uncompress config.image with
+              | Ok blob -> Ok blob
+              | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+            else
+              Ok config.image
+          in
           Vmm_unix.manifest_devices_match ~bridges:config.bridges
             ~block_devices:config.block_devices
-            config.image
+            image
         in
         (match Vmm_unix.destroy unikernel with
          | exception Unix.Unix_error _ -> ()
