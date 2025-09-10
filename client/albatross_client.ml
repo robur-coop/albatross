@@ -96,8 +96,9 @@ let output_result state ((hdr, reply) as wire) =
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)
-      | `Block_devices _ | `Empty | `String _ | `Old_unikernel_info3 _
-      | `Old_unikernel_info2 _ | `Unikernel_info _ | `Policies _ ->
+      | `Empty | `String _ | `Block_devices _ | `Old_unikernel_info2 _
+      | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Unikernel_info _
+      | `Policies _ ->
         begin match state with
           | `Single | `End -> Lwt.return (Ok `End)
           | `Dump | `Dump_to _ | `Read as state ->
@@ -186,11 +187,11 @@ let http_get_binary ~happy_eyeballs host job build =
 
 let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info2
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info3
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->
     begin
       let hash = Ohex.encode digest in
       can_update ~happy_eyeballs host hash >>= function
@@ -231,7 +232,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
                 | 0 -> false, unikernel
                 | _ -> true, Vmm_compress.compress ~level unikernel
               in
-              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; cpuid; memory ; block_devices ; bridges ; argv } in
+              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; cpuid; memory ; block_devices ; bridges ; argv } in
               Lwt.return (Ok (`Unikernel_force_create config))
     end
   | Ok w ->
@@ -240,7 +241,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
     Lwt.return (Error Communication_failed)
   | Error _ -> Lwt.return (Error Communication_failed)
 
-let create_unikernel force image cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
+let create_unikernel force image startup cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let ( let* ) = Result.bind in
   let* () =
     if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
@@ -267,7 +268,7 @@ let create_unikernel force image cpuid memory argv block_devices bridges compres
     let exits = match exit_codes with [] -> None | xs -> Some (Vmm_core.IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
-  let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv } in
+  let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let policy unikernels memory cpus block bridgesl =
@@ -787,9 +788,9 @@ let get () compression name dst =
 
 let destroy () = jump (`Unikernel_cmd `Unikernel_destroy)
 
-let create () force image cpuid memory argv block network compression restart_on_fail exit_code
+let create () force image startup cpuid memory argv block network compression restart_on_fail exit_code
   name d cert key ca key_type tmpdir =
-  match create_unikernel force image cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code with
+  match create_unikernel force image startup cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code with
   | Ok cmd -> jump (`Unikernel_cmd cmd) name d cert key ca key_type tmpdir
   | Error _ as e -> e
 
@@ -1478,6 +1479,10 @@ let add_policy_cmd =
   in
   Cmd.v info term
 
+let startup =
+  let doc = "Startup priority (0 is highest, default is 50)." in
+  Arg.(value & opt (some int) None & info [ "startup" ] ~doc)
+
 let create_cmd =
   let doc = "Creates a unikernel." in
   let man =
@@ -1485,7 +1490,7 @@ let create_cmd =
      `P "Creates a unikernel."]
   in
   let term =
-    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ cpu $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ startup $ cpu $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "create" ~doc ~man ~exits
   in
   Cmd.v info term

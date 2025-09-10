@@ -309,6 +309,7 @@ module Unikernel = struct
     compressed : bool ;
     image : string ;
     fail_behaviour : fail_behaviour;
+    startup : int option ;
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
@@ -346,11 +347,12 @@ module Unikernel = struct
       Fmt.(option ((any "@") ++ Macaddr.pp)) mac
 
   let pp_config ppf (unikernel : config) =
-    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
+    Fmt.pf ppf "typ %a@ compression %B image %u bytes@ fail behaviour %a@ startup at %a@ cpu %u@ %u MB memory@ block devices %a@ bridge %a"
       pp_typ unikernel.typ
       unikernel.compressed
       (String.length unikernel.image)
       pp_fail_behaviour unikernel.fail_behaviour
+      Fmt.(option ~none:(any "not specified") int) unikernel.startup
       unikernel.cpuid unikernel.memory
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
@@ -423,7 +425,8 @@ module Unikernel = struct
 
   type info = {
     typ : typ ;
-    fail_behaviour : fail_behaviour;
+    fail_behaviour : fail_behaviour ;
+    startup : int option ;
     cpuid : int ;
     memory : int ;
     block_devices : block_info list ;
@@ -449,16 +452,17 @@ module Unikernel = struct
           { unikernel_device ; host_device ; mac }
         ) cfg.bridges t.taps
     in
-    { typ = cfg.typ ; fail_behaviour = cfg.fail_behaviour ; cpuid = cfg.cpuid ;
-      memory = cfg.memory ; block_devices ;
+    { typ = cfg.typ ; fail_behaviour = cfg.fail_behaviour ; startup = cfg.startup ;
+      cpuid = cfg.cpuid ; memory = cfg.memory ; block_devices ;
       bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
 
   let pp_info ppf (info : info) =
     let hex_digest = Ohex.encode info.digest in
-    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a@ digest %s"
+    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ startup at %a@ cpu %u@ %u MB memory@ block devices %a@ bridge %a@ digest %s"
       pp_typ info.typ
       (Ptime.pp_rfc3339 ()) info.started
       pp_fail_behaviour info.fail_behaviour
+      Fmt.(option ~none:(any "not specified") int) info.startup
       info.cpuid info.memory
       Fmt.(list ~sep:(any ", ") pp_block_info) info.block_devices
       Fmt.(list ~sep:(any ", ") pp_net_info) info.bridges
