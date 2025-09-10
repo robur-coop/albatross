@@ -212,11 +212,14 @@ let prepare_update ~happy_eyeballs level host dryrun = function
             Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
             Lwt.return (Error Http_error)
           | Ok unikernel ->
-            let bridges = List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; mac } ->
-                unikernel_device, Some host_device, Some mac)
+            let bridges =
+              List.map
+                (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; mac } ->
+                   unikernel_device, Some host_device, Some mac)
                 bridges
-            and block_devices = List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; sector_size ; _ } ->
-                unikernel_device, Some host_device, Some sector_size)
+            and block_devices =
+              List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; sector_size ; _ } ->
+                  unikernel_device, Some host_device, Some sector_size)
                 block_devices
             in
             let r =
