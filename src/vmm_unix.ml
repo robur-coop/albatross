@@ -388,6 +388,8 @@ let cpuset cpu =
   | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
+let drop_label = ref true
+
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let bridge_taps =
     List.map (fun (bridge, tap, mac) ->
@@ -419,7 +421,15 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
        code 64, and will be restarted without the automatically inserted --name
     *)
     if config.add_name then
-      ("--name=" ^ Name.to_string name) :: argv
+      let name =
+        if !drop_label then
+          match Name.name name with
+          | None -> Name.to_string name
+          | Some name -> name
+        else
+          Name.to_string name
+      in
+      ("--name=" ^ name) :: argv
     else
       argv
   in

@@ -176,7 +176,7 @@ let safe_close s =
        Logs.err (fun m -> m "exception %s while closing" (Printexc.to_string e)) ;
        Lwt.return_unit)
 
-let rec read_sock_write_tcp drop c ?fd fam addr =
+let rec read_sock_write_tcp no_drop c ?fd fam addr =
   match fd with
   | None ->
     begin
@@ -186,10 +186,10 @@ let rec read_sock_write_tcp drop c ?fd fam addr =
         Logs.warn (fun m -> m "error connecting to influxd %a, retrying in 5s"
                       Vmm_lwt.pp_sockaddr addr);
         Lwt_unix.sleep 5.0 >>= fun () ->
-        read_sock_write_tcp drop c fam addr
+        read_sock_write_tcp no_drop c fam addr
       | Some fd ->
         Lwt_unix.setsockopt fd Lwt_unix.SO_KEEPALIVE true ;
-        read_sock_write_tcp drop c ~fd fam addr
+        read_sock_write_tcp no_drop c ~fd fam addr
     end
   | Some fd ->
     Logs.debug (fun m -> m "reading from unix socket") ;
@@ -203,12 +203,12 @@ let rec read_sock_write_tcp drop c ?fd fam addr =
     | Ok (hdr, `Data (`Stats_data (ru, mem, vmm, ifs))) ->
       let name =
         let orig = hdr.Vmm_commands.name in
-        if drop then
+        if no_drop then
+          Name.to_string orig
+        else
           match Name.name orig with
           | None -> Name.to_string orig
           | Some x -> x
-        else
-          Name.to_string orig
       in
       let ru = P.encode_ru name ru in
       let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
@@ -220,18 +220,18 @@ let rec read_sock_write_tcp drop c ?fd fam addr =
         Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
         | Ok () ->
           Logs.debug (fun m -> m "wrote successfully") ;
-          read_sock_write_tcp drop c ~fd fam addr
+          read_sock_write_tcp no_drop c ~fd fam addr
         | Error e ->
           Logs.err (fun m -> m "error %s while writing to tcp (%s)"
                        (str_of_e e) name) ;
           safe_close fd >>= fun () ->
-          read_sock_write_tcp drop c fam addr
+          read_sock_write_tcp no_drop c fam addr
       end
     | Ok wire ->
       Logs.warn (fun m -> m "ignoring %a"
                     (Vmm_commands.pp_wire ~verbose:false) wire) ;
       Lwt.return (Some fd) >>= fun fd ->
-      read_sock_write_tcp drop c ?fd fam addr
+      read_sock_write_tcp no_drop c ?fd fam addr
 
 let query_sock unikernel c =
   let header = Vmm_commands.header ~sequence:!command unikernel in
@@ -251,7 +251,7 @@ let rec maybe_connect () =
     Logs.debug (fun m -> m "connected");
     Lwt.return c
 
-let client influx unikernel drop =
+let client influx unikernel no_drop =
   match influx with
   | None -> Lwt.return (Error (`Msg "influx host not provided"))
   | Some (ip, port) ->
@@ -283,21 +283,21 @@ let client influx unikernel drop =
       in
       Lwt.return err
     | Ok () ->
-      read_sock_write_tcp drop c fam addr >>= fun restart ->
+      read_sock_write_tcp no_drop c fam addr >>= fun restart ->
       if restart then loop () else Lwt.return (Ok ())
   in
   loop ()
 
-let run_client _ influx unikernel drop tmpdir =
+let run_client _ influx unikernel no_drop tmpdir =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
-  Lwt_main.run (client influx unikernel drop)
+  Lwt_main.run (client influx unikernel no_drop)
 
 open Cmdliner
 
-let drop_label =
-  let doc = "Drop unikernel path" in
-  Arg.(value & flag & info [ "drop-label" ] ~doc)
+let no_drop_label =
+  let doc = "Do not drop unikernel path, use full path" in
+  Arg.(value & flag & info [ "no-drop-label" ] ~doc)
 
 let unikernel_c = Arg.conv (Name.of_string, Name.pp)
 
@@ -313,7 +313,7 @@ let cmd =
         statistics and pushes them via TCP to influxdb";
   ] in
   let term =
-    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_unikernel_name $ drop_label $ Albatross_cli.tmpdir))
+    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_unikernel_name $ no_drop_label $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-influx" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
