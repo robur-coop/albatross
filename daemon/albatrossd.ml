@@ -30,7 +30,7 @@ let rec create stat_out cons_out data_out name config =
          Lwt.return (None, fail_cont ())
        | Ok (state', stat, data, name, unikernel) ->
          state := state';
-         (if Unikernel.restart_handler config then
+         (if Unikernel.restart_handler config || config.add_name then
             match Vmm_vmmd.register_restart !state name Lwt.task with
             | None -> ()
             | Some (state', task) ->
@@ -40,7 +40,11 @@ let rec create stat_out cons_out data_out name config =
                   Lwt_mutex.with_lock create_lock (fun () ->
                       let state', may = Vmm_vmmd.may_restart !state name in
                       state := state';
-                      if may && should_restart config name r then
+                      if may && config.add_name && match r with `Exit 64 -> true | _ -> false then
+                        (* argument error, and --name was injected *)
+                        create stat_out cons_out stub_data_out
+                          name { unikernel.Unikernel.config with add_name = false }
+                      else if may && should_restart config name r then
                         create stat_out cons_out stub_data_out
                           name unikernel.Unikernel.config
                       else

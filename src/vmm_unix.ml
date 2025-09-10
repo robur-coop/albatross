@@ -411,6 +411,18 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
   in
+  let argv =
+    (* we don't know whether the unikernel understands the --name argument
+       (since mirage 4.10.0), we restart on argument failure without the added
+       name. If the operator provided a --name themselves, the unikernel will
+       abort on first startup ('option --name cannot be repeated') with exit
+       code 64, and will be restarted without the automatically inserted --name
+    *)
+    if config.add_name then
+      ("--name=" ^ Name.to_string name) :: argv
+    else
+      argv
+  in
   let* cpuset = cpuset config.Unikernel.cpuid in
   let* target, version =
     let* image =

@@ -419,6 +419,8 @@ let handle_unikernel_cmd t id =
           | Some (a : Unikernel.arguments) ->
             { unikernel.Unikernel.config with
               fail_behaviour = a.fail_behaviour ;
+              startup = a.startup ;
+              add_name = a.add_name ;
               cpuid = a.cpuid ;
               block_devices = a.block_devices ;
               bridges = a.bridges ;

@@ -375,8 +375,9 @@ let v0_unikernel_config =
     and image = snd image
     and startup = None
     and fail_behaviour = `Quit (* TODO maybe set to restart by default :) *)
+    and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g _unikernel = failwith "cannot encode v0 unikernel configs"
   in
   Asn.S.map f g @@
@@ -396,8 +397,9 @@ let v1_unikernel_config =
     let bridges = match bridges with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     and startup = None
+    and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g _unikernel = failwith "cannot encode v1 unikernel configs"
   in
   Asn.S.(map f g @@ sequence @@
@@ -417,8 +419,9 @@ let v2_unikernel_config =
     let bridges = match bridges with None -> [] | Some xs -> List.map (fun (a, b) -> (a, b, None)) xs
     and block_devices = match blocks with None -> [] | Some xs -> List.map (fun b -> b, None, None) xs
     and startup = None
+    and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (unikernel : config) =
     let bridges =
       match unikernel.bridges with
@@ -451,8 +454,9 @@ let v3_unikernel_config =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     and startup = None
+    and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -482,22 +486,23 @@ let v3_unikernel_config =
 
 let unikernel_config =
   let open Unikernel in
-  let f (typ, (compressed, (image, (startup, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv))))))))) =
+  let f (typ, (compressed, (image, (startup, (add_name, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.startup, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv)))))))))
+    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.startup, (unikernel.add_name, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv))))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
          @ (required ~label:"compressed" bool)
          @ (required ~label:"image" octet_string)
          @ (optional ~label:"startup" int)
+         @ (required ~label:"add_name" bool)
          @ (required ~label:"fail-behaviour" fail_behaviour)
          @ (required ~label:"cpuid" int)
          @ (required ~label:"memory" int)
@@ -517,11 +522,46 @@ let unikernel_config =
 
 let unikernel_arguments =
   let open Unikernel in
-  let f (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv))))) =
+  let f (fail_behaviour, (startup, (add_name, (cpuid, (memory, (blocks, (bridges, argv))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     in
-    { fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { fail_behaviour; startup; add_name; cpuid; memory; block_devices; bridges; argv }
+  and g (unikernel : arguments) =
+    let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
+    and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
+    in
+    (unikernel.fail_behaviour, (unikernel.startup, (unikernel.add_name, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv)))))))
+  in
+  Asn.S.(map f g @@ sequence @@
+           (required ~label:"fail-behaviour" fail_behaviour)
+         @ (optional ~label:"startup" int)
+         @ (required ~label:"add_name" bool)
+         @ (required ~label:"cpuid" int)
+         @ (required ~label:"memory" int)
+         @ (optional ~label:"blocks"
+              (my_explicit 0 (set_of
+                                (sequence3
+                                   (required ~label:"block-name" utf8_string)
+                                   (optional ~label:"block-device-name" utf8_string)
+                                   (optional ~label:"block-sector-size" int)))))
+         @ (optional ~label:"bridges"
+              (my_explicit 1 (set_of
+                             (sequence3
+                                (required ~label:"netif" utf8_string)
+                                (optional ~label:"bridge" utf8_string)
+                                (optional ~label:"mac" mac_addr)))))
+        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+
+let unikernel_arguments_old =
+  let open Unikernel in
+  let f (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv))))) =
+    let bridges = match bridges with None -> [] | Some xs -> xs
+    and block_devices = match blocks with None -> [] | Some xs -> xs
+    and startup = None
+    and add_name = true
+    in
+    { fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
   and g (unikernel : arguments) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -564,6 +604,7 @@ let unikernel_cmd =
     | `C3 `C2 () -> `Old_unikernel_info3
     | `C3 `C3 `C1 () -> `Unikernel_restart None
     | `C3 `C3 `C2 args -> `Unikernel_restart (Some args)
+    | `C3 `C3 `C3 args -> `Unikernel_restart (Some args)
     | `C3 `C4 () -> `Old_unikernel_info4
     | `C3 `C5 unikernel -> `Unikernel_create unikernel
     | `C3 `C6 unikernel -> `Unikernel_force_create unikernel
@@ -578,7 +619,7 @@ let unikernel_cmd =
     | `Old_unikernel_info2 -> `C2 (`C2 ())
     | `Unikernel_get level -> `C2 (`C6 level)
     | `Unikernel_restart None -> `C3 (`C3 (`C1 ()))
-    | `Unikernel_restart (Some args) -> `C3 (`C3 (`C2 args))
+    | `Unikernel_restart (Some args) -> `C3 (`C3 (`C3 args))
     | `Old_unikernel_info3 -> `C3 (`C2 ())
     | `Old_unikernel_info4 -> `C3 (`C4 ())
     | `Unikernel_info -> `C4 (`C1 ())
@@ -603,9 +644,10 @@ let unikernel_cmd =
              (my_explicit 12 ~label:"restart-OLD" null)
              (my_explicit 13 ~label:"info-OLD3" null)
              (my_explicit 14 ~label:"restart"
-                (choice2
+                (choice3
                    (my_explicit 0 ~label:"no arguments" null)
-                   (my_explicit 1 ~label:"new arguments" unikernel_arguments)))
+                   (my_explicit 1 ~label:"new arguments OLD" unikernel_arguments_old)
+                   (my_explicit 2 ~label:"new arguments" unikernel_arguments)))
              (my_explicit 15 ~label:"info-OLD4" null)
              (my_explicit 16 ~label:"create" unikernel_config)
              (my_explicit 17 ~label:"force-create" unikernel_config))

@@ -310,6 +310,7 @@ module Unikernel = struct
     image : string ;
     fail_behaviour : fail_behaviour;
     startup : int option ;
+    add_name : bool;
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
@@ -347,12 +348,13 @@ module Unikernel = struct
       Fmt.(option ((any "@") ++ Macaddr.pp)) mac
 
   let pp_config ppf (unikernel : config) =
-    Fmt.pf ppf "typ %a@ compression %B image %u bytes@ fail behaviour %a@ startup at %a@ cpu %u@ %u MB memory@ block devices %a@ bridge %a"
+    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ startup at %a@ add_name %B@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
       pp_typ unikernel.typ
       unikernel.compressed
       (String.length unikernel.image)
       pp_fail_behaviour unikernel.fail_behaviour
       Fmt.(option ~none:(any "not specified") int) unikernel.startup
+      unikernel.add_name
       unikernel.cpuid unikernel.memory
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
@@ -366,6 +368,8 @@ module Unikernel = struct
 
   type arguments = {
     fail_behaviour : fail_behaviour;
+    startup : int option;
+    add_name : bool;
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
@@ -374,8 +378,10 @@ module Unikernel = struct
   }
 
   let pp_arguments ppf (unikernel : arguments) =
-    Fmt.pf ppf "fail behaviour %a@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
+    Fmt.pf ppf "fail behaviour %a@ startup at %a@ add_name %B@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
       pp_fail_behaviour unikernel.fail_behaviour
+      Fmt.(option ~none:(any "not specified") int) unikernel.startup
+      unikernel.add_name
       unikernel.cpuid unikernel.memory
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
