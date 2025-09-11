@@ -295,9 +295,9 @@ let run_client _ influx unikernel no_drop tmpdir =
 
 open Cmdliner
 
-let no_drop_label =
+let no_drop_path =
   let doc = "Do not drop unikernel path, use full path" in
-  Arg.(value & flag & info [ "no-drop-label" ] ~doc)
+  Arg.(value & flag & info [ "no-drop-path" ] ~doc)
 
 let unikernel_c = Arg.conv (Name.of_string, Name.pp)
 
@@ -313,7 +313,7 @@ let cmd =
         statistics and pushes them via TCP to influxdb";
   ] in
   let term =
-    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_unikernel_name $ no_drop_label $ Albatross_cli.tmpdir))
+    Term.(term_result (const run_client $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.influx $ opt_unikernel_name $ no_drop_path $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-influx" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
