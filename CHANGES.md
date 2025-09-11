@@ -1,3 +1,27 @@
+# v2.6.0 (2025-09-11)
+
+* Add "--name=UNIKERNEL NAME" to every unikernel - and if it fails to start
+  with error code 64, restart without the additional parameter. This is in
+  sync with mirage 4.10 which adds a "--name" argument to every unikernel
+  (#229 @hannesm)
+* Add a "startup" to unikernel configuration to control startup order
+  (fixes #53, #225 @hannesm)
+* BUGFIX: vmmd: decompress the unikernel image in restart before checking
+  resources (fixes #209, #228 @hannesm)
+* BREAKING albatrossd, albatross-influx: add a "--no-drop-path" flag to use the
+  full name (including path) for reporting (both for --name and for influx
+  reporting). Previously, a "--drop-label" flag was available. The default is
+  to drop the path. (#229 @hannesm)
+* client: add support for '-' for remote destination to output the certificate
+  (#227 @hannesm)
+* BREAKING remove support for old commands (#226 @hannesm)
+  - wire version 3 and wire version 4 (version 5 introduced in 1.5.0, May 2022)
+  - old_console_subscribe and utc_console_data (2.1.0, Jul 2024)
+  - old_unikernel_info1, old_unikernel_get (1.1.0, Jan 2021)
+  - old_unikernel_info2 (2.1.0, Dec 2023)
+  - old unikernel_create and force_create (1.0.0, Mar 2020)
+  - old unikernel_create and force_create (1.1.0, Jan 2021)
+
 # v2.5.1 (2025-08-20)
 
 * client: fix console reading, do not close the connection prematurly
