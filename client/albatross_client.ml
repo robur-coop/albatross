@@ -66,12 +66,6 @@ let output_result state ((hdr, reply) as wire) =
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)
-      | `Old_unikernels unikernels ->
-        List.iter (fun (name, cfg) ->
-            if String.length cfg.Vmm_core.Unikernel.image > 0 then
-              write_to_file name cfg.compressed cfg.image)
-          unikernels;
-        Lwt.return (Ok `End)
       | `Block_device_image compressed ->
         let name = filename hdr.Vmm_commands.name in
         Lwt_unix.openfile (Fpath.to_string name) [ Unix.O_WRONLY ; O_CREAT ] 0o644 >>= fun fd ->
@@ -96,7 +90,7 @@ let output_result state ((hdr, reply) as wire) =
         let name = hdr.Vmm_commands.name in
         write_to_file name compressed image;
         Lwt.return (Ok `End)
-      | `Empty | `String _ | `Block_devices _ | `Old_unikernel_info2 _
+      | `Empty | `String _ | `Block_devices _
       | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Unikernel_info _
       | `Policies _ ->
         begin match state with
@@ -187,8 +181,6 @@ let http_get_binary ~happy_eyeballs host job build =
 
 let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
-  | Ok (_hdr, `Success (`Old_unikernel_info2
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info3
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->

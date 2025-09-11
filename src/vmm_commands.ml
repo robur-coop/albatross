@@ -3,22 +3,18 @@
 (* the wire protocol *)
 open Vmm_core
 
-type version = [ `AV3 | `AV4 | `AV5 ]
+type version = [ `AV5 ]
 
 let current = `AV5
 
 let pp_version ppf v =
   Fmt.int ppf
     (match v with
-     | `AV5 -> 5
-     | `AV4 -> 4
-     | `AV3 -> 3)
+     | `AV5 -> 5)
 
 let eq_version a b =
   match a, b with
   | `AV5, `AV5 -> true
-  | `AV4, `AV4 -> true
-  | `AV3, `AV3 -> true
   | _ -> false
 
 let is_current = eq_version current
@@ -32,13 +28,11 @@ let pp_since_count ppf = function
 type console_cmd = [
   | `Console_add
   | `Console_subscribe of since_count
-  | `Old_console_subscribe of since_count
 ]
 
 let pp_console_cmd ppf = function
   | `Console_add -> Fmt.string ppf "console add"
   | `Console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
-  | `Old_console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
 
 type stats_cmd = [
   | `Stats_add of string * int * (string * string) list
@@ -62,11 +56,8 @@ type unikernel_cmd = [
   | `Unikernel_restart of Unikernel.arguments option
   | `Unikernel_destroy
   | `Unikernel_get of int
-  | `Old_unikernel_info1
-  | `Old_unikernel_info2
   | `Old_unikernel_info3
   | `Old_unikernel_info4
-  | `Old_unikernel_get
 ]
 
 let pp_unikernel_cmd ~verbose ppf = function
@@ -85,11 +76,8 @@ let pp_unikernel_cmd ~verbose ppf = function
       args
   | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
   | `Unikernel_get level -> Fmt.pf ppf "unikernel get compress level %d" level
-  | `Old_unikernel_info1 -> Fmt.string ppf "old unikernel info1"
-  | `Old_unikernel_info2 -> Fmt.string ppf "old unikernel info2"
   | `Old_unikernel_info3 -> Fmt.string ppf "old unikernel info3"
   | `Old_unikernel_info4 -> Fmt.string ppf "old unikernel info4"
-  | `Old_unikernel_get -> Fmt.string ppf "old unikernel get"
 
 type policy_cmd = [
   | `Policy_info
@@ -145,15 +133,12 @@ let pp ~verbose ppf = function
 
 type data = [
   | `Console_data of Ptime.t * string
-  | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
   | `Block_data of string option
 ]
 
 let pp_data ppf = function
   | `Console_data (ts, line) ->
-    Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
-  | `Utc_console_data (ts, line) ->
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
   | `Block_data s ->
@@ -173,9 +158,7 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Old_unikernels of (Name.t * Unikernel.config) list
   | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
-  | `Old_unikernel_info2 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
@@ -197,12 +180,7 @@ let pp_success ~verbose ppf = function
   | `String data -> Fmt.pf ppf "success: %s" data
   | `Policies ps ->
     my_fmt_list "no policies" Fmt.(pair ~sep:(any ": ") Name.pp Policy.pp) ppf ps
-  | `Old_unikernels unikernels ->
-    my_fmt_list "no unikernels"
-      Fmt.(pair ~sep:(any ": ") Name.pp
-             (if verbose then Unikernel.pp_config_with_argv else Unikernel.pp_config))
-      ppf unikernels
-  | `Unikernel_info infos | `Old_unikernel_info2 infos | `Old_unikernel_info3 infos | `Old_unikernel_info4 infos ->
+  | `Unikernel_info infos | `Old_unikernel_info3 infos | `Old_unikernel_info4 infos ->
     my_fmt_list "no unikernels"
       Fmt.(pair ~sep:(any ": ") Name.pp
              (if verbose then Unikernel.pp_info_with_argv else Unikernel.pp_info))

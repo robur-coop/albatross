@@ -3,7 +3,7 @@
 open Vmm_core
 
 (** The type of versions of the grammar defined below. *)
-type version = [ `AV3 | `AV4 | `AV5 ]
+type version = [ `AV5 ]
 
 (** [current] is the current version. *)
 val current : version
@@ -20,7 +20,6 @@ type since_count = [ `Since of Ptime.t | `Count of int ]
 type console_cmd = [
   | `Console_add
   | `Console_subscribe of since_count
-  | `Old_console_subscribe of since_count
 ]
 
 type stats_cmd = [
@@ -37,11 +36,8 @@ type unikernel_cmd = [
   | `Unikernel_restart of Unikernel.arguments option
   | `Unikernel_destroy
   | `Unikernel_get of int
-  | `Old_unikernel_info1
-  | `Old_unikernel_info2
   | `Old_unikernel_info3
   | `Old_unikernel_info4
-  | `Old_unikernel_get
 ]
 
 type policy_cmd = [
@@ -73,7 +69,6 @@ val pp : verbose:bool -> t Fmt.t
 
 type data = [
   | `Console_data of Ptime.t * string
-  | `Utc_console_data of Ptime.t * string
   | `Stats_data of Stats.t
   | `Block_data of string option
 ]
@@ -92,8 +87,6 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Old_unikernels of (Name.t * Unikernel.config) list
-  | `Old_unikernel_info2 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
   | `Unikernel_info of (Name.t * Unikernel.info) list

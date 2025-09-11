@@ -46,13 +46,9 @@ let ( let* ) = Result.bind
 let version =
   let f data = match data with
     | 5 -> `AV5
-    | 4 -> `AV4
-    | 3 -> `AV3
     | x -> Asn.S.parse_error "unknown version number 0x%X" x
   and g = function
     | `AV5 -> 5
-    | `AV4 -> 4
-    | `AV3 -> 3
   in
   Asn.S.map f g Asn.S.int
 
@@ -139,24 +135,16 @@ let my_explicit : ?cls:Asn.S.cls -> int -> ?label:string -> 'a Asn.S.t -> 'a Asn
 let console_cmd =
   let f = function
     | `C1 () -> `Console_add
-    | `C2 `C1 ts -> `Old_console_subscribe (`Since ts)
-    | `C2 `C2 c -> `Old_console_subscribe (`Count c)
-    | `C3 `C1 ts -> `Console_subscribe (`Since ts)
-    | `C3 `C2 c -> `Console_subscribe (`Count c)
+    | `C2 `C1 ts -> `Console_subscribe (`Since ts)
+    | `C2 `C2 c -> `Console_subscribe (`Count c)
   and g = function
     | `Console_add -> `C1 ()
-    | `Old_console_subscribe `Since ts -> `C2 (`C1 ts)
-    | `Old_console_subscribe `Count c -> `C2 (`C2 c)
-    | `Console_subscribe `Since ts -> `C3 (`C1 ts)
-    | `Console_subscribe `Count c -> `C3 (`C2 c)
+    | `Console_subscribe `Since ts -> `C2 (`C1 ts)
+    | `Console_subscribe `Count c -> `C2 (`C2 c)
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
+  Asn.S.(choice2
            (my_explicit 0 ~label:"add" null)
-           (my_explicit 1 ~label:"old-subscribe"
-              (choice2
-                 (my_explicit 0 ~label:"since" utc_time)
-                 (my_explicit 1 ~label:"count" int)))
            (my_explicit 2 ~label:"subscribe"
               (choice2
                  (my_explicit 0 ~label:"since" generalized_time)
@@ -293,15 +281,6 @@ let stats_cmd =
            (my_explicit 1 ~label:"remove" null)
            (my_explicit 2 ~label:"subscribe" null)
            (my_explicit 3 ~label:"initial" null))
-
-let old_name =
-  let f list =
-    match Name.of_string (String.concat "." list) with
-    | Error (`Msg msg) -> Asn.S.error (`Parse msg)
-    | Ok name -> name
-  and g = Name.to_list
-  in
-  Asn.S.(map f g (sequence_of utf8_string))
 
 let name =
   let f str =
@@ -588,61 +567,40 @@ let unikernel_arguments_old =
 
 let unikernel_cmd =
   let f = function
-    | `C1 `C1 () -> `Old_unikernel_info1
+    | `C1 `C1 () -> `Unikernel_destroy
     | `C1 `C2 unikernel -> `Unikernel_create unikernel
     | `C1 `C3 unikernel -> `Unikernel_force_create unikernel
-    | `C1 `C4 () -> `Unikernel_destroy
-    | `C1 `C5 unikernel -> `Unikernel_create unikernel
-    | `C1 `C6 unikernel -> `Unikernel_force_create unikernel
-    | `C2 `C1 () -> `Old_unikernel_get
-    | `C2 `C2 () -> `Old_unikernel_info2
-    | `C2 `C3 () -> `Unikernel_get 0
-    | `C2 `C4 unikernel -> `Unikernel_create unikernel
-    | `C2 `C5 unikernel -> `Unikernel_force_create unikernel
-    | `C2 `C6 level -> `Unikernel_get level
-    | `C3 `C1 () -> `Unikernel_restart None
-    | `C3 `C2 () -> `Old_unikernel_info3
-    | `C3 `C3 `C1 () -> `Unikernel_restart None
-    | `C3 `C3 `C2 args -> `Unikernel_restart (Some args)
-    | `C3 `C3 `C3 args -> `Unikernel_restart (Some args)
-    | `C3 `C4 () -> `Old_unikernel_info4
-    | `C3 `C5 unikernel -> `Unikernel_create unikernel
-    | `C3 `C6 unikernel -> `Unikernel_force_create unikernel
-    | `C4 `C1 () -> `Unikernel_info
-    | `C4 `C2 () -> assert false
+    | `C1 `C4 level -> `Unikernel_get level
+    | `C1 `C5 () -> `Unikernel_restart None
+    | `C1 `C6 () -> `Old_unikernel_info3
+    | `C2 `C1 `C1 () -> `Unikernel_restart None
+    | `C2 `C1 `C2 args -> `Unikernel_restart (Some args)
+    | `C2 `C1 `C3 args -> `Unikernel_restart (Some args)
+    | `C2 `C2 () -> `Old_unikernel_info4
+    | `C2 `C3 unikernel -> `Unikernel_create unikernel
+    | `C2 `C4 unikernel -> `Unikernel_force_create unikernel
+    | `C2 `C5 () -> `Unikernel_info
   and g = function
-    | `Old_unikernel_info1 -> `C1 (`C1 ())
-    | `Unikernel_create unikernel -> `C3 (`C5 unikernel)
-    | `Unikernel_force_create unikernel -> `C3 (`C6 unikernel)
-    | `Unikernel_destroy -> `C1 (`C4 ())
-    | `Old_unikernel_get -> `C2 (`C1 ())
-    | `Old_unikernel_info2 -> `C2 (`C2 ())
-    | `Unikernel_get level -> `C2 (`C6 level)
-    | `Unikernel_restart None -> `C3 (`C3 (`C1 ()))
-    | `Unikernel_restart (Some args) -> `C3 (`C3 (`C3 args))
-    | `Old_unikernel_info3 -> `C3 (`C2 ())
-    | `Old_unikernel_info4 -> `C3 (`C4 ())
-    | `Unikernel_info -> `C4 (`C1 ())
+    | `Unikernel_create unikernel -> `C2 (`C3 unikernel)
+    | `Unikernel_force_create unikernel -> `C2 (`C4 unikernel)
+    | `Unikernel_destroy -> `C1 (`C1 ())
+    | `Unikernel_get level -> `C1 (`C4 level)
+    | `Unikernel_restart None -> `C2 (`C1 (`C1 ()))
+    | `Unikernel_restart (Some args) -> `C2 (`C1 (`C3 args))
+    | `Old_unikernel_info3 -> `C1 (`C6 ())
+    | `Old_unikernel_info4 -> `C2 (`C2 ())
+    | `Unikernel_info -> `C2 (`C5 ())
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice2
           (choice6
-             (my_explicit 0 ~label:"info-OLD1" null)
-             (my_explicit 1 ~label:"create-OLD1" v1_unikernel_config)
-             (my_explicit 2 ~label:"force-create-OLD1" v1_unikernel_config)
              (my_explicit 3 ~label:"destroy" null)
-             (my_explicit 4 ~label:"create-OLD2" v2_unikernel_config)
-             (my_explicit 5 ~label:"force-create-OLD2" v2_unikernel_config))
-          (choice6
-             (my_explicit 6 ~label:"get-OLD" null)
-             (my_explicit 7 ~label:"info-OLD2" null)
-             (my_explicit 8 ~label:"get-OLD2" null)
-             (my_explicit 9 ~label:"create" v3_unikernel_config)
-             (my_explicit 10 ~label:"force-create" v3_unikernel_config)
-             (my_explicit 11 ~label:"get-OLD3" int))
-          (choice6
+             (my_explicit 9 ~label:"create-OLD" v3_unikernel_config)
+             (my_explicit 10 ~label:"force-create-OLD" v3_unikernel_config)
+             (my_explicit 11 ~label:"get" int)
              (my_explicit 12 ~label:"restart-OLD" null)
-             (my_explicit 13 ~label:"info-OLD3" null)
+             (my_explicit 13 ~label:"info-OLD3" null))
+          (choice5
              (my_explicit 14 ~label:"restart"
                 (choice3
                    (my_explicit 0 ~label:"no arguments" null)
@@ -650,10 +608,8 @@ let unikernel_cmd =
                    (my_explicit 2 ~label:"new arguments" unikernel_arguments)))
              (my_explicit 15 ~label:"info-OLD4" null)
              (my_explicit 16 ~label:"create" unikernel_config)
-             (my_explicit 17 ~label:"force-create" unikernel_config))
-          (choice2
-             (my_explicit 18 ~label:"info" null)
-             (my_explicit 19 ~label:"NYI" null)))
+             (my_explicit 17 ~label:"force-create" unikernel_config)
+             (my_explicit 18 ~label:"info" null)))
 
 let policy_cmd =
   let f = function
@@ -697,7 +653,7 @@ let block_cmd =
              (my_explicit 0 ~label:"info" null)
              (my_explicit 1 ~label:"add" int)
              (my_explicit 2 ~label:"remove" null)
-             (my_explicit 3 ~label:"add-OLD2"
+             (my_explicit 3 ~label:"add-OLD"
                 (sequence3
                    (required ~label:"size" int)
                    (required ~label:"compress" bool)
@@ -737,25 +693,19 @@ let wire_command =
 
 let data =
   let f = function
-    | `C1 (timestamp, data) -> `Utc_console_data (timestamp, data)
-    | `C2 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
-    | `C3 () -> Asn.S.parse_error "support for log was dropped"
-    | `C4 (timestamp, data) -> `Console_data (timestamp, data)
-    | `C5 `C1 s -> `Block_data (Some s)
-    | `C5 `C2 () -> `Block_data None
+    | `C1 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
+    | `C2 () -> Asn.S.parse_error "support for log was dropped"
+    | `C3 (timestamp, data) -> `Console_data (timestamp, data)
+    | `C4 `C1 s -> `Block_data (Some s)
+    | `C4 `C2 () -> `Block_data None
   and g = function
-    | `Utc_console_data (timestamp, data) -> `C1 (timestamp, data)
-    | `Console_data (timestamp, data) -> `C4 (timestamp, data)
-    | `Stats_data (ru, mem, ifs, vmm) -> `C2 (ru, vmm, ifs, mem)
-    | `Block_data None -> `C5 (`C2 ())
-    | `Block_data Some s -> `C5 (`C1 s)
+    | `Console_data (timestamp, data) -> `C3 (timestamp, data)
+    | `Stats_data (ru, mem, ifs, vmm) -> `C1 (ru, vmm, ifs, mem)
+    | `Block_data None -> `C4 (`C2 ())
+    | `Block_data Some s -> `C4 (`C1 s)
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
-           (my_explicit 0 ~label:"utc-console"
-              (sequence2
-                 (required ~label:"timestamp" utc_time)
-                 (required ~label:"data" utf8_string)))
+  Asn.S.(choice4
            (my_explicit 1 ~label:"statistics"
               (sequence4
                  (required ~label:"resource-usage" ru)
@@ -774,63 +724,6 @@ let data =
               (choice2
                  (my_explicit 0 ~label:"some data" octet_string)
                  (my_explicit 1 ~label:"no data" null))))
-
-let old_unikernel_info2 =
-  let open Unikernel in
-  let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, argv))))))) =
-    let bridges = match bridges with None -> [] | Some xs ->
-      List.map (fun (unikernel_device, host_device, mac) ->
-          { unikernel_device ;
-            host_device = Option.value ~default:unikernel_device host_device ;
-            (* We can't synthesize the mac, so use a dummy value *)
-            mac = Option.value ~default:Macaddr.broadcast mac })
-        xs
-    and block_devices = match blocks with None -> [] | Some xs ->
-      List.map (fun (unikernel_device, host_device, sector_size) ->
-          { unikernel_device ;
-            host_device = Option.value ~default:unikernel_device host_device ;
-            sector_size = Option.value ~default:512 (* TODO: default from solo5-hvt *) sector_size ;
-            size = 0 })
-        xs
-    and started = Ptime.epoch
-    and startup = None
-    in
-    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
-  and g (unikernel : info) =
-    let bridges = match unikernel.bridges with
-      | [] -> None
-      | xs ->
-        Some (List.map (fun { unikernel_device ; host_device ; mac } ->
-            unikernel_device, Some host_device, Some mac)
-            xs)
-    and blocks = match unikernel.block_devices with
-      | [] -> None
-      | xs ->
-        Some (List.map (fun { unikernel_device ; host_device ; sector_size ; _ } ->
-            unikernel_device, Some host_device, Some sector_size)
-            xs)
-    in
-    (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, unikernel.argv)))))))
-  in
-  Asn.S.(map f g @@ sequence @@
-           (required ~label:"typ" typ)
-         @ (required ~label:"fail-behaviour" fail_behaviour)
-         @ (required ~label:"cpuid" int)
-         @ (required ~label:"memory" int)
-         @ (required ~label:"digest" octet_string)
-         @ (optional ~label:"blocks"
-              (my_explicit 0 (set_of
-                                (sequence3
-                                   (required ~label:"unikernel-device" utf8_string)
-                                   (optional ~label:"host-device" utf8_string)
-                                   (optional ~label:"sector-size" int)))))
-         @ (optional ~label:"bridges"
-              (my_explicit 1 (set_of
-                                (sequence3
-                                   (required ~label:"unikernel-device" utf8_string)
-                                   (optional ~label:"host-device" utf8_string)
-                                   (optional ~label:"mac" mac_addr)))))
-        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
 
 let old_unikernel_info3 =
   let open Unikernel in
@@ -984,7 +877,7 @@ let unikernel_info =
          @ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string)))
         -@ (optional ~label:"started" (my_explicit 3 generalized_time)))
 
-let header name =
+let header =
   let f (version, sequence, name) = { version ; sequence ; name }
   and g { version ; sequence ; name } = version, sequence, name
   in
@@ -994,14 +887,12 @@ let header name =
            (required ~label:"sequence" int64)
            (required ~label:"name" name))
 
-let success name =
+let success =
   let f = function
     | `C1 `C1 () -> `Empty
     | `C1 `C2 str -> `String str
     | `C1 `C3 policies -> `Policies policies
-    | `C1 `C4 unikernels -> `Old_unikernels unikernels
-    | `C1 `C5 blocks -> `Block_devices blocks
-    | `C1 `C6 unikernels -> `Old_unikernel_info2 unikernels
+    | `C1 `C4 blocks -> `Block_devices blocks
     | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
     | `C2 `C2 (compress, data) -> `Old_block_device_image (compress, data)
     | `C2 `C3 unikernels -> `Old_unikernel_info3 unikernels
@@ -1012,9 +903,7 @@ let success name =
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
     | `Policies ps -> `C1 (`C3 ps)
-    | `Old_unikernels unikernels -> `C1 (`C4 unikernels)
-    | `Block_devices blocks -> `C1 (`C5 blocks)
-    | `Old_unikernel_info2 unikernels -> `C1 (`C6 unikernels)
+    | `Block_devices blocks -> `C1 (`C4 blocks)
     | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
     | `Old_block_device_image (compress, data) -> `C2 (`C2 (compress, data))
     | `Old_unikernel_info3 unikernels -> `C2 (`C3 unikernels)
@@ -1024,7 +913,7 @@ let success name =
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-          (choice6
+          (choice4
              (my_explicit 0 ~label:"empty" null)
              (my_explicit 1 ~label:"string" utf8_string)
              (my_explicit 2 ~label:"policies"
@@ -1032,22 +921,12 @@ let success name =
                    (sequence2
                       (required ~label:"name" name)
                       (required ~label:"policy" policy))))
-             (my_explicit 3 ~label:"unikernels-OLD"
-                (sequence_of
-                   (sequence2
-                      (required ~label:"name" name)
-                      (required ~label:"config" v2_unikernel_config))))
              (my_explicit 4 ~label:"block-devices"
                 (sequence_of
                    (sequence3
                       (required ~label:"name" name)
                       (required ~label:"size" int)
-                      (required ~label:"active" bool))))
-             (my_explicit 5 ~label:"old-unikernel-info2"
-                (sequence_of
-                   (sequence2
-                      (required ~label:"name" name)
-                      (required ~label:"info" old_unikernel_info2)))))
+                      (required ~label:"active" bool)))))
           (choice6
              (my_explicit 6 ~label:"unikernel-image"
                 (sequence2
@@ -1074,7 +953,7 @@ let success name =
                       (required ~label:"name" name)
                       (required ~label:"info" unikernel_info))))))
 
-let payload name =
+let payload =
   let f = function
     | `C1 cmd -> `Command cmd
     | `C2 s -> `Success s
@@ -1089,27 +968,23 @@ let payload name =
   Asn.S.map f g @@
   Asn.S.(choice4
            (my_explicit 0 ~label:"command" wire_command)
-           (my_explicit 1 ~label:"reply" (success name))
+           (my_explicit 1 ~label:"reply" success)
            (my_explicit 2 ~label:"failure" utf8_string)
            (my_explicit 3 ~label:"data" data))
 
-let wire name =
+let wire =
   Asn.S.(sequence2
-           (required ~label:"header" (header name))
-           (required ~label:"payload" (payload name)))
+           (required ~label:"header" header)
+           (required ~label:"payload" payload))
 
 let wire_of_str, wire_to_str =
-  let dec, enc = projections_of (wire name)
-  and dec_old, enc_old = projections_of (wire old_name)
-  in
+  let dec, enc = projections_of wire in
   (fun buf ->
     let* version = decode_wire_version buf in
     match version with
-    | `AV3 | `AV4 -> dec_old buf
     | `AV5 -> dec buf),
   (fun (header, payload) ->
     match header.version with
-    | `AV3 | `AV4 -> enc_old (header, payload)
     | `AV5 -> enc (header, payload))
 
 let trie e =

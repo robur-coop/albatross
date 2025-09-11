@@ -293,38 +293,6 @@ let handle_unikernel_cmd t id =
     | Some (size, _active) -> Some size
   in
   function
-  | `Old_unikernel_info1 ->
-    Logs.debug (fun m -> m "old info1 %a" Name.pp id) ;
-    let empty_image unikernel = { unikernel.Unikernel.config with image = "" } in
-    let unikernels =
-      match Name.name id with
-      | None ->
-        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, empty_image unikernel) :: unikernels) []
-      | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, empty_image unikernel ])
-          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
-    in
-    Ok (t, `End (`Success (`Old_unikernels unikernels)))
-  | `Old_unikernel_get ->
-    Logs.debug (fun m -> m "old get %a" Name.pp id) ;
-    begin match Vmm_trie.find id t.resources.Vmm_resources.unikernels with
-      | None -> Error (`Msg "get: no unikernel found")
-      | Some u ->
-        Ok (t, `End (`Success (`Old_unikernels [ (id, u.Unikernel.config) ])))
-    end
-  | `Old_unikernel_info2 ->
-    Logs.debug (fun m -> m "old info2 %a" Name.pp id) ;
-    let infos =
-      match Name.name id with
-      | None ->
-        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
-      | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
-          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
-    in
-    Ok (t, `End (`Success (`Old_unikernel_info2 infos)))
   | `Old_unikernel_info3 ->
     Logs.debug (fun m -> m "old info3 %a" Name.pp id) ;
     let infos =
