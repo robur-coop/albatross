@@ -220,11 +220,11 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ systemd influx tmpdir dbdir no_drop_label =
+let jump _ systemd influx tmpdir dbdir no_drop =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
-  Vmm_unix.drop_label := not no_drop_label;
+  Vmm_unix.drop_path := not no_drop;
   state := Vmm_vmmd.init_block_devices !state;
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m
@@ -327,9 +327,9 @@ let jump _ systemd influx tmpdir dbdir no_drop_label =
 
 open Cmdliner
 
-let no_drop_label =
+let no_drop_path =
   let doc = "Do not drop unikernel path for --name (use --name=path:hello instead of --name=hello)" in
-  Arg.(value & flag & info [ "no-drop-label" ] ~doc)
+  Arg.(value & flag & info [ "no-drop-path" ] ~doc)
 
 let cmd =
   let doc = "Albatross daemon" in
@@ -352,7 +352,7 @@ let cmd =
       creation and attaching tap devices to bridges."
   ] in
   let term =
-    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir $ no_drop_label)
+    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir $ no_drop_path)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term

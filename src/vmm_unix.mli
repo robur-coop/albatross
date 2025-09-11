@@ -2,7 +2,7 @@
 
 open Vmm_core
 
-val drop_label : bool ref
+val drop_path : bool ref
 
 val openfile : string -> Unix.open_flag list -> int -> Unix.file_descr
 
