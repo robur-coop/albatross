@@ -212,11 +212,14 @@ let prepare_update ~happy_eyeballs level host dryrun = function
             Logs.err (fun m -> m "error in HTTP interaction: %s" msg);
             Lwt.return (Error Http_error)
           | Ok unikernel ->
-            let bridges = List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; mac } ->
-                unikernel_device, Some host_device, Some mac)
+            let bridges =
+              List.map
+                (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; mac } ->
+                   unikernel_device, Some host_device, Some mac)
                 bridges
-            and block_devices = List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; sector_size ; _ } ->
-                unikernel_device, Some host_device, Some sector_size)
+            and block_devices =
+              List.map (fun Vmm_core.Unikernel.{ unikernel_device ; host_device ; sector_size ; _ } ->
+                  unikernel_device, Some host_device, Some sector_size)
                 block_devices
             in
             let r =
@@ -232,7 +235,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
                 | 0 -> false, unikernel
                 | _ -> true, Vmm_compress.compress ~level unikernel
               in
-              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; cpuid; memory ; block_devices ; bridges ; argv } in
+              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = true; cpuid; memory ; block_devices ; bridges ; argv } in
               Lwt.return (Ok (`Unikernel_force_create config))
     end
   | Ok w ->
@@ -241,7 +244,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
     Lwt.return (Error Communication_failed)
   | Error _ -> Lwt.return (Error Communication_failed)
 
-let create_unikernel force image startup cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
+let create_unikernel force image startup no_add_name cpuid memory argv block_devices bridges compression restart_on_fail exit_codes =
   let ( let* ) = Result.bind in
   let* () =
     if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
@@ -268,7 +271,7 @@ let create_unikernel force image startup cpuid memory argv block_devices bridges
     let exits = match exit_codes with [] -> None | xs -> Some (Vmm_core.IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
-  let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv } in
+  let config = { Vmm_core.Unikernel.typ = `Solo5 ; compressed ; image ; fail_behaviour ; startup ; add_name = not no_add_name ; cpuid ; memory ; block_devices ; bridges ; argv } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let policy unikernels memory cpus block bridgesl =
@@ -788,13 +791,13 @@ let get () compression name dst =
 
 let destroy () = jump (`Unikernel_cmd `Unikernel_destroy)
 
-let create () force image startup cpuid memory argv block network compression restart_on_fail exit_code
+let create () force image startup no_add_name cpuid memory argv block network compression restart_on_fail exit_code
   name d cert key ca key_type tmpdir =
-  match create_unikernel force image startup cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code with
+  match create_unikernel force image startup no_add_name cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code with
   | Ok cmd -> jump (`Unikernel_cmd cmd) name d cert key ca key_type tmpdir
   | Error _ as e -> e
 
-let restart () replace cpuid memory argv block_devices bridges restart_on_fail exit_codes name d cert key ca key_type tmpdir =
+let restart () replace startup no_add_name cpuid memory argv block_devices bridges restart_on_fail exit_codes name d cert key ca key_type tmpdir =
   let ( let* ) = Result.bind in
   let* args =
     if replace then
@@ -815,7 +818,7 @@ let restart () replace cpuid memory argv block_devices bridges restart_on_fail e
         if restart_on_fail then `Restart exits else `Quit
       and argv = match argv with [] -> None | xs -> Some xs
       in
-      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; cpuid ; memory ; block_devices ; bridges ; argv })
+      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; startup ; add_name = not no_add_name ; cpuid ; memory ; block_devices ; bridges ; argv })
     else
       Ok None
   in
@@ -1407,6 +1410,14 @@ let replace_args =
   let doc = "Replace the arguments with the provided ones." in
   Arg.(value & flag & info [ "replace-arguments" ] ~doc)
 
+let startup =
+  let doc = "Startup priority (0 is highest, default is 50)." in
+  Arg.(value & opt (some int) None & info [ "startup" ] ~doc)
+
+let no_add_name =
+  let doc = "Do not add `--name=<UNIKERNEL-NAME>` to the unikernel arguments." in
+  Arg.(value & flag & info [ "no-add-name" ] ~doc)
+
 let restart_cmd =
   let doc = "Restarts a unikernel." in
   let man =
@@ -1414,7 +1425,7 @@ let restart_cmd =
      `P "Restarts a unikernel."]
   in
   let term =
-    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ replace_args $ cpu $ unikernel_mem $ args $ block $ net $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ replace_args $ startup $ no_add_name $ cpu $ unikernel_mem $ args $ block $ net $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1479,10 +1490,6 @@ let add_policy_cmd =
   in
   Cmd.v info term
 
-let startup =
-  let doc = "Startup priority (0 is highest, default is 50)." in
-  Arg.(value & opt (some int) None & info [ "startup" ] ~doc)
-
 let create_cmd =
   let doc = "Creates a unikernel." in
   let man =
@@ -1490,7 +1497,7 @@ let create_cmd =
      `P "Creates a unikernel."]
   in
   let term =
-    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ startup $ cpu $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ force $ image $ startup $ no_add_name $ cpu $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "create" ~doc ~man ~exits
   in
   Cmd.v info term

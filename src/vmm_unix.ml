@@ -388,6 +388,8 @@ let cpuset cpu =
   | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
+let drop_label = ref true
+
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let bridge_taps =
     List.map (fun (bridge, tap, mac) ->
@@ -410,6 +412,26 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
           blocks)
   and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
   and mem = "--mem=" ^ string_of_int config.Unikernel.memory
+  in
+  let argv =
+    (* we don't know whether the unikernel understands the --name argument
+       (since mirage 4.10.0), we restart on argument failure without the added
+       name. If the operator provided a --name themselves, the unikernel will
+       abort on first startup ('option --name cannot be repeated') with exit
+       code 64, and will be restarted without the automatically inserted --name
+    *)
+    if config.add_name then
+      let name =
+        if !drop_label then
+          match Name.name name with
+          | None -> Name.to_string name
+          | Some name -> name
+        else
+          Name.to_string name
+      in
+      ("--name=" ^ name) :: argv
+    else
+      argv
   in
   let* cpuset = cpuset config.Unikernel.cpuid in
   let* target, version =

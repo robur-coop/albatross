@@ -107,6 +107,7 @@ module Unikernel : sig
     image : string  ;
     fail_behaviour : fail_behaviour;
     startup : int option ;
+    add_name : bool ;
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
@@ -126,6 +127,8 @@ module Unikernel : sig
 
   type arguments = {
     fail_behaviour : fail_behaviour;
+    startup : int option;
+    add_name : bool;
     cpuid : int ;
     memory : int ;
     block_devices : (string * string option * int option) list ;

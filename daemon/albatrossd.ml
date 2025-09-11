@@ -30,7 +30,7 @@ let rec create stat_out cons_out data_out name config =
          Lwt.return (None, fail_cont ())
        | Ok (state', stat, data, name, unikernel) ->
          state := state';
-         (if Unikernel.restart_handler config then
+         (if Unikernel.restart_handler config || config.add_name then
             match Vmm_vmmd.register_restart !state name Lwt.task with
             | None -> ()
             | Some (state', task) ->
@@ -40,7 +40,11 @@ let rec create stat_out cons_out data_out name config =
                   Lwt_mutex.with_lock create_lock (fun () ->
                       let state', may = Vmm_vmmd.may_restart !state name in
                       state := state';
-                      if may && should_restart config name r then
+                      if may && config.add_name && match r with `Exit 64 -> true | _ -> false then
+                        (* argument error, and --name was injected *)
+                        create stat_out cons_out stub_data_out
+                          name { unikernel.Unikernel.config with add_name = false }
+                      else if may && Unikernel.restart_handler config && should_restart config name r then
                         create stat_out cons_out stub_data_out
                           name unikernel.Unikernel.config
                       else
@@ -216,10 +220,11 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ systemd influx tmpdir dbdir =
+let jump _ systemd influx tmpdir dbdir no_drop_label =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
+  Vmm_unix.drop_label := not no_drop_label;
   state := Vmm_vmmd.init_block_devices !state;
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m
@@ -322,6 +327,10 @@ let jump _ systemd influx tmpdir dbdir =
 
 open Cmdliner
 
+let no_drop_label =
+  let doc = "Do not drop unikernel path for --name (use --name=path:hello instead of --name=hello)" in
+  Arg.(value & flag & info [ "no-drop-label" ] ~doc)
+
 let cmd =
   let doc = "Albatross daemon" in
   let man = [
@@ -343,7 +352,7 @@ let cmd =
       creation and attaching tap devices to bridges."
   ] in
   let term =
-    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir)
+    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir $ no_drop_label)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
