@@ -567,52 +567,40 @@ let unikernel_arguments_old =
 
 let unikernel_cmd =
   let f = function
-    | `C1 `C1 unikernel -> `Unikernel_create unikernel
-    | `C1 `C2 unikernel -> `Unikernel_force_create unikernel
-    | `C1 `C3 () -> `Unikernel_destroy
-    | `C1 `C4 unikernel -> `Unikernel_create unikernel
-    | `C1 `C5 unikernel -> `Unikernel_force_create unikernel
-    | `C2 `C1 () -> `Unikernel_get 0
-    | `C2 `C2 unikernel -> `Unikernel_create unikernel
-    | `C2 `C3 unikernel -> `Unikernel_force_create unikernel
-    | `C2 `C4 level -> `Unikernel_get level
-    | `C3 `C1 () -> `Unikernel_restart None
-    | `C3 `C2 () -> `Old_unikernel_info3
-    | `C3 `C3 `C1 () -> `Unikernel_restart None
-    | `C3 `C3 `C2 args -> `Unikernel_restart (Some args)
-    | `C3 `C3 `C3 args -> `Unikernel_restart (Some args)
-    | `C3 `C4 () -> `Old_unikernel_info4
-    | `C3 `C5 unikernel -> `Unikernel_create unikernel
-    | `C3 `C6 unikernel -> `Unikernel_force_create unikernel
-    | `C4 `C1 () -> `Unikernel_info
-    | `C4 `C2 () -> assert false
+    | `C1 `C1 () -> `Unikernel_destroy
+    | `C1 `C2 unikernel -> `Unikernel_create unikernel
+    | `C1 `C3 unikernel -> `Unikernel_force_create unikernel
+    | `C1 `C4 level -> `Unikernel_get level
+    | `C1 `C5 () -> `Unikernel_restart None
+    | `C1 `C6 () -> `Old_unikernel_info3
+    | `C2 `C1 `C1 () -> `Unikernel_restart None
+    | `C2 `C1 `C2 args -> `Unikernel_restart (Some args)
+    | `C2 `C1 `C3 args -> `Unikernel_restart (Some args)
+    | `C2 `C2 () -> `Old_unikernel_info4
+    | `C2 `C3 unikernel -> `Unikernel_create unikernel
+    | `C2 `C4 unikernel -> `Unikernel_force_create unikernel
+    | `C2 `C5 () -> `Unikernel_info
   and g = function
-    | `Unikernel_create unikernel -> `C3 (`C5 unikernel)
-    | `Unikernel_force_create unikernel -> `C3 (`C6 unikernel)
-    | `Unikernel_destroy -> `C1 (`C3 ())
-    | `Unikernel_get level -> `C2 (`C4 level)
-    | `Unikernel_restart None -> `C3 (`C3 (`C1 ()))
-    | `Unikernel_restart (Some args) -> `C3 (`C3 (`C3 args))
-    | `Old_unikernel_info3 -> `C3 (`C2 ())
-    | `Old_unikernel_info4 -> `C3 (`C4 ())
-    | `Unikernel_info -> `C4 (`C1 ())
+    | `Unikernel_create unikernel -> `C2 (`C3 unikernel)
+    | `Unikernel_force_create unikernel -> `C2 (`C4 unikernel)
+    | `Unikernel_destroy -> `C1 (`C1 ())
+    | `Unikernel_get level -> `C1 (`C4 level)
+    | `Unikernel_restart None -> `C2 (`C1 (`C1 ()))
+    | `Unikernel_restart (Some args) -> `C2 (`C1 (`C3 args))
+    | `Old_unikernel_info3 -> `C1 (`C6 ())
+    | `Old_unikernel_info4 -> `C2 (`C2 ())
+    | `Unikernel_info -> `C2 (`C5 ())
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
-          (choice5
-             (my_explicit 1 ~label:"create-OLD1" v1_unikernel_config)
-             (my_explicit 2 ~label:"force-create-OLD1" v1_unikernel_config)
-             (my_explicit 3 ~label:"destroy" null)
-             (my_explicit 4 ~label:"create-OLD2" v2_unikernel_config)
-             (my_explicit 5 ~label:"force-create-OLD2" v2_unikernel_config))
-          (choice4
-             (my_explicit 8 ~label:"get-OLD2" null)
-             (my_explicit 9 ~label:"create" v3_unikernel_config)
-             (my_explicit 10 ~label:"force-create" v3_unikernel_config)
-             (my_explicit 11 ~label:"get" int))
+  Asn.S.(choice2
           (choice6
+             (my_explicit 3 ~label:"destroy" null)
+             (my_explicit 9 ~label:"create-OLD" v3_unikernel_config)
+             (my_explicit 10 ~label:"force-create-OLD" v3_unikernel_config)
+             (my_explicit 11 ~label:"get" int)
              (my_explicit 12 ~label:"restart-OLD" null)
-             (my_explicit 13 ~label:"info-OLD3" null)
+             (my_explicit 13 ~label:"info-OLD3" null))
+          (choice5
              (my_explicit 14 ~label:"restart"
                 (choice3
                    (my_explicit 0 ~label:"no arguments" null)
@@ -620,10 +608,8 @@ let unikernel_cmd =
                    (my_explicit 2 ~label:"new arguments" unikernel_arguments)))
              (my_explicit 15 ~label:"info-OLD4" null)
              (my_explicit 16 ~label:"create" unikernel_config)
-             (my_explicit 17 ~label:"force-create" unikernel_config))
-          (choice2
-             (my_explicit 18 ~label:"info" null)
-             (my_explicit 19 ~label:"NYI" null)))
+             (my_explicit 17 ~label:"force-create" unikernel_config)
+             (my_explicit 18 ~label:"info" null)))
 
 let policy_cmd =
   let f = function
@@ -667,7 +653,7 @@ let block_cmd =
              (my_explicit 0 ~label:"info" null)
              (my_explicit 1 ~label:"add" int)
              (my_explicit 2 ~label:"remove" null)
-             (my_explicit 3 ~label:"add-OLD2"
+             (my_explicit 3 ~label:"add-OLD"
                 (sequence3
                    (required ~label:"size" int)
                    (required ~label:"compress" bool)
