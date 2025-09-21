@@ -692,50 +692,47 @@ let unikernel_cmd =
     | `C1 `C2 unikernel -> `Unikernel_create unikernel
     | `C1 `C3 unikernel -> `Unikernel_force_create unikernel
     | `C1 `C4 level -> `Unikernel_get level
-    | `C1 `C5 () -> `Unikernel_restart None
-    | `C2 `C1 `C1 () -> `Unikernel_restart None
-    | `C2 `C1 `C2 args -> `Unikernel_restart (Some args)
-    | `C2 `C1 `C3 args -> `Unikernel_restart (Some args)
-    | `C2 `C1 `C4 args -> `Unikernel_restart (Some args)
-    | `C2 `C2 () -> `Old_unikernel_info4
-    | `C2 `C3 unikernel -> `Unikernel_create unikernel
-    | `C2 `C4 unikernel -> `Unikernel_force_create unikernel
-    | `C2 `C5 () -> `Old_unikernel_info5
-    | `C2 `C6 () -> `Unikernel_info
-    | `C3 `C1 unikernel -> `Unikernel_create unikernel
-    | `C3 `C2 unikernel -> `Unikernel_force_create unikernel
+    | `C1 `C5 `C1 () -> `Unikernel_restart None
+    | `C1 `C5 `C2 args -> `Unikernel_restart (Some args)
+    | `C1 `C5 `C3 args -> `Unikernel_restart (Some args)
+    | `C1 `C5 `C4 args -> `Unikernel_restart (Some args)
+    | `C1 `C6 () -> `Old_unikernel_info4
+    | `C2 `C1 unikernel -> `Unikernel_create unikernel
+    | `C2 `C2 unikernel -> `Unikernel_force_create unikernel
+    | `C2 `C3 () -> `Old_unikernel_info5
+    | `C2 `C4 () -> `Unikernel_info
+    | `C2 `C5 unikernel -> `Unikernel_create unikernel
+    | `C2 `C6 unikernel -> `Unikernel_force_create unikernel
   and g = function
-    | `Unikernel_create unikernel -> `C3 (`C1 unikernel)
-    | `Unikernel_force_create unikernel -> `C3 (`C2 unikernel)
+    | `Unikernel_create unikernel -> `C2 (`C5 unikernel)
+    | `Unikernel_force_create unikernel -> `C2 (`C6 unikernel)
     | `Unikernel_destroy -> `C1 (`C1 ())
     | `Unikernel_get level -> `C1 (`C4 level)
-    | `Unikernel_restart None -> `C2 (`C1 (`C1 ()))
-    | `Unikernel_restart (Some args) -> `C2 (`C1 (`C4 args))
-    | `Old_unikernel_info4 -> `C2 (`C2 ())
-    | `Old_unikernel_info5 -> `C2 (`C5 ())
-    | `Unikernel_info -> `C2 (`C6 ())
+    | `Unikernel_restart None -> `C1 (`C5 (`C1 ()))
+    | `Unikernel_restart (Some args) -> `C1 (`C5 (`C4 args))
+    | `Old_unikernel_info4 -> `C1 (`C6 ())
+    | `Old_unikernel_info5 -> `C2 (`C3 ())
+    | `Unikernel_info -> `C2 (`C4 ())
   in
   Asn.S.map f g @@
-  Asn.S.(choice3
-          (choice5
+  Asn.S.(choice2
+          (choice6
              (my_explicit 3 ~label:"destroy" null)
              (my_explicit 9 ~label:"create-OLD" v3_unikernel_config)
              (my_explicit 10 ~label:"force-create-OLD" v3_unikernel_config)
              (my_explicit 11 ~label:"get" int)
-             (my_explicit 12 ~label:"restart-OLD" null))
-          (choice6
              (my_explicit 14 ~label:"restart"
                 (choice4
                    (my_explicit 0 ~label:"no arguments" null)
                    (my_explicit 1 ~label:"new arguments OLD2" unikernel_arguments_v0)
                    (my_explicit 2 ~label:"new arguments OLD" unikernel_arguments_v1)
                    (my_explicit 3 ~label:"new arguments" unikernel_arguments)))
-             (my_explicit 15 ~label:"info-OLD4" null)
+             (my_explicit 15 ~label:"info-OLD4" null))
+          (choice6
              (my_explicit 16 ~label:"create-OLD2" v4_unikernel_config)
              (my_explicit 17 ~label:"force-create-OLD2" v4_unikernel_config)
              (my_explicit 18 ~label:"info-OLD5" null)
-             (my_explicit 19 ~label:"info" null))
-          (choice2
+             (my_explicit 19 ~label:"info" null)
              (my_explicit 20 ~label:"create" unikernel_config)
              (my_explicit 21 ~label:"force-create" unikernel_config)))
 
