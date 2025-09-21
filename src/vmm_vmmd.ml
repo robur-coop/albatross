@@ -306,7 +306,7 @@ let handle_unikernel_cmd t id =
     in
     Ok (t, `End (`Success (`Old_unikernel_info3 infos)))
   | `Old_unikernel_info4 ->
-    Logs.debug (fun m -> m "info %a" Name.pp id) ;
+    Logs.debug (fun m -> m "old info4 %a" Name.pp id) ;
     let infos =
       match Name.name id with
       | None ->
