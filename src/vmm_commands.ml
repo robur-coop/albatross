@@ -56,7 +56,6 @@ type unikernel_cmd = [
   | `Unikernel_restart of Unikernel.arguments option
   | `Unikernel_destroy
   | `Unikernel_get of int
-  | `Old_unikernel_info3
   | `Old_unikernel_info4
 ]
 
@@ -76,7 +75,6 @@ let pp_unikernel_cmd ~verbose ppf = function
       args
   | `Unikernel_destroy -> Fmt.string ppf "unikernel destroy"
   | `Unikernel_get level -> Fmt.pf ppf "unikernel get compress level %d" level
-  | `Old_unikernel_info3 -> Fmt.string ppf "old unikernel info3"
   | `Old_unikernel_info4 -> Fmt.string ppf "old unikernel info4"
 
 type policy_cmd = [
@@ -159,7 +157,6 @@ type success = [
   | `String of string
   | `Policies of (Name.t * Policy.t) list
   | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
-  | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list
   | `Old_block_device_image of bool * string

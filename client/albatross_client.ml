@@ -91,7 +91,7 @@ let output_result state ((hdr, reply) as wire) =
         write_to_file name compressed image;
         Lwt.return (Ok `End)
       | `Empty | `String _ | `Block_devices _
-      | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Unikernel_info _
+      | `Old_unikernel_info4 _ | `Unikernel_info _
       | `Policies _ ->
         begin match state with
           | `Single | `End -> Lwt.return (Ok `End)
@@ -181,8 +181,6 @@ let http_get_binary ~happy_eyeballs host job build =
 
 let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
-  | Ok (_hdr, `Success (`Old_unikernel_info3
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info4
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; _ } ])) ->

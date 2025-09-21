@@ -36,7 +36,6 @@ type unikernel_cmd = [
   | `Unikernel_restart of Unikernel.arguments option
   | `Unikernel_destroy
   | `Unikernel_get of int
-  | `Old_unikernel_info3
   | `Old_unikernel_info4
 ]
 
@@ -87,7 +86,6 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
-  | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
