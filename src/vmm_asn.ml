@@ -571,7 +571,6 @@ let unikernel_cmd =
     | `C1 `C2 unikernel -> `Unikernel_create unikernel
     | `C1 `C3 unikernel -> `Unikernel_force_create unikernel
     | `C1 `C4 level -> `Unikernel_get level
-    | `C1 `C5 () -> `Unikernel_restart None
     | `C2 `C1 `C1 () -> `Unikernel_restart None
     | `C2 `C1 `C2 args -> `Unikernel_restart (Some args)
     | `C2 `C1 `C3 args -> `Unikernel_restart (Some args)
@@ -591,12 +590,11 @@ let unikernel_cmd =
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-          (choice5
+          (choice4
              (my_explicit 3 ~label:"destroy" null)
              (my_explicit 9 ~label:"create-OLD" v3_unikernel_config)
              (my_explicit 10 ~label:"force-create-OLD" v3_unikernel_config)
-             (my_explicit 11 ~label:"get" int)
-             (my_explicit 12 ~label:"restart-OLD" null))
+             (my_explicit 11 ~label:"get" int))
           (choice5
              (my_explicit 14 ~label:"restart"
                 (choice3
