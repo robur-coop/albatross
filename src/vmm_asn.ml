@@ -572,7 +572,6 @@ let unikernel_cmd =
     | `C1 `C3 unikernel -> `Unikernel_force_create unikernel
     | `C1 `C4 level -> `Unikernel_get level
     | `C1 `C5 () -> `Unikernel_restart None
-    | `C1 `C6 () -> `Old_unikernel_info3
     | `C2 `C1 `C1 () -> `Unikernel_restart None
     | `C2 `C1 `C2 args -> `Unikernel_restart (Some args)
     | `C2 `C1 `C3 args -> `Unikernel_restart (Some args)
@@ -587,19 +586,17 @@ let unikernel_cmd =
     | `Unikernel_get level -> `C1 (`C4 level)
     | `Unikernel_restart None -> `C2 (`C1 (`C1 ()))
     | `Unikernel_restart (Some args) -> `C2 (`C1 (`C3 args))
-    | `Old_unikernel_info3 -> `C1 (`C6 ())
     | `Old_unikernel_info4 -> `C2 (`C2 ())
     | `Unikernel_info -> `C2 (`C5 ())
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-          (choice6
+          (choice5
              (my_explicit 3 ~label:"destroy" null)
              (my_explicit 9 ~label:"create-OLD" v3_unikernel_config)
              (my_explicit 10 ~label:"force-create-OLD" v3_unikernel_config)
              (my_explicit 11 ~label:"get" int)
-             (my_explicit 12 ~label:"restart-OLD" null)
-             (my_explicit 13 ~label:"info-OLD3" null))
+             (my_explicit 12 ~label:"restart-OLD" null))
           (choice5
              (my_explicit 14 ~label:"restart"
                 (choice3
@@ -725,60 +722,6 @@ let data =
                  (my_explicit 0 ~label:"some data" octet_string)
                  (my_explicit 1 ~label:"no data" null))))
 
-let old_unikernel_info3 =
-  let open Unikernel in
-  let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started)))))))) =
-    let bridges = match bridges with None -> [] | Some xs ->
-      List.map (fun (unikernel_device, host_device, mac) ->
-          { unikernel_device ;
-            host_device = Option.value ~default:unikernel_device host_device ;
-            (* We can't synthesize the mac, so use a dummy value *)
-            mac = Option.value ~default:Macaddr.broadcast mac })
-        xs
-    and block_devices = match blocks with None -> [] | Some xs ->
-      List.map (fun (unikernel_device, host_device, sector_size) ->
-          { unikernel_device ;
-            host_device = Option.value ~default:unikernel_device host_device ;
-            sector_size = Option.value ~default:512 (* TODO: default from solo5-hvt *) sector_size ;
-            size = 0 })
-        xs
-    and started = Option.value ~default:Ptime.epoch started
-    and startup = None
-    in
-    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
-  and g (unikernel : info) =
-    let bridges = match unikernel.bridges with
-      | [] -> None
-      | xs -> Some (List.map (fun { unikernel_device ; host_device ; mac } ->
-          unikernel_device, Some host_device, Some mac) xs)
-    and blocks = match unikernel.block_devices with
-      | [] -> None
-      | xs -> Some (List.map (fun { unikernel_device ; host_device ; sector_size ; _ } ->
-          unikernel_device, Some host_device, Some sector_size) xs)
-    in
-    (unikernel.typ, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, Some unikernel.started))))))))
-  in
-  Asn.S.(map f g @@ sequence @@
-           (required ~label:"typ" typ)
-         @ (required ~label:"fail-behaviour" fail_behaviour)
-         @ (required ~label:"cpuid" int)
-         @ (required ~label:"memory" int)
-         @ (required ~label:"digest" octet_string)
-         @ (optional ~label:"blocks"
-              (my_explicit 0 (set_of
-                                (sequence3
-                                   (required ~label:"unikernel-device" utf8_string)
-                                   (optional ~label:"host-device" utf8_string)
-                                   (optional ~label:"sector-size" int)))))
-         @ (optional ~label:"bridges"
-              (my_explicit 1 (set_of
-                                (sequence3
-                                   (required ~label:"unikernel-device" utf8_string)
-                                   (optional ~label:"host-device" utf8_string)
-                                   (optional ~label:"mac" mac_addr)))))
-         @ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string)))
-        -@ (optional ~label:"started" (my_explicit 3 generalized_time)))
-
 let old_unikernel_info4 =
   let open Unikernel in
   let f (typ, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started)))))))) =
@@ -895,10 +838,9 @@ let success =
     | `C1 `C4 blocks -> `Block_devices blocks
     | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
     | `C2 `C2 (compress, data) -> `Old_block_device_image (compress, data)
-    | `C2 `C3 unikernels -> `Old_unikernel_info3 unikernels
-    | `C2 `C4 unikernels -> `Old_unikernel_info4 unikernels
-    | `C2 `C5 compress -> `Block_device_image compress
-    | `C2 `C6 unikernels -> `Unikernel_info unikernels
+    | `C2 `C3 unikernels -> `Old_unikernel_info4 unikernels
+    | `C2 `C4 compress -> `Block_device_image compress
+    | `C2 `C5 unikernels -> `Unikernel_info unikernels
   and g = function
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
@@ -906,10 +848,9 @@ let success =
     | `Block_devices blocks -> `C1 (`C4 blocks)
     | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
     | `Old_block_device_image (compress, data) -> `C2 (`C2 (compress, data))
-    | `Old_unikernel_info3 unikernels -> `C2 (`C3 unikernels)
-    | `Old_unikernel_info4 unikernels -> `C2 (`C4 unikernels)
-    | `Block_device_image compress -> `C2 (`C5 compress)
-    | `Unikernel_info unikernels -> `C2 (`C6 unikernels)
+    | `Old_unikernel_info4 unikernels -> `C2 (`C3 unikernels)
+    | `Block_device_image compress -> `C2 (`C4 compress)
+    | `Unikernel_info unikernels -> `C2 (`C5 unikernels)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
@@ -927,7 +868,7 @@ let success =
                       (required ~label:"name" name)
                       (required ~label:"size" int)
                       (required ~label:"active" bool)))))
-          (choice6
+          (choice5
              (my_explicit 6 ~label:"unikernel-image"
                 (sequence2
                    (required ~label:"compressed" bool)
@@ -936,11 +877,6 @@ let success =
                 (sequence2
                    (required ~label:"compressed" bool)
                    (required ~label:"image" octet_string)))
-             (my_explicit 8 ~label:"old-unikernel-info3"
-                (sequence_of
-                   (sequence2
-                      (required ~label:"name" name)
-                      (required ~label:"info" old_unikernel_info3))))
              (my_explicit 9 ~label:"old-unikernel-info4"
                 (sequence_of
                    (sequence2

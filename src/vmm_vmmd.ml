@@ -293,18 +293,6 @@ let handle_unikernel_cmd t id =
     | Some (size, _active) -> Some size
   in
   function
-  | `Old_unikernel_info3 ->
-    Logs.debug (fun m -> m "old info3 %a" Name.pp id) ;
-    let infos =
-      match Name.name id with
-      | None ->
-        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
-          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
-      | Some _ ->
-        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
-          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
-    in
-    Ok (t, `End (`Success (`Old_unikernel_info3 infos)))
   | `Old_unikernel_info4 ->
     Logs.debug (fun m -> m "old info4 %a" Name.pp id) ;
     let infos =
