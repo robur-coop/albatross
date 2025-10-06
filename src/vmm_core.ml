@@ -54,6 +54,7 @@ module Name = struct
      name label -- in all these labels, only letters, digits, hyphens, and dot
      are allowed.
   *)
+  type label = string
   type path = string list
   type t = path * string option
 
@@ -74,6 +75,18 @@ module Name = struct
         | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '.' -> true
         | _ -> false)
       s (* only LDH (letters, digits, hyphen, period)! *)
+
+  let label_of_string str =
+    if valid_label str then
+      Ok str
+    else
+      Error (`Msg "invalid label (only [a-zA-Z0-9-.] allowed, 1 to 63 chars)")
+
+  let string_of_label label = label
+
+  let compare_label a b =
+    (* we normalize to lowercase ascii *)
+    String.compare (String.lowercase_ascii a) (String.lowercase_ascii b)
 
   let path_equal (x, _) (y, _) =
     let rec equal x y = match x, y with

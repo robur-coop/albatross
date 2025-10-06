@@ -75,6 +75,12 @@ module Name : sig
     are the first three bytes of the MD5 digest of [bridge ^ "." ^ to_string t].
 
     i.e., [mac ["foo";"bar"] "default" = 00:80:41:1b:11:78] *)
+
+  type label
+
+  val label_of_string : string -> (label, [> `Msg of string ]) result
+  val string_of_label : label -> string
+  val compare_label : label -> label -> int
 end
 
 module Policy : sig
