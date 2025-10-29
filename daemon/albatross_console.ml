@@ -48,8 +48,12 @@ let read_console id name ring fd =
             match String.split_on_char '\n' data with
             | [] -> assert false
             | [ x ] ->
-              (* if there is no newline, drop *)
-              `Drop, [ x ^ " [truncated]" ], ""
+              if String.length x >= 512 then
+                (* if there is no newline, drop *)
+                `Drop, [ x ^ " [truncated]" ], ""
+              else
+                (* or wait for more data *)
+                `Read, [], x
             | lines ->
               (* otherwise continue normal operations *)
               let lines, slack = get_slack lines in
