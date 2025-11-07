@@ -65,8 +65,7 @@ let append_name prefix name =
     Option.fold
       ~none:pre_path
       ~some:(fun prefix_name ->
-          let str = Vmm_core.Name.Label.to_string prefix_name in
-          Vmm_core.Name.Path.append_exn pre_path str)
+          Vmm_core.Name.Path.append_label pre_path prefix_name)
       (Vmm_core.Name.name prefix)
   in
   Option.fold
