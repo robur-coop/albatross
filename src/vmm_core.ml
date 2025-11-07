@@ -54,55 +54,99 @@ module Name = struct
      name label -- in all these labels, only letters, digits, hyphens, and dot
      are allowed.
   *)
-  type label = string
-  type path = string list
-  type t = path * string option
+  module Label = struct
+    type t = string
 
-  (* from OCaml 4.13 bytes.ml *)
-  let for_all p s =
-    let n = String.length s in
-    let rec loop i =
-      if i = n then true
-      else if p (String.unsafe_get s i) then loop (succ i)
-      else false in
-    loop 0
+    let [@inline always] valid s =
+      String.length s < 64 &&
+      String.length s > 0 &&
+      String.get s 0 <> '-' && (* leading may not be '-' *)
+      String.for_all (function
+          | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '.' -> true
+          | _ -> false)
+        s (* only LDH (letters, digits, hyphen, period)! *)
 
-  let [@inline always] valid_label s =
-    String.length s < 64 &&
-    String.length s > 0 &&
-    String.get s 0 <> '-' && (* leading may not be '-' *)
-    for_all (function
-        | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '.' -> true
-        | _ -> false)
-      s (* only LDH (letters, digits, hyphen, period)! *)
+    let of_string str =
+      if valid str then
+        Ok str
+      else
+        Error (`Msg "invalid label (only [a-zA-Z0-9-.] allowed, 1 to 63 chars)")
 
-  let label_of_string str =
-    if valid_label str then
-      Ok str
-    else
-      Error (`Msg "invalid label (only [a-zA-Z0-9-.] allowed, 1 to 63 chars)")
+    let to_string label = label
 
-  let string_of_label label = label
+    let compare a b =
+      (* we normalize to lowercase ascii *)
+      String.compare (String.lowercase_ascii a) (String.lowercase_ascii b)
 
-  let compare_label a b =
-    (* we normalize to lowercase ascii *)
-    String.compare (String.lowercase_ascii a) (String.lowercase_ascii b)
+    let equal a b = compare a b = 0
 
-  let path_equal (x, _) (y, _) =
-    let rec equal x y = match x, y with
-      | [], [] -> true
-      | x::xs, y::ys -> String.equal x y && equal xs ys
-      | _ -> false
-    in
-    equal x y
+    let is_empty l = l = ""
+    let empty = ""
+  end
+
+  module Path = struct
+    type t = Label.t list
+
+    let rec compare a b = match a, b with
+      | [], [] -> 0
+      | x::xtl, y::ytl ->
+        (match Label.compare x y with
+         | 0 -> compare xtl ytl
+         | n -> n)
+      | _, [] -> 1
+      | [], _ -> -1
+
+    let equal a b = compare a b = 0
+
+    let to_labels p = p
+
+    let of_strings ps =
+      if List.for_all Label.valid ps then
+        Ok ps
+      else
+        Error (`Msg "invalid path")
+
+    let to_string x = String.concat ":" x
+
+    let of_string str =
+      let ps = String.split_on_char ':' str in
+      let ps = match ps with | ""::tl -> tl | ps -> ps in
+      if List.for_all Label.valid ps then
+        Ok ps
+      else
+        Error (`Msg "invalid path")
+
+    let root = []
+    let is_root = function [] -> true | _ -> false
+
+    let parent p = match List.rev p with
+      | [] -> []
+      | _::tl -> List.rev tl
+
+    let append prefix p =
+      if Label.valid p then
+        Ok (prefix @ [ p ])
+      else
+        Error (`Msg ("invalid path: " ^ p))
+
+    let append_exn prefix p =
+      match append prefix p with
+      | Ok p -> p
+      | Error `Msg m -> invalid_arg m
+
+    let append_label prefix p =
+      prefix @ [ p ]
+  end
+
+  type t = Path.t * Label.t option
 
   let opt_eq a b = match a, b with
     | None, None -> true
-    | Some a, Some b -> String.equal a b
+    | Some a, Some b -> Label.equal a b
     | _ -> false
 
-  let equal x y =
-    path_equal x y && opt_eq (snd x) (snd y)
+  let equal (p, l) (p', l') =
+    Path.equal p p' && opt_eq l l'
 
   let pp ppf (p, name) =
     Fmt.(pf ppf "[unikernel: %a:%a]" (list ~sep:(any ":") string) p
@@ -112,18 +156,9 @@ module Name = struct
 
   let name (_, name) = name
 
-  let create path name =
-    if valid_label name then
-      Ok (path, Some name)
-    else
-      Error (`Msg ("invalid name: " ^ name))
+  let create path name = path, Some name
 
   let create_of_path p = (p, None)
-
-  let create_exn path name =
-    match create path name with
-    | Ok t -> t
-    | Error `Msg m -> invalid_arg m
 
   let drop_path (_, name) = [], name
 
@@ -137,14 +172,6 @@ module Name = struct
       else
         invalid_arg "p' is not a prefix of p"
 
-  let path_to_list p = p
-
-  let path_of_list ps =
-    if List.for_all valid_label ps then
-      Ok ps
-    else
-      Error (`Msg "invalid path")
-
 (* not to be exposed *)
   let of_path ps = match List.rev ps with
     | name :: rev_path -> Ok (List.rev rev_path, Some name)
@@ -153,23 +180,17 @@ module Name = struct
   let to_list (p, name) =
     Option.fold ~none:p ~some:(fun n -> p @ [ n ]) name
 
+  let to_labels (p, name) =
+    Option.fold ~none:p ~some:(fun n -> p @ [ n ]) name
+
   let of_list ids =
-    match path_of_list ids with
+    match Path.of_strings ids with
     | Error _ -> Error (`Msg "invalid name")
     | Ok _ -> of_path ids
 
-  let path_to_string x = String.concat ":" x
-
-  let path_of_string str =
-    let ps = String.split_on_char ':' str in
-    let ps = match ps with | ""::tl -> tl | ps -> ps in
-    if List.for_all valid_label ps then
-      Ok ps
-    else
-      Error (`Msg "invalid path")
-
   let to_string (p, n) =
-    path_to_string p ^ ":" ^ Option.value ~default:"" n
+    Path.to_string p ^ ":" ^
+    Option.value ~default:"" (Option.map Label.to_string  n)
 
   let of_string str =
     let ( let* ) = Result.bind in
@@ -178,33 +199,15 @@ module Name = struct
     in
     let last_idx = String.length str - 1 in
     if String.get str last_idx = ':' then
-      let* path = path_of_string (String.sub str 0 last_idx) in
+      let* path = Path.of_string (String.sub str 0 last_idx) in
       Ok (path, None)
     else
-      match path_of_string str with
+      match Path.of_string str with
       | Error _ -> Error (`Msg "invalid name")
       | Ok ps -> of_path ps
 
-  let root_path = []
-  let is_root_path = function [] -> true | _ -> false
-
-  let parent_path p = match List.rev p with
-    | [] -> []
-    | _::tl -> List.rev tl
-
-  let root = (root_path, None)
-  let is_root (p, n) = is_root_path p && Option.is_none n
-
-  let append_path prefix p =
-    if valid_label p then
-      Ok (prefix @ [ p ])
-    else
-      Error (`Msg ("invalid path: " ^ p))
-
-  let append_path_exn prefix p =
-    match append_path prefix p with
-    | Ok p -> p
-    | Error `Msg m -> invalid_arg m
+  let root = Path.root, None
+  let is_root (p, n) = Path.is_root p && Option.is_none n
 
   let image_file name =
     let file = to_string name in

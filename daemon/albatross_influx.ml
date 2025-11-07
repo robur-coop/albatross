@@ -208,7 +208,7 @@ let rec read_sock_write_tcp no_drop c ?fd fam addr =
         else
           match Name.name orig with
           | None -> Name.to_string orig
-          | Some x -> x
+          | Some x -> Name.Label.to_string x
       in
       let ru = P.encode_ru name ru in
       let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in

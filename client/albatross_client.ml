@@ -697,9 +697,9 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
   | `Remote endp ->
     let* cert, certs, key = read_cert_key cert key in
     let* name_str =
-      match cmd, Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
-      | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name))
-      | _, true, Some name -> Ok name
+      match cmd, Vmm_core.Name.Path.is_root (Vmm_core.Name.path name), Vmm_core.Name.name name with
+      | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.Path.to_string (Vmm_core.Name.path name))
+      | _, true, Some name -> Ok (Vmm_core.Name.Label.to_string name)
       | _, true, None -> Ok "."
       | _, _, _ -> Error (`Msg "non-empty path")
     in
@@ -736,9 +736,9 @@ let jump ?data cmd name d cert key ca key_type tmpdir =
   | `Csr ->
     let r =
       let* name =
-        match cmd, Vmm_core.Name.is_root_path (Vmm_core.Name.path name), Vmm_core.Name.name name with
-        | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name))
-        | _, true, Some name -> Ok name
+        match cmd, Vmm_core.Name.Path.is_root (Vmm_core.Name.path name), Vmm_core.Name.name name with
+        | `Policy_cmd _, _, _ -> Ok (Vmm_core.Name.Path.to_string (Vmm_core.Name.path name))
+        | _, true, Some name -> Ok (Vmm_core.Name.Label.to_string name)
         | _, true, None -> Ok "."
         | _, _, _ -> Error (`Msg "non-empty path")
       in
@@ -901,13 +901,13 @@ let one_jump :
       let* (cert, certs, key) = Lwt.return (read_cert_key cert key) in
       let* name =
         match cmd,
-              Vmm_core.Name.is_root_path (Vmm_core.Name.path name),
+              Vmm_core.Name.Path.is_root (Vmm_core.Name.path name),
               Vmm_core.Name.name name
         with
          | `Policy_cmd _, _, _ ->
-           Lwt.return (Ok (Vmm_core.Name.path_to_string (Vmm_core.Name.path name)))
+           Lwt.return (Ok (Vmm_core.Name.Path.to_string (Vmm_core.Name.path name)))
          | _, true, Some name ->
-           Lwt.return (Ok name)
+           Lwt.return (Ok (Vmm_core.Name.Label.to_string name))
          | _, true, None ->
            Lwt.return (Ok ".")
          | _, _, _ ->
@@ -1286,12 +1286,12 @@ let count =
 
 let path_c =
   Arg.conv
-    (Name.path_of_string,
+    (Name.Path.of_string,
      fun ppf p -> Name.pp ppf (Name.create_of_path p))
 
 let opt_path =
   let doc = "Path to unikernels." in
-  Arg.(value & opt path_c Name.root_path & info [ "p" ; "path"] ~doc)
+  Arg.(value & opt path_c Name.Path.root & info [ "p" ; "path"] ~doc)
 
 let path =
   let doc = "Path to unikernels." in

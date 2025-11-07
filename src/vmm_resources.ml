@@ -11,13 +11,13 @@ type t = {
 }
 
 let pp ppf t =
-  Vmm_trie.fold Name.root_path t.policies
+  Vmm_trie.fold Name.Path.root t.policies
     (fun id p () ->
        Fmt.pf ppf "policy %a: %a@." Name.pp id Policy.pp p) () ;
-  Vmm_trie.fold Name.root_path t.block_devices
+  Vmm_trie.fold Name.Path.root t.block_devices
     (fun id (size, used) () ->
        Fmt.pf ppf "block device %a: %d MB (used %B)@." Name.pp id size used) () ;
-  Vmm_trie.fold Name.root_path t.unikernels
+  Vmm_trie.fold Name.Path.root t.unikernels
     (fun id unikernel () ->
        Fmt.pf ppf "unikernel %a: %a@." Name.pp id Unikernel.pp_config unikernel.Unikernel.config) ()
 
@@ -81,10 +81,10 @@ let unikernel_metrics =
 let report_unikernels t name =
   let rec doit path =
     let str =
-      if Name.is_root_path path then ":" else Name.path_to_string path
+      if Name.Path.is_root path then ":" else Name.Path.to_string path
     in
     Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, path));
-    if Name.is_root_path path then () else doit (Name.parent_path path)
+    if Name.Path.is_root path then () else doit (Name.Path.parent path)
   in
   doit (Name.path name)
 
@@ -131,7 +131,7 @@ let remove_policy t path = match find_policy t path with
       Vmm_trie.remove (Vmm_core.Name.create_of_path path) t.policies
     in
     Metrics.add policy_metrics
-      (fun x -> x (Name.path_to_string path)) (fun d -> d no_policy);
+      (fun x -> x (Name.Path.to_string path)) (fun d -> d no_policy);
     Ok { t with policies }
 
 let remove_block t name =
@@ -249,7 +249,7 @@ let commit_block t name =
 
 let check_policies_above t path sub =
   let rec go prefix =
-    if Name.is_root_path prefix then
+    if Name.Path.is_root prefix then
       Ok ()
     else
       let* () =
@@ -257,9 +257,9 @@ let check_policies_above t path sub =
         | None -> Ok ()
         | Some super -> Policy.is_smaller ~super ~sub
       in
-      go (Name.parent_path prefix)
+      go (Name.Path.parent prefix)
   in
-  go (Name.parent_path path)
+  go (Name.Path.parent path)
 
 let check_policies_below t path super =
   Vmm_trie.fold path t.policies (fun name policy res ->
@@ -311,5 +311,5 @@ let insert_policy t path p =
     fst (Vmm_trie.insert (Vmm_core.Name.create_of_path path) p t.policies)
   in
   Metrics.add policy_metrics
-    (fun x -> x (Name.path_to_string path)) (fun d -> d p);
+    (fun x -> x (Name.Path.to_string path)) (fun d -> d p);
   Ok { t with policies }

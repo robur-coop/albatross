@@ -425,7 +425,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
         if !drop_path then
           match Name.name name with
           | None -> Name.to_string name
-          | Some name -> name
+          | Some name -> Name.Label.to_string name
         else
           Name.to_string name
       in

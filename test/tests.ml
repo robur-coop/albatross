@@ -3,7 +3,7 @@ open Vmm_core
 let test_name = Alcotest.testable Name.pp Name.equal
 
 let test_path =
-  let pp_path ppf p = Fmt.string ppf (Name.path_to_string p)
+  let pp_path ppf p = Fmt.string ppf (Name.Path.to_string p)
   and eq_path a b = Name.equal (Name.create_of_path a) (Name.create_of_path b)
   in
   Alcotest.testable pp_path eq_path
@@ -14,7 +14,9 @@ let msg =
 
 let n_o_s s = Result.get_ok (Name.of_string s)
 
-let p_o_s s = Result.get_ok (Name.path_of_string s)
+let l_o_s s = Result.get_ok (Name.Label.of_string s)
+
+let p_o_s s = Result.get_ok (Name.Path.of_string s)
 
 let root_is_root () =
   Alcotest.(check (result test_name msg) "root is really root"
@@ -27,30 +29,30 @@ let foo_bar_path () =
 
 let foo_bar_name () =
   Alcotest.(check (result test_name msg) "foo:bar is decoded correctly"
-              (Ok (Name.create_exn (p_o_s "foo") "bar"))
+              (Ok (Name.create (p_o_s "foo") (l_o_s "bar")))
               (Name.of_string "foo:bar"))
 
 let foo_bar_my_unikernel_name () =
   Alcotest.(check (result test_name msg) "foo:bar:my-unikernel.hello is decoded correctly"
-              (Ok (Name.create_exn (p_o_s "foo:bar") "my-unikernel.hello"))
+              (Ok (Name.create (p_o_s "foo:bar") (l_o_s "my-unikernel.hello")))
               (Name.of_string "foo:bar:my-unikernel.hello"));
   Alcotest.(check test_path "foo:bar:my-unikernel.hello path is good"
               (p_o_s "foo:bar")
               (Name.path (n_o_s "foo:bar:my-unikernel.hello")));
   Alcotest.(check test_path "foo:bar:my-unikernel.hello path parent is good"
               (p_o_s "foo")
-              Name.(parent_path (path (n_o_s "foo:bar:my-unikernel.hello"))))
+              Name.(Path.parent (path (n_o_s "foo:bar:my-unikernel.hello"))))
 
 let path_append_good () =
   Alcotest.check test_path "append_path_exn works for root foo"
     (p_o_s "foo")
-    Name.(append_path_exn root_path "foo");
+    Name.Path.(append_exn root "foo");
   Alcotest.check test_path "append_path_exn works for foo bar"
     (p_o_s "foo:bar")
-    Name.(append_path_exn (p_o_s "foo") "bar");
+    Name.Path.(append_exn (p_o_s "foo") "bar");
   Alcotest.check test_path "append_path_exn works for foo:bar and baz"
     (p_o_s "foo:bar:baz")
-    Name.(append_path_exn (p_o_s "foo:bar") "baz")
+    Name.Path.(append_exn (p_o_s "foo:bar") "baz")
 
 let drop_prefix_good () =
   Alcotest.check test_name "drop_prefix works fine"
@@ -113,7 +115,7 @@ let one_element_trie () =
     Alcotest.check test_name __LOC__ n name;
     Alcotest.(check int __LOC__ 1 v)
   in
-  let () = Vmm_trie.fold Name.root_path t f () in
+  let () = Vmm_trie.fold Name.Path.root t f () in
   Alcotest.(check (list (pair test_name int)) __LOC__ [ n, 1 ]
               (Vmm_trie.collect n t))
 
@@ -140,7 +142,7 @@ let flat_trie () =
       xs
     | [] -> Alcotest.fail "missing elements"
   in
-  let r = Vmm_trie.fold Name.root_path t f all in
+  let r = Vmm_trie.fold Name.Path.root t f all in
   Alcotest.(check bool __LOC__ true (r = []))
 
 let nested_trie () =
@@ -170,7 +172,7 @@ let nested_trie () =
       xs
     | [] -> Alcotest.fail "missing elements"
   in
-  let r = Vmm_trie.fold Name.root_path t f all in
+  let r = Vmm_trie.fold Name.Path.root t f all in
   Alcotest.(check bool __LOC__ true (r = []));
   let alpha = [ n_o_s "a", 1 ; n_o_s "b", 2 ; n_o_s "c", 3 ] in
   let r = Vmm_trie.fold (p_o_s "alpha") t f alpha in
@@ -203,7 +205,7 @@ let nested_trie_2 () =
       xs
     | [] -> Alcotest.fail "missing elements"
   in
-  let r = Vmm_trie.fold Name.root_path t f all in
+  let r = Vmm_trie.fold Name.Path.root t f all in
   Alcotest.(check bool __LOC__ true (r = []));
   let alpha = [ n_o_s "a.b.c", 1 ; n_o_s "b.c", 2 ; n_o_s "c", 3 ] in
   let r = Vmm_trie.fold (p_o_s "alpha") t f alpha in
@@ -380,47 +382,47 @@ let policy_is_respected_sub () =
 
 let policy_is_respected_super () =
   let p' = { p1 with unikernels = 2 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> ()
    | Error _ -> Alcotest.fail "insertion of superpolicy increasing unikernels should work");
   let p' = { p1 with unikernels = 0 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> Alcotest.fail "insertion of superpolicy decreasing unikernels should fail"
    | Error _ -> ());
   let p' = { p1 with cpuids = IS.(add 1 (singleton 0)) } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> ()
    | Error _ -> Alcotest.fail "insertion of superpolicy more cpuids should work");
   let p' = { p1 with cpuids = IS.singleton 1 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> Alcotest.fail "insertion of superpolicy different cpuids should fail"
    | Error _ -> ());
   let p' = { p1 with memory = 11 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> ()
    | Error _ -> Alcotest.fail "insertion of superpolicy more memory should work");
   let p' = { p1 with memory = 5 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> Alcotest.fail "insertion of superpolicy fewer memory should fail"
    | Error _ -> ());
   let p' = { p1 with block = Some 5 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> ()
    | Error _ -> Alcotest.fail "insertion of superpolicy more block should work");
   let p' = { p1 with block = Some 3 } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> Alcotest.fail "insertion of superpolicy fewer block should fail"
    | Error _ -> ());
   let p' = { p1 with block = None } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> Alcotest.fail "insertion of superpolicy fewer block should fail"
    | Error _ -> ());
   let p' = { p1 with bridges = String_set.(add "service" (singleton "foo")) } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> ()
    | Error _ -> Alcotest.fail "insertion of superpolicy more bridges should work");
   let p' = { p1 with bridges = String_set.singleton "foo" } in
-  (match Vmm_resources.insert_policy r1 Name.root_path p' with
+  (match Vmm_resources.insert_policy r1 Name.Path.root p' with
    | Ok _ -> Alcotest.fail "insertion of superpolicy other bridges should fail"
    | Error _ -> ())
 

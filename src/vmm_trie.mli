@@ -42,4 +42,4 @@ val all : 'a t -> (Name.t * 'a) list
 
 (** [fold path t f init] folds [f] over [t] at [path]. Each subnode of [path] is
     passed to [f]. *)
-val fold : Name.path -> 'a t -> (Name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
+val fold : Name.Path.t -> 'a t -> (Name.t -> 'a -> 'b -> 'b) -> 'b -> 'b

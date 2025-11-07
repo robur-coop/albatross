@@ -5,5 +5,5 @@ val wire_command_of_cert : X509.Certificate.t ->
 
 val handle :
   X509.Certificate.t list ->
-  (Vmm_core.Name.t * (Vmm_core.Name.path * Vmm_core.Policy.t) list * Vmm_commands.version * Vmm_commands.t,
+  (Vmm_core.Name.t * (Vmm_core.Name.Path.t * Vmm_core.Policy.t) list * Vmm_commands.version * Vmm_commands.t,
    [> `Msg of string ]) result

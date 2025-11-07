@@ -22,47 +22,63 @@ module IM : sig
 end
 
 module Name : sig
-  type t
+  module Label : sig
+    type t
 
-  type path
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+    val is_empty : t -> bool
+    val empty : t
+
+    val of_string : string -> (t, [> `Msg of string ]) result
+    val to_string : t -> string
+  end
+
+  module Path : sig
+    type t
+
+    val compare : t -> t -> int
+    val equal : t -> t -> bool
+
+    val to_string : t -> string
+    val of_string : string -> (t, [> `Msg of string ]) result
+
+    val to_labels : t -> Label.t list
+
+    val root : t
+    val is_root : t -> bool
+    val parent : t -> t
+
+    val append : t -> string -> (t, [> `Msg of string ]) result
+    val append_exn : t -> string -> t
+    val append_label : t -> Label.t -> t
+  end
+
+  type t
 
   val equal : t -> t -> bool
 
   val pp : t Fmt.t
 
-  val valid_label : string -> bool
+  val path : t -> Path.t
+  val name : t -> Label.t option
 
-  val path : t -> path
-  val name : t -> string option
+  val create : Path.t -> Label.t -> t
+  val create_of_path : Path.t -> t
 
-  val create : path -> string -> (t, [> `Msg of string ]) result
-  val create_of_path : path -> t
-  val create_exn : path -> string -> t
-
-  val drop_prefix_exn : t -> path -> t
+  val drop_prefix_exn : t -> Path.t -> t
   val drop_path : t -> t
+
+  val to_labels : t -> Label.t list
 
   val to_list : t -> string list
   val of_list : string list -> (t, [> `Msg of string ]) result
 
-  val path_to_string : path -> string
-  val path_of_string : string -> (path, [> `Msg of string ]) result
-
   val to_string : t -> string
   val of_string : string -> (t, [> `Msg of string ]) result
 
-  val path_to_list : path -> string list
-  val path_of_list : string list -> (path, [> `Msg of string ]) result
-
-  val root_path : path
-  val is_root_path : path -> bool
-  val parent_path : path -> path
-
   val root : t
   val is_root : t -> bool
-
-  val append_path : path -> string -> (path, [> `Msg of string ]) result
-  val append_path_exn : path -> string -> path
 
   val image_file : t -> Fpath.t
   val fifo_file : t -> Fpath.t
@@ -75,12 +91,6 @@ module Name : sig
     are the first three bytes of the MD5 digest of [bridge ^ "." ^ to_string t].
 
     i.e., [mac ["foo";"bar"] "default" = 00:80:41:1b:11:78] *)
-
-  type label
-
-  val label_of_string : string -> (label, [> `Msg of string ]) result
-  val string_of_label : label -> string
-  val compare_label : label -> label -> int
 end
 
 module Policy : sig
