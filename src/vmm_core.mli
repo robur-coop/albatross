@@ -27,8 +27,6 @@ module Name : sig
 
     val compare : t -> t -> int
     val equal : t -> t -> bool
-    val is_empty : t -> bool
-    val empty : t
 
     val of_string : string -> (t, [> `Msg of string ]) result
     val to_string : t -> string

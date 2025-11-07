@@ -78,9 +78,6 @@ module Name = struct
     let compare = String.compare
 
     let equal = String.equal
-
-    let is_empty l = l = ""
-    let empty = ""
   end
 
   module Path = struct

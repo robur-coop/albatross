@@ -110,22 +110,23 @@ let fold path t f acc =
   let rec explore (N (es, m)) prefix_path name acc =
     let acc' =
       let prefix =
-        if Vmm_core.Name.Label.is_empty name then
-          prefix_path
-        else
+        match name with
+        | None -> prefix_path
+        | Some name ->
           Vmm_core.Name.Path.append_label prefix_path name
       in
       Map.fold (fun name node acc ->
-          explore node prefix name acc)
+          explore node prefix (Some name) acc)
         m acc
     in
     match es with
     | None -> acc'
     | Some (e, is_path) ->
       let name =
-        if Vmm_core.Name.Label.is_empty name then
+        match name with
+        | None ->
           Vmm_core.Name.create_of_path prefix_path
-        else
+        | Some name ->
           Vmm_core.Name.create prefix_path name
       in
       let name = if is_path then append_name name None else name in
@@ -133,7 +134,7 @@ let fold path t f acc =
   in
   let rec down prefix (N (es, m)) =
     match prefix with
-    | [] -> explore (N (es, m)) Vmm_core.Name.Path.root Vmm_core.Name.Label.empty acc
+    | [] -> explore (N (es, m)) Vmm_core.Name.Path.root None acc
     | x :: xs -> match Map.find_opt x m with
       | None -> acc
       | Some n -> down xs n
