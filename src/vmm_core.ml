@@ -87,16 +87,9 @@ module Name = struct
   module Path = struct
     type t = Label.t list
 
-    let rec compare a b = match a, b with
-      | [], [] -> 0
-      | x::xtl, y::ytl ->
-        (match Label.compare x y with
-         | 0 -> compare xtl ytl
-         | n -> n)
-      | _, [] -> 1
-      | [], _ -> -1
+    let compare = List.compare Label.compare
 
-    let equal a b = compare a b = 0
+    let equal = List.equal Label.equal
 
     let of_label l = [ l ]
 
@@ -115,10 +108,7 @@ module Name = struct
     let of_string str =
       let ps = String.split_on_char ':' str in
       let ps = match ps with | ""::tl -> tl | ps -> ps in
-      if List.for_all Label.valid ps then
-        Ok ps
-      else
-        Error (`Msg "invalid path")
+      of_strings ps
 
     let root = []
     let is_root = function [] -> true | _ -> false
@@ -144,13 +134,8 @@ module Name = struct
 
   type t = Path.t * Label.t option
 
-  let opt_eq a b = match a, b with
-    | None, None -> true
-    | Some a, Some b -> Label.equal a b
-    | _ -> false
-
   let equal (p, l) (p', l') =
-    Path.equal p p' && opt_eq l l'
+    Path.equal p p' && Option.equal Label.equal l l'
 
   let pp ppf (p, name) =
     Fmt.(pf ppf "[unikernel: %a:%a]" (list ~sep:(any ":") string) p
