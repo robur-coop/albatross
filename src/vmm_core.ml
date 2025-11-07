@@ -98,6 +98,10 @@ module Name = struct
 
     let equal a b = compare a b = 0
 
+    let of_label l = [ l ]
+
+    let of_labels p = p
+
     let to_labels p = p
 
     let of_strings ps =

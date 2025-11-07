@@ -40,6 +40,9 @@ module Name : sig
     val compare : t -> t -> int
     val equal : t -> t -> bool
 
+    val of_label : Label.t -> t
+    val of_labels : Label.t list -> t
+
     val to_string : t -> string
     val of_string : string -> (t, [> `Msg of string ]) result
 
