@@ -52,8 +52,6 @@ module Name : sig
     val is_root : t -> bool
     val parent : t -> t
 
-    val append : t -> string -> (t, [> `Msg of string ]) result
-    val append_exn : t -> string -> t
     val append_label : t -> Label.t -> t
   end
 

@@ -68,17 +68,16 @@ module Name = struct
 
     let of_string str =
       if valid str then
-        Ok str
+        (* we normalize to lowercase ascii *)
+        Ok (String.lowercase_ascii str)
       else
         Error (`Msg "invalid label (only [a-zA-Z0-9-.] allowed, 1 to 63 chars)")
 
     let to_string label = label
 
-    let compare a b =
-      (* we normalize to lowercase ascii *)
-      String.compare (String.lowercase_ascii a) (String.lowercase_ascii b)
+    let compare = String.compare
 
-    let equal a b = compare a b = 0
+    let equal = String.equal
 
     let is_empty l = l = ""
     let empty = ""
@@ -98,10 +97,14 @@ module Name = struct
     let to_labels p = p
 
     let of_strings ps =
-      if List.for_all Label.valid ps then
-        Ok ps
-      else
-        Error (`Msg "invalid path")
+      List.fold_right (fun s acc ->
+          let ( let* ) = Result.bind in
+          let* acc = acc in
+          let* l = Label.of_string s in
+          Ok (l :: acc))
+        ps
+        (Ok [])
+      |> Result.map_error (fun (`Msg e) -> `Msg ("invalid path: " ^ e))
 
     let to_string x = String.concat ":" x
 
@@ -116,17 +119,6 @@ module Name = struct
     let parent p = match List.rev p with
       | [] -> []
       | _::tl -> List.rev tl
-
-    let append prefix p =
-      if Label.valid p then
-        Ok (prefix @ [ p ])
-      else
-        Error (`Msg ("invalid path: " ^ p))
-
-    let append_exn prefix p =
-      match append prefix p with
-      | Ok p -> p
-      | Error `Msg m -> invalid_arg m
 
     let append_label prefix p =
       prefix @ [ p ]
@@ -156,7 +148,7 @@ module Name = struct
     | _, [] -> p, name
     | [], _ -> invalid_arg "p is shorter than p'"
     | a::bs, a'::bs' ->
-      if String.equal a a' then
+      if Label.equal a a' then
         drop_prefix_exn (bs, name) bs'
       else
         invalid_arg "p' is not a prefix of p"

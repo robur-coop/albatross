@@ -60,7 +60,9 @@ let extract_policies chain =
           let* cn = cert_name cert in
           match cn with
           | None -> Ok prefix
-          | Some x -> Vmm_core.Name.Path.append prefix x
+          | Some x ->
+            Result.map (Vmm_core.Name.Path.append_label prefix)
+              (Vmm_core.Name.Label.of_string x)
         in
         Ok (name, (name, p) :: acc)
       | _, Ok wire ->
