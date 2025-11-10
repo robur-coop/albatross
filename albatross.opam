@@ -39,7 +39,6 @@ depends: [
   "fpath" {>= "0.7.3"}
   "logs-syslog" {>= "0.4.1"}
   "digestif" {>= "1.2.0"}
-  "lru" {>= "0.3.1"}
   "alcotest" {with-test}
 ]
 build: [

@@ -16,7 +16,7 @@
  (public_name albatross-console)
  (package albatross)
  (modules albatross_console)
- (libraries albatross.cli albatrossd_utils albatross ptime.clock.os lru))
+ (libraries albatross.cli albatrossd_utils albatross ptime.clock.os))
 
 (executable
  (name albatross_influx)
