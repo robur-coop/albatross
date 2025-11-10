@@ -117,8 +117,7 @@ module Name = struct
       | [] -> []
       | _::tl -> List.rev tl
 
-    let append_label prefix p =
-      prefix @ [ p ]
+    let append prefix p = prefix @ [ p ]
   end
 
   type t = Path.t * Label.t option

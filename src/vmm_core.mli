@@ -50,7 +50,7 @@ module Name : sig
     val is_root : t -> bool
     val parent : t -> t
 
-    val append_label : t -> Label.t -> t
+    val append : t -> Label.t -> t
   end
 
   type t

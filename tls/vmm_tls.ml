@@ -61,7 +61,7 @@ let extract_policies chain =
           match cn with
           | None -> Ok prefix
           | Some x ->
-            Result.map (Vmm_core.Name.Path.append_label prefix)
+            Result.map (Vmm_core.Name.Path.append prefix)
               (Vmm_core.Name.Label.of_string x)
         in
         Ok (name, (name, p) :: acc)

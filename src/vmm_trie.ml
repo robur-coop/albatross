@@ -64,7 +64,7 @@ let append_name prefix name =
     let pre_path = Vmm_core.Name.path prefix in
     Option.fold
       ~none:pre_path
-      ~some:(Vmm_core.Name.Path.append_label pre_path)
+      ~some:(Vmm_core.Name.Path.append pre_path)
       (Vmm_core.Name.name prefix)
   in
   Option.fold
@@ -112,7 +112,7 @@ let fold path t f acc =
         match name with
         | None -> prefix_path
         | Some name ->
-          Vmm_core.Name.Path.append_label prefix_path name
+          Vmm_core.Name.Path.append prefix_path name
       in
       Map.fold (fun name node acc ->
           explore node prefix (Some name) acc)

@@ -46,13 +46,13 @@ let foo_bar_my_unikernel_name () =
 let path_append_good () =
   Alcotest.check test_path "append_label works for root foo"
     (p_o_s "foo")
-    Name.Path.(append_label root (l_o_s "foo"));
+    Name.Path.(append root (l_o_s "foo"));
   Alcotest.check test_path "append_label works for foo bar"
     (p_o_s "foo:bar")
-    Name.Path.(append_label (p_o_s "foo") (l_o_s "bar"));
+    Name.Path.(append (p_o_s "foo") (l_o_s "bar"));
   Alcotest.check test_path "append_label works for foo:bar and baz"
     (p_o_s "foo:bar:baz")
-    Name.Path.(append_label (p_o_s "foo:bar") (l_o_s "baz"))
+    Name.Path.(append (p_o_s "foo:bar") (l_o_s "baz"))
 
 let drop_prefix_good () =
   Alcotest.check test_name "drop_prefix works fine"
