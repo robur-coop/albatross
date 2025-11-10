@@ -119,7 +119,7 @@ let handle tls =
                  match r with
                  | Error (`Msg msg) -> Lwt.return (Error (`Msg msg))
                  | Ok () ->
-                   let id = Vmm_core.Name.create_of_path path in
+                   let id = Vmm_core.Name.make_of_path path in
                    Logs.debug (fun m -> m "adding policy for %a: %a" Vmm_core.Name.pp id Vmm_core.Policy.pp policy) ;
                    let header = Vmm_commands.header ~sequence:!command id in
                    command := Int64.succ !command ;

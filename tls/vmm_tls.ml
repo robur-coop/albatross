@@ -60,13 +60,15 @@ let extract_policies chain =
           let* cn = cert_name cert in
           match cn with
           | None -> Ok prefix
-          | Some x -> Vmm_core.Name.append_path prefix x
+          | Some x ->
+            Result.map (Vmm_core.Name.Path.append prefix)
+              (Vmm_core.Name.Label.of_string x)
         in
         Ok (name, (name, p) :: acc)
       | _, Ok wire ->
         Error (`Msg (Fmt.str "unexpected wire %a"
                        (Vmm_commands.pp ~verbose:false) (snd wire))))
-    (Ok (Vmm_core.Name.root_path, [])) chain
+    (Ok (Vmm_core.Name.Path.root, [])) chain
 
 let handle chain =
   let* () =
@@ -82,8 +84,8 @@ let handle chain =
   let* name =
     let* cn = cert_name leaf in
     match cn with
-    | None | Some "." | Some ":" -> Ok (Vmm_core.Name.create_of_path path)
-    | Some x -> Vmm_core.Name.create path x
+    | None | Some "." | Some ":" -> Ok (Vmm_core.Name.make_of_path path)
+    | Some x -> Result.map (Vmm_core.Name.make path) (Vmm_core.Name.Label.of_string x)
   in
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
                  Vmm_core.Name.pp name X509.Certificate.pp leaf

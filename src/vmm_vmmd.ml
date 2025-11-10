@@ -256,7 +256,7 @@ let handle_policy_cmd t id =
    | None -> ()
    | Some x ->
      Logs.warn (fun m -> m "policy command with non-empty name part %S in %a"
-                   x Name.pp id));
+                   (Name.Label.to_string x) Name.pp id));
   function
   | `Policy_remove ->
     Logs.debug (fun m -> m "remove policy %a" Name.pp id) ;

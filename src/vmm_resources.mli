@@ -28,7 +28,7 @@ val empty : t
 val find_unikernel : t -> Name.t -> Unikernel.t option
 
 (** [find_policy t path] is either [Some policy] or [None]. *)
-val find_policy : t -> Name.path -> Policy.t option
+val find_policy : t -> Name.Path.t -> Policy.t option
 
 (** [find_block t name] is either [Some (size, active)] or [None]. *)
 val find_block : t -> Name.t -> (int * bool) option
@@ -48,7 +48,7 @@ val insert_unikernel : t -> Name.t -> Unikernel.t -> t
 
 (** [insert_policy t path policy] inserts [policy] under [path] in [t], and
     returns the new [t] or an error. *)
-val insert_policy : t -> Name.path -> Policy.t -> (t, [> `Msg of string]) result
+val insert_policy : t -> Name.Path.t -> Policy.t -> (t, [> `Msg of string]) result
 
 (** [check_block t name size] checks whether [size] under [name] in [t] would be
     allowed under the current policies. *)
@@ -68,7 +68,7 @@ val commit_block : t -> Name.t -> (t, [> `Msg of string ]) result
 val remove_unikernel : t -> Name.t -> (t, [> `Msg of string ]) result
 
 (** [remove_policy t path] removes policy [path] from [t]. *)
-val remove_policy : t -> Name.path -> (t, [> `Msg of string ]) result
+val remove_policy : t -> Name.Path.t -> (t, [> `Msg of string ]) result
 
 (** [remove_block t name] removes block [name] from [t]. *)
 val remove_block : t -> Name.t -> (t, [> `Msg of string ]) result
