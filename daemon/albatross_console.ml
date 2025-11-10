@@ -14,6 +14,38 @@ open Lwt.Infix
 
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
+module Entry = struct
+  type t = string Vmm_ring.t
+  let weight _ = 1
+end
+
+module LRU = Lru.F.Make(Vmm_core.Name.Label)(Entry)
+
+(* The console output as a Vmm_ring.t with 1024 entries. The store is a trie,
+   where the key is the path, and the value is a LRU cache of the label to a
+   ringbuffer. *)
+let console_output_ringbuffers = ref Vmm_trie.empty
+
+let add_log_to_ringbuffer id now lines =
+  let path = Vmm_core.Name.drop_label id in
+  match Vmm_trie.find path !console_output_ringbuffers with
+  | None ->
+    Logs.err (fun m -> m "shouldn't happen, couldn't find LRU for %a, dropping %a %a"
+                 Vmm_core.Name.pp id (Ptime.pp_rfc3339 ()) now
+                 Fmt.(list ~sep:(any "@.") string) lines)
+  | Some lru ->
+    let lbl = Option.get (Vmm_core.Name.name id) in
+    match LRU.find lbl lru with
+    | None ->
+      Logs.err (fun m -> m "shouldn't happen, couldn't find entry for %a, dropping %a %a"
+                   Vmm_core.Name.pp id (Ptime.pp_rfc3339 ()) now
+                   Fmt.(list ~sep:(any "@.") string) lines)
+    | Some r ->
+      List.iter (fun line -> Vmm_ring.write r (now, line)) lines;
+      let lru = LRU.promote lbl lru in
+      let trie, _ = Vmm_trie.insert path lru !console_output_ringbuffers in
+      console_output_ringbuffers := trie
+
 (* The subscribers of a console output - stored in a map (key is the name of
    the unikernel), value is a pair of version number and file descriptor.
    On a write error to a subscription fd, this fd is removed (in read_console).
@@ -21,7 +53,7 @@ let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
    unikernel (yet?). *)
 let subscribers = ref Vmm_core.String_map.empty
 
-let read_console id name ringbuffer fd =
+let read_console id name fd =
   Lwt.catch (fun () ->
       Lwt_unix.wait_read fd >>= fun () ->
       let channel = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
@@ -65,15 +97,15 @@ let read_console id name ringbuffer fd =
            the empty lines might have some semantic meaning *)
         let lines = List.filter (fun s -> not (String.equal "" s)) lines in
         Logs.debug (fun m -> m "read %u lines %u slack" (List.length lines) (String.length slack)) ;
-        let t = Ptime_clock.now () in
-        List.iter (fun line -> Vmm_ring.write ringbuffer (t, line)) lines;
+        let now = Ptime_clock.now () in
+        add_log_to_ringbuffer id now lines;
         let f (version, fd) =
            let header = Vmm_commands.header ~version id in
            Lwt_list.fold_left_s (fun fd line ->
                match fd with
                | None -> Lwt.return None
                | Some fd ->
-                 let data = `Data (`Console_data (t, line)) in
+                 let data = `Data (`Console_data (now, line)) in
                  Vmm_lwt.write_wire fd (header, data) >>= function
                  | Error _ ->
                    Vmm_lwt.safe_close fd >|= fun () ->
@@ -121,28 +153,33 @@ let open_fifo name =
         Logs.err (fun m -> m "%a error while reading %s" Fpath.pp fifo (Printexc.to_string exn)) ;
         Lwt.return None)
 
-(* The console output as a Vmm_ring.t with 1024 entries. The store is a map.
-   where the key is the unikernel name.
-   This map is extended in add_fifo, and never shrinked. *)
-let console_output_ringbuffers = ref Vmm_core.String_map.empty
-
 let fifos = Vmm_core.conn_metrics "fifo"
 
-let add_fifo _n id =
+let add_fifo n id =
   let name = Vmm_core.Name.to_string id in
+  let path = Vmm_core.Name.drop_label id in
+  let lbl = Option.get (Vmm_core.Name.name id) in
   open_fifo id >|= function
   | None -> Error (`Msg "opening")
   | Some f ->
-    let ringbuffer = match Vmm_core.String_map.find_opt name !console_output_ringbuffers with
-      | None ->
-        let ringbuffer = Vmm_ring.create "" () in
-        let map = Vmm_core.String_map.add name ringbuffer !console_output_ringbuffers in
-        console_output_ringbuffers := map ;
-        ringbuffer
-      | Some ringbuffer -> ringbuffer
-    in
+    (match Vmm_trie.find path !console_output_ringbuffers with
+     | None ->
+       let ringbuffer = Vmm_ring.create "" () in
+       let lru = LRU.add lbl ringbuffer (LRU.empty (n + 1)) in
+       let trie, _ = Vmm_trie.insert path lru !console_output_ringbuffers in
+       console_output_ringbuffers := trie
+     | Some lru ->
+       match LRU.find lbl lru with
+       | None ->
+         let ringbuffer = Vmm_ring.create "" () in
+         let lru = LRU.add lbl ringbuffer lru in
+         let lru = LRU.resize (n + 1) lru in
+         let lru = LRU.trim lru in
+         let trie, _ = Vmm_trie.insert path lru !console_output_ringbuffers in
+         console_output_ringbuffers := trie
+       | Some _ringbuffer -> ());
     fifos `Open;
-    Lwt.async (fun () -> read_console id name ringbuffer f >|= fun () -> fifos `Close) ;
+    Lwt.async (fun () -> read_console id name f >|= fun () -> fifos `Close) ;
     Ok ()
 
 let subscribe s version id =
@@ -153,9 +190,12 @@ let subscribe s version id =
     Some (e :: es)
   in
   subscribers := Vmm_core.String_map.update name (update (version, s)) !subscribers ;
-  match Vmm_core.String_map.find_opt name !console_output_ringbuffers with
+  match Vmm_trie.find (Vmm_core.Name.drop_label id) !console_output_ringbuffers with
   | None -> Lwt.return (None, "waiting for VM")
-  | Some r -> Lwt.return (Some r, "subscribed")
+  | Some lru ->
+    match LRU.find (Option.get (Vmm_core.Name.name id)) lru with
+    | None -> Lwt.return (None, "waiting for VM")
+    | Some r -> Lwt.return (Some r, "subscribed")
 
 let send_history s version r id since =
   let entries =
