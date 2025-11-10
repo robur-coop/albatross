@@ -128,7 +128,7 @@ let console_output_ringbuffers = ref Vmm_core.String_map.empty
 
 let fifos = Vmm_core.conn_metrics "fifo"
 
-let add_fifo id =
+let add_fifo _n id =
   let name = Vmm_core.Name.to_string id in
   open_fifo id >|= function
   | None -> Error (`Msg "opening")
@@ -183,9 +183,9 @@ let handle s addr =
       begin
         let name = header.Vmm_commands.name in
         match cmd with
-        | `Console_add ->
+        | `Console_add n ->
           begin
-            add_fifo name >>= fun res ->
+            add_fifo n name >>= fun res ->
             let reply = match res with
               | Ok () -> `Success `Empty
               | Error (`Msg msg) -> `Failure msg

@@ -18,7 +18,7 @@ val pp_version : version Fmt.t
 type since_count = [ `Since of Ptime.t | `Count of int ]
 
 type console_cmd = [
-  | `Console_add
+  | `Console_add of int
   | `Console_subscribe of since_count
 ]
 

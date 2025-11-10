@@ -26,12 +26,12 @@ let pp_since_count ppf = function
   | `Count n -> Fmt.pf ppf "number %d" n
 
 type console_cmd = [
-  | `Console_add
+  | `Console_add of int
   | `Console_subscribe of since_count
 ]
 
 let pp_console_cmd ppf = function
-  | `Console_add -> Fmt.string ppf "console add"
+  | `Console_add n -> Fmt.pf ppf "console add (max unikernels %u)" n
   | `Console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
 
 type stats_cmd = [

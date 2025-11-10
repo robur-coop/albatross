@@ -73,5 +73,8 @@ val remove_policy : t -> Name.Path.t -> (t, [> `Msg of string ]) result
 (** [remove_block t name] removes block [name] from [t]. *)
 val remove_block : t -> Name.t -> (t, [> `Msg of string ]) result
 
+(** [unikernels t name] returns the number of unikernels allowed by [name]. *)
+val unikernels : t -> Name.t -> int
+
 (** [pp] is a pretty printer for [t]. *)
 val pp : t Fmt.t
