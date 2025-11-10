@@ -133,9 +133,9 @@ module Name = struct
 
   let name (_, name) = name
 
-  let create path name = path, Some name
+  let make path name = path, Some name
 
-  let create_of_path p = (p, None)
+  let make_of_path p = p, None
 
   let drop_path (_, name) = [], name
 

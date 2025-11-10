@@ -761,10 +761,10 @@ let compress_default lvl dst =
   Option.value ~default lvl
 
 let info_policy () path =
-  jump (`Policy_cmd `Policy_info) (Vmm_core.Name.create_of_path path)
+  jump (`Policy_cmd `Policy_info) (Vmm_core.Name.make_of_path path)
 
 let remove_policy () path =
-  jump (`Policy_cmd `Policy_remove) (Vmm_core.Name.create_of_path path)
+  jump (`Policy_cmd `Policy_remove) (Vmm_core.Name.make_of_path path)
 
 let add_policy () unikernels memory cpus block bridges path d cert key ca key_type tmpdir =
   let p = policy unikernels memory cpus block bridges in
@@ -775,7 +775,7 @@ let add_policy () unikernels memory cpus block bridges path d cert key ca key_ty
   | Ok () ->
     if Vmm_core.String_set.is_empty p.bridges then
       Logs.warn (fun m -> m "policy without any network access");
-    jump (`Policy_cmd (`Policy_add p)) (Vmm_core.Name.create_of_path path)
+    jump (`Policy_cmd (`Policy_add p)) (Vmm_core.Name.make_of_path path)
       d cert key ca key_type tmpdir
 
 let info_ () = jump (`Unikernel_cmd `Unikernel_info)
@@ -1287,7 +1287,7 @@ let count =
 let path_c =
   Arg.conv
     (Name.Path.of_string,
-     fun ppf p -> Name.pp ppf (Name.create_of_path p))
+     fun ppf p -> Name.pp ppf (Name.make_of_path p))
 
 let opt_path =
   let doc = "Path to unikernels." in

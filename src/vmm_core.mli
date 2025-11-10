@@ -62,8 +62,8 @@ module Name : sig
   val path : t -> Path.t
   val name : t -> Label.t option
 
-  val create : Path.t -> Label.t -> t
-  val create_of_path : Path.t -> t
+  val make : Path.t -> Label.t -> t
+  val make_of_path : Path.t -> t
 
   val drop_prefix_exn : t -> Path.t -> t
   val drop_path : t -> t

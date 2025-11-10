@@ -3,10 +3,8 @@ open Vmm_core
 let test_name = Alcotest.testable Name.pp Name.equal
 
 let test_path =
-  let pp_path ppf p = Fmt.string ppf (Name.Path.to_string p)
-  and eq_path a b = Name.equal (Name.create_of_path a) (Name.create_of_path b)
-  in
-  Alcotest.testable pp_path eq_path
+  let pp_path ppf p = Fmt.string ppf (Name.Path.to_string p) in
+  Alcotest.testable pp_path Name.Path.equal
 
 let msg =
   let pp_msg ppf = function `Msg m -> Fmt.string ppf m in
@@ -24,17 +22,17 @@ let root_is_root () =
 
 let foo_bar_path () =
   Alcotest.(check (result test_name msg) "foo:bar: is decoded correctly"
-              (Ok (Name.create_of_path (p_o_s "foo:bar")))
+              (Ok (Name.make_of_path (p_o_s "foo:bar")))
               (Name.of_string "foo:bar:"))
 
 let foo_bar_name () =
   Alcotest.(check (result test_name msg) "foo:bar is decoded correctly"
-              (Ok (Name.create (p_o_s "foo") (l_o_s "bar")))
+              (Ok (Name.make (p_o_s "foo") (l_o_s "bar")))
               (Name.of_string "foo:bar"))
 
 let foo_bar_my_unikernel_name () =
   Alcotest.(check (result test_name msg) "foo:bar:my-unikernel.hello is decoded correctly"
-              (Ok (Name.create (p_o_s "foo:bar") (l_o_s "my-unikernel.hello")))
+              (Ok (Name.make (p_o_s "foo:bar") (l_o_s "my-unikernel.hello")))
               (Name.of_string "foo:bar:my-unikernel.hello"));
   Alcotest.(check test_path "foo:bar:my-unikernel.hello path is good"
               (p_o_s "foo:bar")

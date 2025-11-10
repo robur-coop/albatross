@@ -68,8 +68,8 @@ let append_name prefix name =
       (Vmm_core.Name.name prefix)
   in
   Option.fold
-    ~none:(Vmm_core.Name.create_of_path path)
-    ~some:(Vmm_core.Name.create path)
+    ~none:(Vmm_core.Name.make_of_path path)
+    ~some:(Vmm_core.Name.make path)
     name
 
 let collect id t =
@@ -123,10 +123,8 @@ let fold path t f acc =
     | Some (e, is_path) ->
       let name =
         match name with
-        | None ->
-          Vmm_core.Name.create_of_path prefix_path
-        | Some name ->
-          Vmm_core.Name.create prefix_path name
+        | None -> Vmm_core.Name.make_of_path prefix_path
+        | Some name -> Vmm_core.Name.make prefix_path name
       in
       let name = if is_path then append_name name None else name in
       f name e acc'

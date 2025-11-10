@@ -84,8 +84,8 @@ let handle chain =
   let* name =
     let* cn = cert_name leaf in
     match cn with
-    | None | Some "." | Some ":" -> Ok (Vmm_core.Name.create_of_path path)
-    | Some x -> Result.map (Vmm_core.Name.create path) (Vmm_core.Name.Label.of_string x)
+    | None | Some "." | Some ":" -> Ok (Vmm_core.Name.make_of_path path)
+    | Some x -> Result.map (Vmm_core.Name.make path) (Vmm_core.Name.Label.of_string x)
   in
   Logs.debug (fun m -> m "name is %a leaf is %a, chain %a"
                  Vmm_core.Name.pp name X509.Certificate.pp leaf
