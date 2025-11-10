@@ -64,13 +64,12 @@ let append_name prefix name =
     let pre_path = Vmm_core.Name.path prefix in
     Option.fold
       ~none:pre_path
-      ~some:(fun prefix_name ->
-          Vmm_core.Name.Path.append_label pre_path prefix_name)
+      ~some:(Vmm_core.Name.Path.append_label pre_path)
       (Vmm_core.Name.name prefix)
   in
   Option.fold
     ~none:(Vmm_core.Name.create_of_path path)
-    ~some:(fun name -> Vmm_core.Name.create path name)
+    ~some:(Vmm_core.Name.create path)
     name
 
 let collect id t =
