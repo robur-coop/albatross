@@ -245,7 +245,7 @@ let cmd =
   let man = [
     `S "DESCRIPTION";
     `P "$(tname) reads the console output of a unikernel and preserves the
-        latest 1000 lines in a ring buffer in memory for clients. Each unikernel
+        latest 1024 lines in a ring buffer in memory for clients. Each unikernel
         may have multiple subscribed clients, which is sent to until the
         client closes the connection (each new line is sent as new message on
         the stream). The albatross-daemon informs albatross-console when a new
