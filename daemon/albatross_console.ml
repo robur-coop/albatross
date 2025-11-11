@@ -234,32 +234,37 @@ let handle s addr =
     | Ok (header, `Command (`Console_cmd cmd)) ->
       begin
         let name = header.Vmm_commands.name in
-        match cmd with
-        | `Console_add n ->
-          begin
-            add_fifo n name >>= fun res ->
-            let reply = match res with
-              | Ok () -> `Success `Empty
-              | Error (`Msg msg) -> `Failure msg
-          in
-          Vmm_lwt.write_wire s (header, reply) >>= function
-          | Ok () -> loop ()
-          | Error _ ->
-            Logs.err (fun m -> m "error while writing") ;
-            Lwt.return_unit
-          end
-        | `Console_subscribe ts ->
-          begin
-            subscribe s header.Vmm_commands.version name >>= fun (ring, res) ->
-            Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-            | Error _ -> Vmm_lwt.safe_close s
-            | Ok () ->
-              (match ring with
-               | None -> Lwt.return_unit
-               | Some r -> send_history s header.Vmm_commands.version r name ts) >>= fun () ->
-              (* now we wait for the next read and terminate*)
-              Vmm_lwt.read_wire s >|= fun _ -> ()
-          end
+        if Option.is_none (Vmm_core.Name.name name) then
+          Vmm_lwt.write_wire s (header, `Failure "path used instead of name") >>= function
+          | Ok () -> Lwt.return_unit
+          | Error _ -> Vmm_lwt.safe_close s
+        else
+          match cmd with
+          | `Console_add n ->
+            begin
+              add_fifo n name >>= fun res ->
+              let reply = match res with
+                | Ok () -> `Success `Empty
+                | Error (`Msg msg) -> `Failure msg
+              in
+              Vmm_lwt.write_wire s (header, reply) >>= function
+              | Ok () -> loop ()
+              | Error _ ->
+                Logs.err (fun m -> m "error while writing") ;
+                Lwt.return_unit
+            end
+          | `Console_subscribe ts ->
+            begin
+              subscribe s header.Vmm_commands.version name >>= fun (ring, res) ->
+              Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+              | Error _ -> Vmm_lwt.safe_close s
+              | Ok () ->
+                (match ring with
+                 | None -> Lwt.return_unit
+                 | Some r -> send_history s header.Vmm_commands.version r name ts) >>= fun () ->
+                (* now we wait for the next read and terminate*)
+                Vmm_lwt.read_wire s >|= fun _ -> ()
+            end
       end
     | Ok wire ->
       Logs.err (fun m -> m "unexpected wire %a"
