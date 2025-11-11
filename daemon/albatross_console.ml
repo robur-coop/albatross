@@ -30,13 +30,17 @@ module Trie = struct
 end
 
 
-(* The console output as a Vmm_ring.t with 1024 entries. The store is a trie,
-   where the key is the path, and the value is pair of "number of unikernels
-   allowed on this path" and "map", which key is the label, and its value a
-   triple: subscribers, active_or_not, ringbuffer. *)
-let state :
-  (int * ((Vmm_commands.version * Lwt_unix.file_descr) list * bool * string Vmm_ring.t) LMap.t) Trie.t ref =
-  ref Trie.empty
+(* A map where the keys are labels, and the value is a list of subscribers
+   (version and file descriptor), a boolean field whether this console is active
+   (the unikernel is running), and a ringbuffer (maximum 1024 entries). *)
+type console_map =
+  ((Vmm_commands.version * Lwt_unix.file_descr) list * bool * string Vmm_ring.t) LMap.t
+
+(* The global state: a trie, where the key is the path, and the value is pair of
+   "number of unikernels allowed on this path" and "console map". *)
+type state = (int * console_map) Trie.t
+
+let state : state ref = ref Trie.empty
 
 let read_console (path, lbl) name ringbuffer fd =
   Lwt.catch (fun () ->
