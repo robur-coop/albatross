@@ -324,6 +324,8 @@ let handle max_subscribers s addr =
 let m = Vmm_core.conn_metrics "unix"
 
 let jump _ systemd influx tmpdir max_subscribers =
+  if max_subscribers <= 1 then
+    invalid_arg "max subscribers must be greater than or equal to 1";
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
   let socket () =
