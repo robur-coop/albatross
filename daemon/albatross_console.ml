@@ -27,6 +27,9 @@ module Trie = struct
 
   let find path t =
     Vmm_trie.find (Vmm_core.Name.make_of_path path) t
+
+  let remove path t =
+    Vmm_trie.remove (Vmm_core.Name.make_of_path path) t
 end
 
 
@@ -41,6 +44,29 @@ type console_map =
 type state = (int * console_map) Trie.t
 
 let state : state ref = ref Trie.empty
+
+let unsubscribe path lbl fd =
+  Vmm_lwt.safe_close fd >|= fun () ->
+  match Trie.find path !state with
+  | None -> ()
+  | Some (n, map) ->
+    match LMap.find_opt lbl map with
+    | None -> ()
+    | Some (subs, act, r) ->
+      let subs = List.filter (fun (_v, fd') -> fd != fd') subs in
+      let map =
+        if act = false && r = None && subs = [] then
+          LMap.remove lbl map
+        else
+          LMap.add lbl (subs, act, r) map
+      in
+      let trie =
+        if LMap.is_empty map then
+          Trie.remove path !state
+        else
+          fst (Trie.insert path (n, map) !state)
+      in
+      state := trie
 
 let read_console (path, lbl) name ringbuffer fd =
   Lwt.catch (fun () ->
@@ -97,17 +123,7 @@ let read_console (path, lbl) name ringbuffer fd =
                  let data = `Data (`Console_data (now, line)) in
                  Vmm_lwt.write_wire fd (header, data) >>= function
                  | Error _ ->
-                   Vmm_lwt.safe_close fd >|= fun () ->
-                   (match Trie.find path !state with
-                    | None -> ()
-                    | Some (n, map) ->
-                      match LMap.find_opt lbl map with
-                      | None -> ()
-                      | Some (subs, act, r) ->
-                        let subs = List.filter (fun (_v, fd') -> fd != fd') subs in
-                        let map = LMap.add lbl (subs, act, r) map in
-                        let trie, _ = Trie.insert path (n, map) !state in
-                        state := trie);
+                   unsubscribe path lbl fd >|= fun () ->
                    None
                  | Ok () -> Lwt.return (Some fd))
              (Some fd) lines
@@ -127,8 +143,8 @@ let read_console (path, lbl) name ringbuffer fd =
            Logs.debug (fun m -> m "%s end of file while reading" name)
          | exn ->
            Logs.err (fun m -> m "%s error while reading %s" name (Printexc.to_string exn))
-       end ;
-       Vmm_lwt.safe_close fd)
+       end;
+       Lwt.return_unit)
 
 let open_fifo name =
   let fifo = Vmm_core.Name.fifo_file name in
@@ -145,6 +161,22 @@ let open_fifo name =
         Lwt.return None)
 
 let fifos = Vmm_core.conn_metrics "fifo"
+
+let maybe_drop name path n map =
+  (* we allow 1 more unikernel console output, thus we compare with > n here, not >= n. *)
+  if LMap.cardinal map > n then
+    match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
+    | Some (key, (fds, _, _)) ->
+      Logs.info (fun m -> m "dropping %s:%s"
+                    (Vmm_core.Name.Path.to_string path)
+                    (Vmm_core.Name.Label.to_string key));
+      Lwt_list.iter_p Vmm_lwt.safe_close (List.map snd fds) >|= fun () ->
+      LMap.remove key map
+    | None ->
+      Logs.err (fun m -> m "adding a ringbuffer to %s, but found nothing inactive to drop" name);
+      Lwt.return map
+  else
+    Lwt.return map
 
 let add_fifo n (path, lbl) =
   let id = Vmm_core.Name.make path lbl in
@@ -164,19 +196,7 @@ let add_fifo n (path, lbl) =
        | None ->
          let ringbuffer = Vmm_ring.create "" () in
          let map = LMap.add lbl ([], true, Some ringbuffer) map in
-         (if LMap.cardinal map > n then
-            match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
-            | Some (key, (fds, _, _)) ->
-              Logs.info (fun m -> m "dropping %s:%s"
-                            (Vmm_core.Name.Path.to_string path)
-                            (Vmm_core.Name.Label.to_string key));
-              Lwt_list.iter_p Vmm_lwt.safe_close (List.map snd fds) >|= fun () ->
-              LMap.remove key map
-            | None ->
-              Logs.err (fun m -> m "intended to drop something while adding ringbuffer %s, but found nothing inactive" name);
-              Lwt.return map
-          else
-            Lwt.return map) >>= fun map ->
+         maybe_drop name path n map >>= fun map ->
          let trie, _ = Trie.insert path (n, map) !state in
          state := trie;
          Lwt.return ringbuffer
@@ -188,7 +208,8 @@ let add_fifo n (path, lbl) =
          Lwt.return ringbuffer) >|= fun ringbuffer ->
     fifos `Open;
     Lwt.async (fun () ->
-        read_console (path, lbl) name ringbuffer f >|= fun () ->
+        read_console (path, lbl) name ringbuffer f >>= fun () ->
+        Vmm_lwt.safe_close f >|= fun () ->
         (match Trie.find path !state with
          | None -> ()
          | Some (_, map) ->
@@ -201,8 +222,22 @@ let add_fifo n (path, lbl) =
         fifos `Close) ;
     Ok ()
 
-let subscribe s version (path, lbl) =
-  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp (Vmm_core.Name.make path lbl)) ;
+let maybe_drop_subscriber maximum list =
+  (* we want to add another subscriber, so we reduce the maximum by 1. *)
+  if List.length list - 1 >= maximum then
+    match List.rev list with
+    | (_, fd) :: xs ->
+      Logs.info (fun m -> m "dropping subscriber");
+      Vmm_lwt.safe_close fd >|= fun () ->
+      List.rev xs
+    | [] -> Lwt.return list
+  else
+    Lwt.return list
+
+let subscribe max_subscribers s version (path, lbl) =
+  let id = Vmm_core.Name.make path lbl in
+  let name = Vmm_core.Name.to_string id in
+  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp id);
   match Trie.find path !state with
   | None ->
     let map = LMap.singleton lbl ([ version, s ], false, None) in
@@ -210,9 +245,9 @@ let subscribe s version (path, lbl) =
     state := trie;
     Lwt.return (None, "waiting for VM")
   | Some (n, map) ->
-    (* TODO: consider n and restrict the number of subscribers!? *)
     match LMap.find_opt lbl map with
     | Some (subs, act, r) ->
+      maybe_drop_subscriber max_subscribers subs >>= fun subs ->
       let map = LMap.add lbl ((version, s) :: subs, act, r) map in
       let trie, _ = Trie.insert path (n, map) !state in
       state := trie;
@@ -221,6 +256,7 @@ let subscribe s version (path, lbl) =
        | Some r -> Lwt.return (Some r, "subscribed"))
     | None ->
       let map = LMap.add lbl ([ version, s ], false, None) map in
+      maybe_drop name path n map >>= fun map ->
       let trie, _ = Trie.insert path (n, map) !state in
       state := trie;
       Lwt.return (None, "waiting for VM")
@@ -238,10 +274,10 @@ let send_history s version r (path, lbl) since =
       let data = `Data (`Console_data (i, v)) in
       Vmm_lwt.write_wire s (header, data) >>= function
       | Ok () -> Lwt.return_unit
-      | Error _ -> Vmm_lwt.safe_close s)
+      | Error _ -> unsubscribe path lbl s)
     entries
 
-let handle s addr =
+let handle max_subscribers s addr =
   Logs.info (fun m -> m "handling connection %a" Vmm_lwt.pp_sockaddr addr) ;
   let rec loop () =
     Vmm_lwt.read_wire s >>= function
@@ -273,9 +309,9 @@ let handle s addr =
             end
           | `Console_subscribe ts ->
             begin
-              subscribe s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
+              subscribe max_subscribers s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
               Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-              | Error _ -> Vmm_lwt.safe_close s
+              | Error _ -> unsubscribe path name s
               | Ok () ->
                 (match ring with
                  | None -> Lwt.return_unit
@@ -295,7 +331,7 @@ let handle s addr =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ systemd influx tmpdir =
+let jump _ systemd influx tmpdir max_subscribers =
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
   let socket () =
@@ -308,12 +344,27 @@ let jump _ systemd influx tmpdir =
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        m `Open;
-       Lwt.async (fun () -> handle cs addr >|= fun () -> m `Close) ;
+       Lwt.async (fun () -> handle max_subscribers cs addr >|= fun () -> m `Close) ;
        loop ()
      in
      loop ())
 
 open Cmdliner
+
+let max_subscribers =
+  let doc = "Maximum subscribers per unikernel console." in
+  let subscribers =
+    let parser s =
+      Result.bind (Arg.Conv.parser Arg.int s)
+        (fun n ->
+           if n < 1 then
+             Error "max subscribers must be greater than or equal to 1"
+           else Ok n)
+    in
+    Arg.Conv.of_conv ~parser
+      Arg.int
+  in
+  Arg.(value & opt subscribers 5 & info [ "max-subscribers" ] ~doc)
 
 let cmd =
   let doc = "Albatross console" in
@@ -328,7 +379,7 @@ let cmd =
         fifo the unikernel is writing to.";
   ] in
   let term =
-    Term.(term_result (const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
+    Term.(term_result (const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ max_subscribers))
   and info = Cmd.info "albatross-console" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
