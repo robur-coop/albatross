@@ -207,7 +207,7 @@ let handle_create t name unikernel_config =
                  Fmt.(list ~sep:(any ",@ ") pp_tap) taps) ;
   let cons_out =
     let header = Vmm_commands.header ~sequence:t.console_counter name in
-    (header, `Command (`Console_cmd `Console_add))
+    (header, `Command (`Console_cmd (`Console_add (Vmm_resources.unikernels t.resources name))))
   in
   let success t =
     (* actually execute the unikernel:

@@ -67,6 +67,7 @@ module Name : sig
 
   val drop_prefix_exn : t -> Path.t -> t
   val drop_path : t -> t
+  val drop_label : t -> t
 
   val to_labels : t -> Label.t list
 

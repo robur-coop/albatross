@@ -194,6 +194,14 @@ let check_unikernel t name unikernel =
   let* () = block_ok in
   unikernel_ok
 
+let unikernels t name =
+  let path = Name.path name in
+  if Name.Path.is_root path then
+    Int.max_int
+  else match find_policy t path with
+    | None -> 0
+    | Some p -> p.unikernels
+
 let insert_unikernel t name unikernel =
   let unikernels, old = Vmm_trie.insert name unikernel t.unikernels in
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;

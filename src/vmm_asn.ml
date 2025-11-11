@@ -134,17 +134,17 @@ let my_explicit : ?cls:Asn.S.cls -> int -> ?label:string -> 'a Asn.S.t -> 'a Asn
 
 let console_cmd =
   let f = function
-    | `C1 () -> `Console_add
+    | `C1 m -> `Console_add m
     | `C2 `C1 ts -> `Console_subscribe (`Since ts)
     | `C2 `C2 c -> `Console_subscribe (`Count c)
   and g = function
-    | `Console_add -> `C1 ()
+    | `Console_add m -> `C1 m
     | `Console_subscribe `Since ts -> `C2 (`C1 ts)
     | `Console_subscribe `Count c -> `C2 (`C2 c)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-           (my_explicit 0 ~label:"add" null)
+           (my_explicit 0 ~label:"add" int)
            (my_explicit 2 ~label:"subscribe"
               (choice2
                  (my_explicit 0 ~label:"since" generalized_time)

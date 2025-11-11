@@ -14,9 +14,35 @@ open Lwt.Infix
 
 let pp_unix_error ppf e = Fmt.string ppf (Unix.error_message e)
 
-let active = ref Vmm_core.String_map.empty
+module LMap = Map.Make(Vmm_core.Name.Label)
 
-let read_console id name ring fd =
+(* Vmm_trie but with paths as key *)
+module Trie = struct
+  type 'a t = 'a Vmm_trie.t
+
+  let empty = Vmm_trie.empty
+
+  let insert path v t =
+    Vmm_trie.insert (Vmm_core.Name.make_of_path path) v t
+
+  let find path t =
+    Vmm_trie.find (Vmm_core.Name.make_of_path path) t
+end
+
+
+(* A map where the keys are labels, and the value is a list of subscribers
+   (version and file descriptor), a boolean field whether this console is active
+   (the unikernel is running), and a ringbuffer (maximum 1024 entries). *)
+type console_map =
+  ((Vmm_commands.version * Lwt_unix.file_descr) list * bool * string Vmm_ring.t option) LMap.t
+
+(* The global state: a trie, where the key is the path, and the value is pair of
+   "number of unikernels allowed on this path" and "console map". *)
+type state = (int * console_map) Trie.t
+
+let state : state ref = ref Trie.empty
+
+let read_console (path, lbl) name ringbuffer fd =
   Lwt.catch (fun () ->
       Lwt_unix.wait_read fd >>= fun () ->
       let channel = Lwt_io.of_fd ~mode:Lwt_io.Input fd in
@@ -60,33 +86,35 @@ let read_console id name ring fd =
            the empty lines might have some semantic meaning *)
         let lines = List.filter (fun s -> not (String.equal "" s)) lines in
         Logs.debug (fun m -> m "read %u lines %u slack" (List.length lines) (String.length slack)) ;
-        let t = Ptime_clock.now () in
-        List.iter (fun line -> Vmm_ring.write ring (t, line)) lines;
+        let now = Ptime_clock.now () in
+        List.iter (fun line -> Vmm_ring.write ringbuffer (now, line)) lines;
         let f (version, fd) =
-           let header = Vmm_commands.header ~version id in
+           let header = Vmm_commands.header ~version (Vmm_core.Name.make path lbl) in
            Lwt_list.fold_left_s (fun fd line ->
                match fd with
                | None -> Lwt.return None
                | Some fd ->
-                 let data = `Data (`Console_data (t, line)) in
+                 let data = `Data (`Console_data (now, line)) in
                  Vmm_lwt.write_wire fd (header, data) >>= function
                  | Error _ ->
                    Vmm_lwt.safe_close fd >|= fun () ->
-                   let update s =
-                     let s = Option.value ~default:[] s in
-                     let s' = List.filter (fun (_v, fd') -> fd != fd') s in
-                     if s' = [] then
-                       None
-                     else
-                       Some s'
-                   in
-                   active := Vmm_core.String_map.update name update !active;
+                   (match Trie.find path !state with
+                    | None -> ()
+                    | Some (n, map) ->
+                      match LMap.find_opt lbl map with
+                      | None -> ()
+                      | Some (subs, act, r) ->
+                        let subs = List.filter (fun (_v, fd') -> fd != fd') subs in
+                        let map = LMap.add lbl (subs, act, r) map in
+                        let trie, _ = Trie.insert path (n, map) !state in
+                        state := trie);
                    None
                  | Ok () -> Lwt.return (Some fd))
              (Some fd) lines
         in
-        Lwt_list.iter_p (fun data -> f data >|= ignore)
-          (Vmm_core.String_map.find_opt name !active |> Option.value ~default:[])
+        let map = Option.value ~default:LMap.empty (Option.map snd (Trie.find path !state)) in
+        let subs = Option.value ~default:[] (Option.map (fun (s, _, _) -> s) (LMap.find_opt lbl map)) in
+        Lwt_list.iter_p (fun data -> f data >|= ignore) subs
         >>= Lwt.pause
         >>= fun () -> loop mode slack
       in
@@ -116,43 +144,89 @@ let open_fifo name =
         Logs.err (fun m -> m "%a error while reading %s" Fpath.pp fifo (Printexc.to_string exn)) ;
         Lwt.return None)
 
-let t = ref Vmm_core.String_map.empty
-
 let fifos = Vmm_core.conn_metrics "fifo"
 
-let add_fifo id =
+let add_fifo n (path, lbl) =
+  let id = Vmm_core.Name.make path lbl in
   let name = Vmm_core.Name.to_string id in
-  open_fifo id >|= function
-  | None -> Error (`Msg "opening")
+  open_fifo id >>= function
+  | None -> Lwt.return (Error (`Msg "opening"))
   | Some f ->
-    let ring = match Vmm_core.String_map.find_opt name !t with
-      | None ->
-        let ring = Vmm_ring.create "" () in
-        let map = Vmm_core.String_map.add name ring !t in
-        t := map ;
-        ring
-      | Some ring -> ring
-    in
+    (match Trie.find path !state with
+     | None ->
+       let ringbuffer = Vmm_ring.create "" () in
+       let map = LMap.singleton lbl ([], true, Some ringbuffer) in
+       let trie, _ = Trie.insert path (n, map) !state in
+       state := trie;
+       Lwt.return ringbuffer
+     | Some (_, map) ->
+       match LMap.find_opt lbl map with
+       | None ->
+         let ringbuffer = Vmm_ring.create "" () in
+         let map = LMap.add lbl ([], true, Some ringbuffer) map in
+         (if LMap.cardinal map > n then
+            match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
+            | Some (key, (fds, _, _)) ->
+              Logs.info (fun m -> m "dropping %s:%s"
+                            (Vmm_core.Name.Path.to_string path)
+                            (Vmm_core.Name.Label.to_string key));
+              Lwt_list.iter_p Vmm_lwt.safe_close (List.map snd fds) >|= fun () ->
+              LMap.remove key map
+            | None ->
+              Logs.err (fun m -> m "intended to drop something while adding ringbuffer %s, but found nothing inactive" name);
+              Lwt.return map
+          else
+            Lwt.return map) >>= fun map ->
+         let trie, _ = Trie.insert path (n, map) !state in
+         state := trie;
+         Lwt.return ringbuffer
+       | Some (subs, _, ringbuffer) ->
+         let ringbuffer = Option.value ~default:(Vmm_ring.create "" ()) ringbuffer in
+         let map = LMap.add lbl (subs, true, Some ringbuffer) map in
+         let trie, _ = Trie.insert path (n, map) !state in
+         state := trie;
+         Lwt.return ringbuffer) >|= fun ringbuffer ->
     fifos `Open;
-    Lwt.async (fun () -> read_console id name ring f >|= fun () -> fifos `Close) ;
+    Lwt.async (fun () ->
+        read_console (path, lbl) name ringbuffer f >|= fun () ->
+        (match Trie.find path !state with
+         | None -> ()
+         | Some (_, map) ->
+           match LMap.find_opt lbl map with
+           | None -> ()
+           | Some (subs, _, ringbuffer) ->
+             let map = LMap.add lbl (subs, false, ringbuffer) map in
+             let trie, _ = Trie.insert path (n, map) !state in
+             state := trie);
+        fifos `Close) ;
     Ok ()
 
-let subscribe s version id =
-  let name = Vmm_core.Name.to_string id in
-  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp id) ;
-  let update e es =
-    let es = Option.value ~default:[] es in
-    Some (e :: es)
-  in
-  match Vmm_core.String_map.find_opt name !t with
+let subscribe s version (path, lbl) =
+  Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp (Vmm_core.Name.make path lbl)) ;
+  match Trie.find path !state with
   | None ->
-    active := Vmm_core.String_map.update name (update (version, s)) !active ;
+    let map = LMap.singleton lbl ([ version, s ], false, None) in
+    let trie, _ = Trie.insert path (1, map) !state in
+    state := trie;
     Lwt.return (None, "waiting for VM")
-  | Some r ->
-    active := Vmm_core.String_map.update name (update (version, s)) !active ;
-    Lwt.return (Some r, "subscribed")
+  | Some (n, map) ->
+    (* TODO: consider n and restrict the number of subscribers!? *)
+    match LMap.find_opt lbl map with
+    | Some (subs, act, r) ->
+      let map = LMap.add lbl ((version, s) :: subs, act, r) map in
+      let trie, _ = Trie.insert path (n, map) !state in
+      state := trie;
+      (match r with
+       | None -> Lwt.return (None, "waiting for VM")
+       | Some r -> Lwt.return (Some r, "subscribed"))
+    | None ->
+      let map = LMap.add lbl ([ version, s ], false, None) map in
+      let trie, _ = Trie.insert path (n, map) !state in
+      state := trie;
+      Lwt.return (None, "waiting for VM")
 
-let send_history s version r id since =
+let send_history s version r (path, lbl) since =
+  let id = Vmm_core.Name.make path lbl in
   let entries =
     match since with
     | `Count n -> Vmm_ring.read_last r n
@@ -177,32 +251,38 @@ let handle s addr =
     | Ok (header, `Command (`Console_cmd cmd)) ->
       begin
         let name = header.Vmm_commands.name in
-        match cmd with
-        | `Console_add ->
-          begin
-            add_fifo name >>= fun res ->
-            let reply = match res with
-              | Ok () -> `Success `Empty
-              | Error (`Msg msg) -> `Failure msg
-          in
-          Vmm_lwt.write_wire s (header, reply) >>= function
-          | Ok () -> loop ()
-          | Error _ ->
-            Logs.err (fun m -> m "error while writing") ;
-            Lwt.return_unit
-          end
-        | `Console_subscribe ts ->
-          begin
-            subscribe s header.Vmm_commands.version name >>= fun (ring, res) ->
-            Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-            | Error _ -> Vmm_lwt.safe_close s
-            | Ok () ->
-              (match ring with
-               | None -> Lwt.return_unit
-               | Some r -> send_history s header.Vmm_commands.version r name ts) >>= fun () ->
-              (* now we wait for the next read and terminate*)
-              Vmm_lwt.read_wire s >|= fun _ -> ()
-          end
+        match Vmm_core.Name.path name, Vmm_core.Name.name name with
+        | _, None ->
+          (Vmm_lwt.write_wire s (header, `Failure "path used instead of name") >>= function
+            | Ok () -> Lwt.return_unit
+            | Error _ -> Vmm_lwt.safe_close s)
+        | path, Some name ->
+          match cmd with
+          | `Console_add n ->
+            begin
+              add_fifo n (path, name) >>= fun res ->
+              let reply = match res with
+                | Ok () -> `Success `Empty
+                | Error (`Msg msg) -> `Failure msg
+              in
+              Vmm_lwt.write_wire s (header, reply) >>= function
+              | Ok () -> loop ()
+              | Error _ ->
+                Logs.err (fun m -> m "error while writing") ;
+                Lwt.return_unit
+            end
+          | `Console_subscribe ts ->
+            begin
+              subscribe s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
+              Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+              | Error _ -> Vmm_lwt.safe_close s
+              | Ok () ->
+                (match ring with
+                 | None -> Lwt.return_unit
+                 | Some r -> send_history s header.Vmm_commands.version r (path, name) ts) >>= fun () ->
+                (* now we wait for the next read and terminate*)
+                Vmm_lwt.read_wire s >|= fun _ -> ()
+            end
       end
     | Ok wire ->
       Logs.err (fun m -> m "unexpected wire %a"
@@ -240,7 +320,7 @@ let cmd =
   let man = [
     `S "DESCRIPTION";
     `P "$(tname) reads the console output of a unikernel and preserves the
-        latest 1000 lines in a ring buffer in memory for clients. Each unikernel
+        latest 1024 lines in a ring buffer in memory for clients. Each unikernel
         may have multiple subscribed clients, which is sent to until the
         client closes the connection (each new line is sent as new message on
         the stream). The albatross-daemon informs albatross-console when a new

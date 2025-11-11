@@ -138,6 +138,7 @@ module Name = struct
   let make_of_path p = p, None
 
   let drop_path (_, name) = [], name
+  let drop_label (path, _) = path, None
 
   let rec drop_prefix_exn (p, name) p' =
     match p, p' with
