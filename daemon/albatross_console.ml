@@ -27,6 +27,9 @@ module Trie = struct
 
   let find path t =
     Vmm_trie.find (Vmm_core.Name.make_of_path path) t
+
+  let remove path t =
+    Vmm_trie.remove (Vmm_core.Name.make_of_path path) t
 end
 
 
@@ -57,7 +60,12 @@ let unsubscribe path lbl fd =
         else
           LMap.add lbl (subs, act, r) map
       in
-      let trie, _ = Trie.insert path (n, map) !state in
+      let trie =
+        if LMap.is_empty map then
+          Trie.remove path !state
+        else
+          fst (Trie.insert path (n, map) !state)
+      in
       state := trie
 
 let read_console (path, lbl) name ringbuffer fd =
