@@ -324,8 +324,6 @@ let handle max_subscribers s addr =
 let m = Vmm_core.conn_metrics "unix"
 
 let jump _ systemd influx tmpdir max_subscribers =
-  if max_subscribers <= 1 then
-    invalid_arg "max subscribers must be greater than or equal to 1";
   Sys.(set_signal sigpipe Signal_ignore) ;
   Albatross_cli.set_tmpdir tmpdir;
   let socket () =
@@ -347,7 +345,18 @@ open Cmdliner
 
 let max_subscribers =
   let doc = "Maximum subscribers per unikernel console." in
-  Arg.(value & opt int 5 & info [ "max-subscribers" ] ~doc)
+  let subscribers =
+    let parser s =
+      Result.bind (Arg.Conv.parser Arg.int s)
+        (fun n ->
+           if n < 1 then
+             Error "max subscribers must be greater than or equal to 1"
+           else Ok n)
+    in
+    Arg.Conv.of_conv ~parser
+      Arg.int
+  in
+  Arg.(value & opt subscribers 5 & info [ "max-subscribers" ] ~doc)
 
 let cmd =
   let doc = "Albatross console" in
