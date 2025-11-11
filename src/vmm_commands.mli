@@ -20,6 +20,7 @@ type since_count = [ `Since of Ptime.t | `Count of int ]
 type console_cmd = [
   | `Console_add of int
   | `Console_subscribe of since_count
+  | `Console_list_inactive
 ]
 
 type stats_cmd = [
@@ -94,6 +95,7 @@ type success = [
   | `Block_devices of (Name.t * int * bool) list
   | `Old_block_device_image of bool * string
   | `Block_device_image of bool
+  | `Consoles of Name.t list
 ]
 
 type res = [

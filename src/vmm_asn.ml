@@ -137,18 +137,21 @@ let console_cmd =
     | `C1 m -> `Console_add m
     | `C2 `C1 ts -> `Console_subscribe (`Since ts)
     | `C2 `C2 c -> `Console_subscribe (`Count c)
+    | `C3 () -> `Console_list_inactive
   and g = function
     | `Console_add m -> `C1 m
     | `Console_subscribe `Since ts -> `C2 (`C1 ts)
     | `Console_subscribe `Count c -> `C2 (`C2 c)
+    | `Console_list_inactive -> `C3 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice2
+  Asn.S.(choice3
            (my_explicit 0 ~label:"add" int)
            (my_explicit 2 ~label:"subscribe"
               (choice2
                  (my_explicit 0 ~label:"since" generalized_time)
-                 (my_explicit 1 ~label:"count" int))))
+                 (my_explicit 1 ~label:"count" int)))
+           (my_explicit 3 ~label:"inactive consoles" null))
 
 (* TODO is this good? *)
 let int64 =
@@ -893,27 +896,29 @@ let success =
     | `C1 `C2 str -> `String str
     | `C1 `C3 policies -> `Policies policies
     | `C1 `C4 blocks -> `Block_devices blocks
-    | `C2 `C1 (c, i) -> `Unikernel_image (c, i)
-    | `C2 `C2 (compress, data) -> `Old_block_device_image (compress, data)
-    | `C2 `C3 unikernels -> `Old_unikernel_info3 unikernels
-    | `C2 `C4 unikernels -> `Old_unikernel_info4 unikernels
-    | `C2 `C5 compress -> `Block_device_image compress
-    | `C2 `C6 unikernels -> `Unikernel_info unikernels
+    | `C1 `C5 (c, i) -> `Unikernel_image (c, i)
+    | `C1 `C6 (compress, data) -> `Old_block_device_image (compress, data)
+    | `C2 `C1 unikernels -> `Old_unikernel_info3 unikernels
+    | `C2 `C2 unikernels -> `Old_unikernel_info4 unikernels
+    | `C2 `C3 compress -> `Block_device_image compress
+    | `C2 `C4 unikernels -> `Unikernel_info unikernels
+    | `C2 `C5 names -> `Consoles names
   and g = function
     | `Empty -> `C1 (`C1 ())
     | `String s -> `C1 (`C2 s)
     | `Policies ps -> `C1 (`C3 ps)
     | `Block_devices blocks -> `C1 (`C4 blocks)
-    | `Unikernel_image (c, i) -> `C2 (`C1 (c, i))
-    | `Old_block_device_image (compress, data) -> `C2 (`C2 (compress, data))
-    | `Old_unikernel_info3 unikernels -> `C2 (`C3 unikernels)
-    | `Old_unikernel_info4 unikernels -> `C2 (`C4 unikernels)
-    | `Block_device_image compress -> `C2 (`C5 compress)
-    | `Unikernel_info unikernels -> `C2 (`C6 unikernels)
+    | `Unikernel_image (c, i) -> `C1 (`C5 (c, i))
+    | `Old_block_device_image (compress, data) -> `C1 (`C6 (compress, data))
+    | `Old_unikernel_info3 unikernels -> `C2 (`C1 unikernels)
+    | `Old_unikernel_info4 unikernels -> `C2 (`C2 unikernels)
+    | `Block_device_image compress -> `C2 (`C3 compress)
+    | `Unikernel_info unikernels -> `C2 (`C4 unikernels)
+    | `Consoles names -> `C2 (`C5 names)
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-          (choice4
+          (choice6
              (my_explicit 0 ~label:"empty" null)
              (my_explicit 1 ~label:"string" utf8_string)
              (my_explicit 2 ~label:"policies"
@@ -926,8 +931,7 @@ let success =
                    (sequence3
                       (required ~label:"name" name)
                       (required ~label:"size" int)
-                      (required ~label:"active" bool)))))
-          (choice6
+                      (required ~label:"active" bool))))
              (my_explicit 6 ~label:"unikernel-image"
                 (sequence2
                    (required ~label:"compressed" bool)
@@ -935,7 +939,8 @@ let success =
              (my_explicit 7 ~label:"old-block-device-image"
                 (sequence2
                    (required ~label:"compressed" bool)
-                   (required ~label:"image" octet_string)))
+                   (required ~label:"image" octet_string))))
+          (choice5
              (my_explicit 8 ~label:"old-unikernel-info3"
                 (sequence_of
                    (sequence2
@@ -951,7 +956,9 @@ let success =
                 (sequence_of
                    (sequence2
                       (required ~label:"name" name)
-                      (required ~label:"info" unikernel_info))))))
+                      (required ~label:"info" unikernel_info))))
+             (my_explicit 12 ~label:"consoles"
+                (sequence_of name))))
 
 let payload =
   let f = function

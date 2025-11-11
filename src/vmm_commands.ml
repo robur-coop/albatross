@@ -28,11 +28,13 @@ let pp_since_count ppf = function
 type console_cmd = [
   | `Console_add of int
   | `Console_subscribe of since_count
+  | `Console_list_inactive
 ]
 
 let pp_console_cmd ppf = function
   | `Console_add n -> Fmt.pf ppf "console add (max unikernels %u)" n
   | `Console_subscribe ts -> Fmt.pf ppf "console subscribe %a" pp_since_count ts
+  | `Console_list_inactive -> Fmt.pf ppf "console list inactive available ringbuffers"
 
 type stats_cmd = [
   | `Stats_add of string * int * (string * string) list
@@ -165,6 +167,7 @@ type success = [
   | `Old_block_device_image of bool * string
   | `Block_device_image of bool
   | `Unikernel_info of (Name.t * Unikernel.info) list
+  | `Consoles of Name.t list
 ]
 
 let pp_block ppf (id, size, active) =
@@ -194,6 +197,7 @@ let pp_success ~verbose ppf = function
       compressed (String.length data)
   | `Block_device_image compressed ->
     Fmt.pf ppf "block device compressed %B" compressed
+  | `Consoles names -> my_fmt_list "no consoles" Name.pp ppf names
 
 type res = [
   | `Command of t
@@ -219,4 +223,5 @@ let endpoint = function
   | `Block_cmd _ -> `Vmmd, `Single
   | `Stats_cmd `Stats_subscribe -> `Stats, `Read
   | `Stats_cmd _ -> `Stats, `Single
+  | `Console_cmd `Console_list_inactive -> `Console, `Single
   | `Console_cmd _ -> `Console, `Read

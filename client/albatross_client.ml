@@ -92,7 +92,7 @@ let output_result state ((hdr, reply) as wire) =
         Lwt.return (Ok `End)
       | `Empty | `String _ | `Block_devices _
       | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Unikernel_info _
-      | `Policies _ ->
+      | `Policies _ | `Consoles _ ->
         begin match state with
           | `Single | `End -> Lwt.return (Ok `End)
           | `Dump | `Dump_to _ | `Read as state ->

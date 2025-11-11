@@ -287,15 +287,16 @@ let handle max_subscribers s addr =
     | Ok (header, `Command (`Console_cmd cmd)) ->
       begin
         let name = header.Vmm_commands.name in
-        match Vmm_core.Name.path name, Vmm_core.Name.name name with
-        | _, None ->
-          (Vmm_lwt.write_wire s (header, `Failure "path used instead of name") >>= function
-            | Ok () -> Lwt.return_unit
-            | Error _ -> Vmm_lwt.safe_close s)
-        | path, Some name ->
-          match cmd with
-          | `Console_add n ->
-            begin
+        let path = Vmm_core.Name.path name in
+        let lbl = Vmm_core.Name.name name in
+        match cmd  with
+        | `Console_add n ->
+          begin match lbl with
+            | None ->
+              (Vmm_lwt.write_wire s (header, `Failure "path used instead of name") >>= function
+                | Ok () -> Lwt.return_unit
+                | Error _ -> Vmm_lwt.safe_close s)
+            | Some name ->
               add_fifo n (path, name) >>= fun res ->
               let reply = match res with
                 | Ok () -> `Success `Empty
@@ -308,16 +309,41 @@ let handle max_subscribers s addr =
                 Lwt.return_unit
             end
           | `Console_subscribe ts ->
-            begin
-              subscribe max_subscribers s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
-              Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-              | Error _ -> unsubscribe path name s
-              | Ok () ->
-                (match ring with
-                 | None -> Lwt.return_unit
-                 | Some r -> send_history s header.Vmm_commands.version r (path, name) ts) >>= fun () ->
-                (* now we wait for the next read and terminate*)
-                Vmm_lwt.read_wire s >|= fun _ -> ()
+            begin match lbl with
+              | None ->
+                (Vmm_lwt.write_wire s (header, `Failure "path used instead of name") >>= function
+                  | Ok () -> Lwt.return_unit
+                  | Error _ -> Vmm_lwt.safe_close s)
+              | Some name ->
+                subscribe max_subscribers s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
+                Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+                | Error _ -> unsubscribe path name s
+                | Ok () ->
+                  (match ring with
+                   | None -> Lwt.return_unit
+                   | Some r -> send_history s header.Vmm_commands.version r (path, name) ts) >>= fun () ->
+                  (* now we wait for the next read and terminate*)
+                  Vmm_lwt.read_wire s >|= fun _ -> ()
+            end
+          | `Console_list_inactive ->
+            begin match lbl with
+              | Some _ ->
+                (Vmm_lwt.write_wire s (header, `Failure "name used") >>= function
+                  | Ok () -> Lwt.return_unit
+                  | Error _ -> Vmm_lwt.safe_close s)
+              | None ->
+                let cs =
+                  Vmm_trie.fold path !state (fun path (_, map) acc ->
+                      LMap.fold (fun lbl (_, act, r) acc ->
+                          if not act && r <> None then
+                            Vmm_core.Name.make (Vmm_core.Name.path path) lbl :: acc
+                          else
+                            acc) map acc)
+                    []
+                in
+                let reply = `Success (`Consoles cs) in
+                Vmm_lwt.write_wire s (header, reply) >>= fun _ ->
+                Vmm_lwt.safe_close s
             end
       end
     | Ok wire ->

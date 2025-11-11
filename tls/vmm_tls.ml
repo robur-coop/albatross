@@ -97,7 +97,7 @@ let handle chain =
   | Ok (v, wire) ->
     (* we only allow some commands via certificate *)
     match wire with
-    | `Console_cmd (`Console_subscribe _)
+    | `Console_cmd (`Console_subscribe _ | `Console_list_inactive)
     | `Stats_cmd `Stats_subscribe
     | `Unikernel_cmd _
     | `Policy_cmd `Policy_info
