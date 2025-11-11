@@ -42,6 +42,24 @@ type state = (int * console_map) Trie.t
 
 let state : state ref = ref Trie.empty
 
+let unsubscribe path lbl fd =
+  Vmm_lwt.safe_close fd >|= fun () ->
+  match Trie.find path !state with
+  | None -> ()
+  | Some (n, map) ->
+    match LMap.find_opt lbl map with
+    | None -> ()
+    | Some (subs, act, r) ->
+      let subs = List.filter (fun (_v, fd') -> fd != fd') subs in
+      let map =
+        if act = false && r = None && subs = [] then
+          LMap.remove lbl map
+        else
+          LMap.add lbl (subs, act, r) map
+      in
+      let trie, _ = Trie.insert path (n, map) !state in
+      state := trie
+
 let read_console (path, lbl) name ringbuffer fd =
   Lwt.catch (fun () ->
       Lwt_unix.wait_read fd >>= fun () ->
@@ -97,17 +115,7 @@ let read_console (path, lbl) name ringbuffer fd =
                  let data = `Data (`Console_data (now, line)) in
                  Vmm_lwt.write_wire fd (header, data) >>= function
                  | Error _ ->
-                   Vmm_lwt.safe_close fd >|= fun () ->
-                   (match Trie.find path !state with
-                    | None -> ()
-                    | Some (n, map) ->
-                      match LMap.find_opt lbl map with
-                      | None -> ()
-                      | Some (subs, act, r) ->
-                        let subs = List.filter (fun (_v, fd') -> fd != fd') subs in
-                        let map = LMap.add lbl (subs, act, r) map in
-                        let trie, _ = Trie.insert path (n, map) !state in
-                        state := trie);
+                   unsubscribe path lbl fd >|= fun () ->
                    None
                  | Ok () -> Lwt.return (Some fd))
              (Some fd) lines
@@ -127,8 +135,8 @@ let read_console (path, lbl) name ringbuffer fd =
            Logs.debug (fun m -> m "%s end of file while reading" name)
          | exn ->
            Logs.err (fun m -> m "%s error while reading %s" name (Printexc.to_string exn))
-       end ;
-       Vmm_lwt.safe_close fd)
+       end;
+       Lwt.return_unit)
 
 let open_fifo name =
   let fifo = Vmm_core.Name.fifo_file name in
@@ -192,7 +200,8 @@ let add_fifo n (path, lbl) =
          Lwt.return ringbuffer) >|= fun ringbuffer ->
     fifos `Open;
     Lwt.async (fun () ->
-        read_console (path, lbl) name ringbuffer f >|= fun () ->
+        read_console (path, lbl) name ringbuffer f >>= fun () ->
+        Vmm_lwt.safe_close f >|= fun () ->
         (match Trie.find path !state with
          | None -> ()
          | Some (_, map) ->
@@ -257,7 +266,7 @@ let send_history s version r (path, lbl) since =
       let data = `Data (`Console_data (i, v)) in
       Vmm_lwt.write_wire s (header, data) >>= function
       | Ok () -> Lwt.return_unit
-      | Error _ -> Vmm_lwt.safe_close s)
+      | Error _ -> unsubscribe path lbl s)
     entries
 
 let handle max_subscribers s addr =
@@ -294,7 +303,7 @@ let handle max_subscribers s addr =
             begin
               subscribe max_subscribers s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
               Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-              | Error _ -> Vmm_lwt.safe_close s
+              | Error _ -> unsubscribe path name s
               | Ok () ->
                 (match ring with
                  | None -> Lwt.return_unit
