@@ -825,6 +825,9 @@ let since_count since count = match since with
 let console () since count =
   jump (`Console_cmd (`Console_subscribe (since_count since count)))
 
+let inactive_consoles () path =
+  jump (`Console_cmd `Console_list_inactive) (Vmm_core.Name.make_of_path path)
+
 let stats_add () vmmdev pid bridge_taps =
   let vmmdev = Option.value ~default:"" vmmdev in
   jump (`Stats_cmd (`Stats_add (vmmdev, pid, bridge_taps)))
@@ -1508,6 +1511,18 @@ let console_cmd =
   in
   Cmd.v info term
 
+let inactive_consoles_cmd =
+  let doc = "Displays the inactive consoles." in
+  let man =
+    [`S "DESCRIPTION";
+     `P "Shows the inactive but available consoles."]
+  in
+  let term =
+    Term.(term_result (const inactive_consoles $ (Albatross_cli.setup_log (const false)) $ opt_path $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+  and info = Cmd.info "inactive-consoles" ~doc ~man ~exits
+  in
+  Cmd.v info term
+
 let stats_subscribe_cmd =
   let doc = "Statistics of unikernel." in
   let man =
@@ -1735,7 +1750,7 @@ let cmds = [
   info_cmd ; get_cmd ; destroy_cmd ; create_cmd ; restart_cmd ;
   block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
   block_set_cmd ; block_dump_cmd ;
-  console_cmd ;
+  console_cmd ; inactive_consoles_cmd ;
   stats_subscribe_cmd ; stats_add_cmd ; stats_remove_cmd ;
   update_cmd ; inspect_dump_cmd ; extract_dump_cmd ; cert_cmd ;
   sign_cmd ; generate_cmd ; (* TODO revoke_cmd *)
