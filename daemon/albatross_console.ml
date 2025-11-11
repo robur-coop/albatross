@@ -20,16 +20,21 @@ module LMap = Map.Make(Vmm_core.Name.Label)
 module Trie = struct
   type 'a t = 'a Vmm_trie.t
 
+  let of_path = Vmm_core.Name.make_of_path
+
   let empty = Vmm_trie.empty
 
   let insert path v t =
-    Vmm_trie.insert (Vmm_core.Name.make_of_path path) v t
+    Vmm_trie.insert (of_path path) v t
 
   let find path t =
-    Vmm_trie.find (Vmm_core.Name.make_of_path path) t
+    Vmm_trie.find (of_path path) t
 
   let remove path t =
-    Vmm_trie.remove (Vmm_core.Name.make_of_path path) t
+    Vmm_trie.remove (of_path path) t
+
+  let fold path t f =
+    Vmm_trie.fold path t (fun name -> f (Vmm_core.Name.path name))
 end
 
 
@@ -287,38 +292,51 @@ let handle max_subscribers s addr =
     | Ok (header, `Command (`Console_cmd cmd)) ->
       begin
         let name = header.Vmm_commands.name in
-        match Vmm_core.Name.path name, Vmm_core.Name.name name with
-        | _, None ->
+        let path = Vmm_core.Name.path name in
+        let lbl = Vmm_core.Name.name name in
+        match cmd, lbl  with
+        | (`Console_add _ | `Console_subscribe _), None ->
           (Vmm_lwt.write_wire s (header, `Failure "path used instead of name") >>= function
             | Ok () -> Lwt.return_unit
             | Error _ -> Vmm_lwt.safe_close s)
-        | path, Some name ->
-          match cmd with
-          | `Console_add n ->
-            begin
-              add_fifo n (path, name) >>= fun res ->
-              let reply = match res with
-                | Ok () -> `Success `Empty
-                | Error (`Msg msg) -> `Failure msg
-              in
-              Vmm_lwt.write_wire s (header, reply) >>= function
-              | Ok () -> loop ()
-              | Error _ ->
-                Logs.err (fun m -> m "error while writing") ;
-                Lwt.return_unit
-            end
-          | `Console_subscribe ts ->
-            begin
-              subscribe max_subscribers s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
-              Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
-              | Error _ -> unsubscribe path name s
-              | Ok () ->
-                (match ring with
-                 | None -> Lwt.return_unit
-                 | Some r -> send_history s header.Vmm_commands.version r (path, name) ts) >>= fun () ->
-                (* now we wait for the next read and terminate*)
-                Vmm_lwt.read_wire s >|= fun _ -> ()
-            end
+        | `Console_add n, Some name ->
+          add_fifo n (path, name) >>= fun res ->
+          let reply = match res with
+            | Ok () -> `Success `Empty
+            | Error (`Msg msg) -> `Failure msg
+          in
+          (Vmm_lwt.write_wire s (header, reply) >>= function
+            | Ok () -> loop ()
+            | Error _ ->
+              Logs.err (fun m -> m "error while writing") ;
+              Lwt.return_unit)
+        | `Console_subscribe ts, Some name ->
+          subscribe max_subscribers s header.Vmm_commands.version (path, name) >>= fun (ring, res) ->
+          (Vmm_lwt.write_wire s (header, `Success (`String res)) >>= function
+            | Error _ -> unsubscribe path name s
+            | Ok () ->
+              (match ring with
+               | None -> Lwt.return_unit
+               | Some r -> send_history s header.Vmm_commands.version r (path, name) ts) >>= fun () ->
+              (* now we wait for the next read and terminate*)
+              Vmm_lwt.read_wire s >|= fun _ -> ())
+        | `Console_list_inactive, Some _ ->
+          (Vmm_lwt.write_wire s (header, `Failure "name used") >>= function
+            | Ok () -> Lwt.return_unit
+            | Error _ -> Vmm_lwt.safe_close s)
+        | `Console_list_inactive, None ->
+          let cs =
+            Trie.fold path !state (fun path (_, map) acc ->
+                LMap.fold (fun lbl (_, act, r) acc ->
+                    if not act && r <> None then
+                      Vmm_core.Name.make path lbl :: acc
+                    else
+                      acc) map acc)
+              []
+          in
+          let reply = `Success (`Consoles cs) in
+          Vmm_lwt.write_wire s (header, reply) >>= fun _ ->
+          Vmm_lwt.safe_close s
       end
     | Ok wire ->
       Logs.err (fun m -> m "unexpected wire %a"
