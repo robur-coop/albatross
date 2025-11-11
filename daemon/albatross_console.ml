@@ -163,7 +163,7 @@ let add_fifo n (path, lbl) =
          (if LMap.cardinal map > n then
             match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
             | Some (key, (fds, _, _)) ->
-              Logs.warn (fun m -> m "dropping %s:%s"
+              Logs.info (fun m -> m "dropping %s:%s"
                             (Vmm_core.Name.Path.to_string path)
                             (Vmm_core.Name.Label.to_string key));
               Lwt_list.iter_p Vmm_lwt.safe_close (List.map snd fds) >|= fun () ->
