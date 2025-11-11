@@ -34,7 +34,7 @@ end
    (version and file descriptor), a boolean field whether this console is active
    (the unikernel is running), and a ringbuffer (maximum 1024 entries). *)
 type console_map =
-  ((Vmm_commands.version * Lwt_unix.file_descr) list * bool * string Vmm_ring.t) LMap.t
+  ((Vmm_commands.version * Lwt_unix.file_descr) list * bool * string Vmm_ring.t option) LMap.t
 
 (* The global state: a trie, where the key is the path, and the value is pair of
    "number of unikernels allowed on this path" and "console map". *)
@@ -155,7 +155,7 @@ let add_fifo n (path, lbl) =
     (match Trie.find path !state with
      | None ->
        let ringbuffer = Vmm_ring.create "" () in
-       let map = LMap.singleton lbl ([], true, ringbuffer) in
+       let map = LMap.singleton lbl ([], true, Some ringbuffer) in
        let trie, _ = Trie.insert path (n, map) !state in
        state := trie;
        Lwt.return ringbuffer
@@ -163,7 +163,7 @@ let add_fifo n (path, lbl) =
        match LMap.find_opt lbl map with
        | None ->
          let ringbuffer = Vmm_ring.create "" () in
-         let map = LMap.add lbl ([], true, ringbuffer) map in
+         let map = LMap.add lbl ([], true, Some ringbuffer) map in
          (if LMap.cardinal map > n then
             match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
             | Some (key, (fds, _, _)) ->
@@ -181,7 +181,8 @@ let add_fifo n (path, lbl) =
          state := trie;
          Lwt.return ringbuffer
        | Some (subs, _, ringbuffer) ->
-         let map = LMap.add lbl (subs, true, ringbuffer) map in
+         let ringbuffer = Option.value ~default:(Vmm_ring.create "" ()) ringbuffer in
+         let map = LMap.add lbl (subs, true, Some ringbuffer) map in
          let trie, _ = Trie.insert path (n, map) !state in
          state := trie;
          Lwt.return ringbuffer) >|= fun ringbuffer ->
@@ -204,7 +205,7 @@ let subscribe s version (path, lbl) =
   Logs.debug (fun m -> m "attempting to subscribe %a" Vmm_core.Name.pp (Vmm_core.Name.make path lbl)) ;
   match Trie.find path !state with
   | None ->
-    let map = LMap.singleton lbl ([ version, s ], false, Vmm_ring.create "" ()) in
+    let map = LMap.singleton lbl ([ version, s ], false, None) in
     let trie, _ = Trie.insert path (1, map) !state in
     state := trie;
     Lwt.return (None, "waiting for VM")
@@ -215,9 +216,11 @@ let subscribe s version (path, lbl) =
       let map = LMap.add lbl ((version, s) :: subs, act, r) map in
       let trie, _ = Trie.insert path (n, map) !state in
       state := trie;
-      Lwt.return (Some r, "subscribed")
+      (match r with
+       | None -> Lwt.return (None, "waiting for VM")
+       | Some r -> Lwt.return (Some r, "subscribed"))
     | None ->
-      let map = LMap.add lbl ([ version, s ], false, Vmm_ring.create "" ()) map in
+      let map = LMap.add lbl ([ version, s ], false, None) map in
       let trie, _ = Trie.insert path (n, map) !state in
       state := trie;
       Lwt.return (None, "waiting for VM")
