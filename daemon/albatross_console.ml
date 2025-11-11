@@ -20,16 +20,21 @@ module LMap = Map.Make(Vmm_core.Name.Label)
 module Trie = struct
   type 'a t = 'a Vmm_trie.t
 
+  let of_path = Vmm_core.Name.make_of_path
+
   let empty = Vmm_trie.empty
 
   let insert path v t =
-    Vmm_trie.insert (Vmm_core.Name.make_of_path path) v t
+    Vmm_trie.insert (of_path path) v t
 
   let find path t =
-    Vmm_trie.find (Vmm_core.Name.make_of_path path) t
+    Vmm_trie.find (of_path path) t
 
   let remove path t =
-    Vmm_trie.remove (Vmm_core.Name.make_of_path path) t
+    Vmm_trie.remove (of_path path) t
+
+  let fold path t f =
+    Vmm_trie.fold path t (fun name -> f (Vmm_core.Name.path name))
 end
 
 
@@ -333,10 +338,10 @@ let handle max_subscribers s addr =
                   | Error _ -> Vmm_lwt.safe_close s)
               | None ->
                 let cs =
-                  Vmm_trie.fold path !state (fun path (_, map) acc ->
+                  Trie.fold path !state (fun path (_, map) acc ->
                       LMap.fold (fun lbl (_, act, r) acc ->
                           if not act && r <> None then
-                            Vmm_core.Name.make (Vmm_core.Name.path path) lbl :: acc
+                            Vmm_core.Name.make path lbl :: acc
                           else
                             acc) map acc)
                     []
