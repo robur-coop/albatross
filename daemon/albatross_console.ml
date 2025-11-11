@@ -146,6 +146,21 @@ let open_fifo name =
 
 let fifos = Vmm_core.conn_metrics "fifo"
 
+let maybe_drop name path n map =
+  if LMap.cardinal map > n then
+    match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
+    | Some (key, (fds, _, _)) ->
+      Logs.info (fun m -> m "dropping %s:%s"
+                    (Vmm_core.Name.Path.to_string path)
+                    (Vmm_core.Name.Label.to_string key));
+      Lwt_list.iter_p Vmm_lwt.safe_close (List.map snd fds) >|= fun () ->
+      LMap.remove key map
+    | None ->
+      Logs.err (fun m -> m "adding a ringbuffer to %s, but found nothing inactive to drop" name);
+      Lwt.return map
+  else
+    Lwt.return map
+
 let add_fifo n (path, lbl) =
   let id = Vmm_core.Name.make path lbl in
   let name = Vmm_core.Name.to_string id in
@@ -164,19 +179,7 @@ let add_fifo n (path, lbl) =
        | None ->
          let ringbuffer = Vmm_ring.create "" () in
          let map = LMap.add lbl ([], true, Some ringbuffer) map in
-         (if LMap.cardinal map > n then
-            match LMap.choose_opt (LMap.filter (fun _ (_, active, _) -> not active) map) with
-            | Some (key, (fds, _, _)) ->
-              Logs.info (fun m -> m "dropping %s:%s"
-                            (Vmm_core.Name.Path.to_string path)
-                            (Vmm_core.Name.Label.to_string key));
-              Lwt_list.iter_p Vmm_lwt.safe_close (List.map snd fds) >|= fun () ->
-              LMap.remove key map
-            | None ->
-              Logs.err (fun m -> m "intended to drop something while adding ringbuffer %s, but found nothing inactive" name);
-              Lwt.return map
-          else
-            Lwt.return map) >>= fun map ->
+         maybe_drop name path n map >>= fun map ->
          let trie, _ = Trie.insert path (n, map) !state in
          state := trie;
          Lwt.return ringbuffer
