@@ -416,15 +416,15 @@ let handle_unikernel_cmd t id =
     match Vmm_resources.find_unikernel t.resources id with
     | None -> stop_create t id
     | Some unikernel ->
-      let answer =
-        try
-          Vmm_unix.destroy unikernel ; "destroyed unikernel"
-        with
-          Unix.Unix_error _ -> "kill failed"
-      in
+      (try
+         Vmm_unix.destroy unikernel
+       with
+         Unix.Unix_error (err, _, _) ->
+         Logs.warn (fun m -> m "kill of %a failed: %s"
+                       Name.pp id (Unix.error_message err)));
       let s ex =
-        let data = Fmt.str "%a %s %a" Name.pp id answer pp_process_exit ex in
-        `Success (`String data)
+        Logs.info (fun m -> m "%a exited with %a" Name.pp id pp_process_exit ex);
+        `Success (`String "destroyed unikernel")
       in
       Ok (t, `Wait (id, s))
 
