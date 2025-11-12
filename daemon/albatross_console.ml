@@ -50,7 +50,10 @@ let read_console id name ring fd =
             | [ x ] ->
               if String.length x >= 512 then
                 (* if there is no newline, drop *)
-                `Drop, [ x ^ " [truncated]" ], ""
+                let data =
+                  if String.length x = 512 then x else String.sub x 0 512
+                in
+                `Drop, [ data ^ " [truncated]" ], ""
               else
                 (* or wait for more data *)
                 `Read, [], x
