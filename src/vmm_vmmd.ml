@@ -420,7 +420,7 @@ let handle_unikernel_cmd t id =
         try
           Vmm_unix.destroy unikernel ; "destroyed unikernel"
         with
-          Unix.Unix_error _ -> "kill failed"
+          Unix.Unix_error (err, _, _) -> "kill failed " ^ Unix.error_message err
       in
       let s ex =
         let data = Fmt.str "%a %s %a" Name.pp id answer pp_process_exit ex in
