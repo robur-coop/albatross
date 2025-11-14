@@ -104,8 +104,15 @@ let read_console (path, lbl) name ringbuffer fd =
             match String.split_on_char '\n' data with
             | [] -> assert false
             | [ x ] ->
-              (* if there is no newline, drop *)
-              `Drop, [ x ^ " [truncated]" ], ""
+              if String.length x >= 512 then
+                (* if there is no newline, drop *)
+                let data =
+                  if String.length x = 512 then x else String.sub x 0 512
+                in
+                `Drop, [ data ^ " [truncated]" ], ""
+              else
+                (* or wait for more data *)
+                `Read, [], x
             | lines ->
               (* otherwise continue normal operations *)
               let lines, slack = get_slack lines in
