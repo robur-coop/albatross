@@ -1,3 +1,19 @@
+# v2.6.1 (2025-11-17)
+
+* BREAKING Vmm_core.Name: add a Label and Path submodule (#233 @hannesm @reynir)
+* albatross_console:
+  - only drop if we have at least 512 bytes (#242 @reynir, fixes #234)
+  - limit the amount of ring buffers for each path (console_add now carries an
+    integer), reduces memory usage of albatross_console
+    (#238 #239 @hannesm @reynir, fixes #237)
+  - limit the number of subscribers for each unikernel to 5 (adjustable via
+    command-line argument) (#240 @hannesm, fixes #237)
+  - add a new command Console_list_inactive to find the available ring buffers
+    of inactive unikernels (#241 @reynir @hannesm)
+  - close the client file descriptor more systematically (#243 @hannesm @reynir)
+* destroy of a unikernel: report fewer data back to the caller, log failures
+  (#244 @hannesm, fixes #235)
+
 # v2.6.0 (2025-09-11)
 
 * Add "--name=UNIKERNEL NAME" to every unikernel - and if it fails to start
