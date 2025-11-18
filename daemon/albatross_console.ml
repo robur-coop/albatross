@@ -383,14 +383,13 @@ let max_subscribers =
   let doc = "Maximum subscribers per unikernel console." in
   let subscribers =
     let parser s =
-      Result.bind (Arg.Conv.parser Arg.int s)
+      Result.bind (Arg.conv_parser Arg.int s)
         (fun n ->
            if n < 1 then
-             Error "max subscribers must be greater than or equal to 1"
+             Error (`Msg "max subscribers must be greater than or equal to 1")
            else Ok n)
     in
-    Arg.Conv.of_conv ~parser
-      Arg.int
+    Arg.conv (parser, Arg.conv_printer Arg.int)
   in
   Arg.(value & opt subscribers 5 & info [ "max-subscribers" ] ~doc)
 
