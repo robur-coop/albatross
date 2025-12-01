@@ -200,11 +200,10 @@ let destroy_tap tap =
 
 let cachet_of_str b =
   let map () ~pos len =
-    if pos >= String.length b || len <= 0 then
-      (Cachet.Bstr.empty :> Bstr.t)
+    if pos >= String.length b || len <= 0 then Bstr.empty
     else
       let len = min len (max 0 (String.length b - pos)) in
-      let pg : Bstr.t = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
+      let pg = Bstr.create len in
       for i = 0 to len - 1 do
         pg.{i} <- b.[pos+i]
       done;
