@@ -59,3 +59,6 @@ pinned (`cpuset` / `taskset`) to a specific core.
 """
 depexts: ["linux-headers"] {os-family = "alpine"}
 x-maintenance-intent: [ "(latest)" ]
+pin-depends: [
+  [ "cachet.dev" "https://github.com/robur-coop/cachet.git" ]
+]
