@@ -1,3 +1,7 @@
+# v2.6.2 (2025-12-15)
+
+* Update to cachet.0.0.3 and use `Bstr.t` (#246 @dinosaure @hannesm @reynir)
+
 # v2.6.1 (2025-11-17)
 
 * BREAKING Vmm_core.Name: add a Label and Path submodule (#233 @hannesm @reynir)
