@@ -52,9 +52,10 @@ let dump_state t =
 let waiter t id =
   let t = remove_resources t id in
   let name = Name.to_string id in
-  if not !in_shutdown then dump_state t ;
   match String_map.find_opt name t.waiters with
-  | None -> t, None
+  | None ->
+    if not !in_shutdown then dump_state t ;
+    t, None
   | Some waiter ->
     let waiters = String_map.remove name t.waiters in
     let restarting = String_set.add name t.restarting in
@@ -190,7 +191,7 @@ let remove_stats t name =
   let t = { t with stats_counter = Int64.succ t.stats_counter } in
   (t, (header, `Command (`Stats_cmd `Stats_remove)))
 
-let handle_create t name unikernel_config =
+let handle_create t name ~needs_dump unikernel_config =
   let* () =
     match Vmm_resources.find_unikernel t.resources name with
     | Some _ -> Error (`Msg "Unikernel with same name is already running")
@@ -226,7 +227,7 @@ let handle_create t name unikernel_config =
     Logs.debug (fun m -> m "exec()ed unikernel") ;
     let resources = Vmm_resources.insert_unikernel t.resources name unikernel in
     let t = { t with resources } in
-    dump_state t ;
+    if needs_dump then dump_state t ;
     Logs.info (fun m -> m "created %a: %a" Name.pp name Unikernel.pp unikernel);
     let t, stat_out = setup_stats t name unikernel in
     Ok (t, stat_out, `Success (`String "created unikernel"), name, unikernel)
