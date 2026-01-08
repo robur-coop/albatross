@@ -134,7 +134,7 @@ let output_result state ((hdr, reply) as wire) =
 
 let job_and_build loc =
   match String.split_on_char '/' loc with
-  | "" :: "job" :: jobname :: "build" :: uuid :: [] -> Ok (jobname, uuid)
+  | "" :: "job" :: jobname :: "build" :: uuid :: ([] | [""]) -> Ok (jobname, uuid)
   | _ -> Error (`Msg ("expected '/job/<jobname>/build/<uuid>', got: " ^ loc))
 
 let http_get_redirect ~happy_eyeballs uri =
