@@ -321,6 +321,17 @@ let bridges_exist bridges =
        bridge_exists (bridge_name b))
     (Ok ()) bridges
 
+let prepare_bhye name (unikernel : Unikernel.config) =
+  let cmd =
+    match unikernel.Unikernel.linux_boot_partition with
+    | None ->
+      Bos.Cmd.(v "bhyeload" % "-m MEMORY" % "-d DISK" % NAME)
+    | Some boot_name ->
+      let tmp = "foo" (* take first block device, and emit '(hd0) block' *) in
+      Bos.Cmd.(v "grub-bhyve" % ("-m " ^ tmp) % ("-r " ^ boot_name) % "-M MEM" % NAME)
+  in
+  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+
 let prepare name (unikernel : Unikernel.config) =
   let* image =
     match unikernel.Unikernel.typ with
@@ -388,6 +399,26 @@ let cpuset cpu =
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
 let drop_path = ref true
+
+let exec_bhyve name (config : Unikernel.config) bridge_taps blocks =
+  let slot = ref 1 in
+  (* assumption is that the bridge_taps and blocks is sorted by the name (0, 1, 2)
+     -- since the name X will be /dev/vtbdX or /dev/vtnetX in the guest, and we need
+     to have the appropriate slot *)
+  let network =
+    List.map (fun (_bridge, tap, mac) ->
+        incr slot;
+        "-s " ^ string_of_int !slot ^ ",virtio-net," ^ tap ^ ",mac=" ^ Macaddr.to_string mac)
+      bridge_taps
+  in
+  let blocks =
+    List.map (fun (_name, dev, _sector_size) ->
+        incr slot;
+        "-s " ^ string_of_int !slot ^ ",virtio-blk," ^ dev)
+      blocks
+  in
+  Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s 0,hostbridge" % "-s 1,lpc" %% network %% blocks
+           "-l com1,/dev/nmdm_NAMEA" % "-c CPUS" % "-m MEM" % NAME)
 
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let bridge_taps =
