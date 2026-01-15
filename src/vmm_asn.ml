@@ -297,14 +297,15 @@ let name =
 let typ =
   let f = function
     | `C1 () -> `Solo5
-    | `C2 () -> Asn.S.parse_error "typ not yet supported"
+    | `C2 () -> `BHyve
   and g = function
     | `Solo5 -> `C1 ()
+    | `BHyve -> `C2 ()
   in
   Asn.S.map f g @@
   Asn.S.(choice2
            (my_explicit 0 ~label:"solo5" null)
-           (my_explicit 1 ~label:"placeholder" null))
+           (my_explicit 1 ~label:"bhyve" null))
 
 let fail_behaviour =
   let f = function
@@ -359,7 +360,7 @@ let v0_unikernel_config =
     and fail_behaviour = `Quit (* TODO maybe set to restart by default :) *)
     and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
   and g _unikernel = failwith "cannot encode v0 unikernel configs"
   in
   Asn.S.map f g @@
@@ -381,7 +382,7 @@ let v1_unikernel_config =
     and startup = None
     and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
   and g _unikernel = failwith "cannot encode v1 unikernel configs"
   in
   Asn.S.(map f g @@ sequence @@
@@ -403,7 +404,7 @@ let v2_unikernel_config =
     and startup = None
     and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
   and g (unikernel : config) =
     let bridges =
       match unikernel.bridges with
@@ -438,7 +439,7 @@ let v3_unikernel_config =
     and startup = None
     and add_name = true
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -468,16 +469,17 @@ let v3_unikernel_config =
 
 let unikernel_config =
   let open Unikernel in
-  let f (typ, (compressed, (image, (startup, (add_name, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))))) =
+  let f (typ, (compressed, (image, (startup, (add_name, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, (argv, (cpus, linux_boot_partition)))))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
+    and cpus = Option.value ~default:1 cpus
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.startup, (unikernel.add_name, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv))))))))))
+    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.startup, (unikernel.add_name, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, (unikernel.argv, (Some unikernel.cpus, unikernel.linux_boot_partition))))))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -500,20 +502,23 @@ let unikernel_config =
                                 (required ~label:"netif" utf8_string)
                                 (optional ~label:"bridge" utf8_string)
                                 (optional ~label:"mac" mac_addr)))))
-        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+        @ (optional ~label:"arguments" (my_explicit 2 (sequence_of utf8_string)))
+        @ (optional ~label:"cpus" (my_explicit 3 int))
+        -@ (optional ~label:"linux_boot_partition" (my_explicit 4 utf8_string)))
 
 let unikernel_arguments =
   let open Unikernel in
-  let f (fail_behaviour, (startup, (add_name, (cpuid, (memory, (blocks, (bridges, argv))))))) =
+  let f (fail_behaviour, (startup, (add_name, (cpuid, (memory, (blocks, (bridges, (argv, (cpus, linux_boot_partition))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
+    and cpus = Option.value ~default:1 cpus
     in
-    { fail_behaviour; startup; add_name; cpuid; memory; block_devices; bridges; argv }
+    { fail_behaviour; startup; add_name; cpuid; memory; block_devices; bridges; argv; cpus; linux_boot_partition }
   and g (unikernel : arguments) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     in
-    (unikernel.fail_behaviour, (unikernel.startup, (unikernel.add_name, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, unikernel.argv)))))))
+    (unikernel.fail_behaviour, (unikernel.startup, (unikernel.add_name, (unikernel.cpuid, (unikernel.memory, (blocks, (bridges, (unikernel.argv, (Some unikernel.cpus, unikernel.linux_boot_partition)))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"fail-behaviour" fail_behaviour)
@@ -533,7 +538,9 @@ let unikernel_arguments =
                                 (required ~label:"netif" utf8_string)
                                 (optional ~label:"bridge" utf8_string)
                                 (optional ~label:"mac" mac_addr)))))
-        -@ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string))))
+        @ (optional ~label:"arguments" (my_explicit 2 (sequence_of utf8_string)))
+        @ (optional ~label:"cpus" (my_explicit 3 int))
+        -@ (optional ~label:"linux_boot_partition" (my_explicit 4 utf8_string)))
 
 let unikernel_arguments_old =
   let open Unikernel in
@@ -543,7 +550,7 @@ let unikernel_arguments_old =
     and startup = None
     and add_name = true
     in
-    { fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv }
+    { fail_behaviour ; startup ; add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus = 1; linux_boot_partition = None }
   and g (unikernel : arguments) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -748,7 +755,7 @@ let old_unikernel_info3 =
     and started = Option.value ~default:Ptime.epoch started
     and startup = None
     in
-    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
+    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus = 1 ; linux_boot_partition = None }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -796,7 +803,7 @@ let old_unikernel_info4 =
     and started = Option.value ~default:Ptime.epoch started
     and startup = None
     in
-    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
+    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus = 1 ; linux_boot_partition = None }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -833,7 +840,7 @@ let old_unikernel_info4 =
 
 let unikernel_info =
   let open Unikernel in
-  let f (typ, (startup, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, started))))))))) =
+  let f (typ, (startup, (fail_behaviour, (cpuid, (memory, (digest, (blocks, (bridges, (argv, (started, (cpus, linux_boot_partition))))))))))) =
     let bridges = match bridges with None -> [] | Some xs ->
       List.map (fun (unikernel_device, host_device, mac) ->
           { unikernel_device ; host_device ; mac })
@@ -843,8 +850,9 @@ let unikernel_info =
           { unikernel_device ; host_device ; sector_size ; size })
         xs
     and started = Option.value ~default:Ptime.epoch started
+    and cpus = Option.value ~default:1 cpus
     in
-    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started }
+    { typ ; fail_behaviour ; startup ; cpuid ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus ; linux_boot_partition }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -855,7 +863,7 @@ let unikernel_info =
       | xs -> Some (List.map (fun { unikernel_device ; host_device ; sector_size ; size } ->
           unikernel_device, host_device, sector_size, size) xs)
     in
-    (unikernel.typ, (unikernel.startup, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, Some unikernel.started)))))))))
+    (unikernel.typ, (unikernel.startup, (unikernel.fail_behaviour, (unikernel.cpuid, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, (Some unikernel.started, (Some unikernel.cpus, unikernel.linux_boot_partition)))))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -878,7 +886,10 @@ let unikernel_info =
                                    (required ~label:"host-device" utf8_string)
                                    (required ~label:"mac" mac_addr)))))
          @ (optional ~label:"arguments"(my_explicit 2 (sequence_of utf8_string)))
-        -@ (optional ~label:"started" (my_explicit 3 generalized_time)))
+         @ (optional ~label:"started" (my_explicit 3 generalized_time))
+         @ (optional ~label:"cpus" (my_explicit 4 int))
+         -@ (optional ~label:"linux_boot_partition" (my_explicit 5 utf8_string)))
+
 
 let header =
   let f (version, sequence, name) = { version ; sequence ; name }
