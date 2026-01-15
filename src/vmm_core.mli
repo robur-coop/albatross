@@ -112,7 +112,7 @@ module Policy : sig
 end
 
 module Unikernel : sig
-  type typ = [ `Solo5 ]
+  type typ = [ `Solo5 | `BHyve ]
   val pp_typ : typ Fmt.t
 
   type fail_behaviour = [ `Quit | `Restart of IS.t option ]
@@ -129,6 +129,8 @@ module Unikernel : sig
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
+    cpus : int ;
+    linux_boot_partition : string option ;
   }
 
   val bridges : config -> string list
@@ -150,6 +152,8 @@ module Unikernel : sig
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
+    cpus : int ;
+    linux_boot_partition : string option ;
   }
 
   val pp_arguments : arguments Fmt.t
@@ -191,6 +195,8 @@ module Unikernel : sig
     argv : string list option ;
     digest : string ;
     started : Ptime.t ;
+    cpus : int ;
+    linux_boot_partition : string option ;
   }
 
   val info : (string -> int option) -> t -> info
