@@ -365,23 +365,6 @@ let prepare name (unikernel : Unikernel.config) =
       let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
       let* () = Bos.OS.File.write filename image in
       let* () = bridges_exist unikernel.Unikernel.bridges in
-      let fifo = Name.fifo_file name in
-      let* () =
-        match fifo_exists fifo with
-        | Ok true -> Ok ()
-        | Ok false -> Error (`Msg (Fmt.str "file %a exists and is not a fifo" Fpath.pp fifo))
-        | Error _ ->
-          let old_umask = Unix.umask 0 in
-          let _ = Unix.umask (old_umask land 0o707) in
-          try
-            let f = mkfifo fifo in
-            let _ = Unix.umask old_umask in
-            Ok f
-          with
-          | Unix.Unix_error (e, f, _) ->
-            let _ = Unix.umask old_umask in
-            Error (`Msg (Fmt.str "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e))
-      in
       Ok digest
     | `BHyve ->
       (* ensure that block and network devices are named 0..N (and appear in order) *)
@@ -417,6 +400,23 @@ let prepare name (unikernel : Unikernel.config) =
       let* () = prepare_bhyve name unikernel in
       Ok name
   in
+  let fifo = Name.fifo_file name in
+  let* () =
+    match fifo_exists fifo with
+    | Ok true -> Ok ()
+    | Ok false -> Error (`Msg (Fmt.str "file %a exists and is not a fifo" Fpath.pp fifo))
+    | Error _ ->
+      let old_umask = Unix.umask 0 in
+      let _ = Unix.umask (old_umask land 0o707) in
+      try
+        let f = mkfifo fifo in
+        let _ = Unix.umask old_umask in
+        Ok f
+      with
+      | Unix.Unix_error (e, f, _) ->
+        let _ = Unix.umask old_umask in
+        Error (`Msg (Fmt.str "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e))
+  in
   let* taps =
     List.fold_left (fun acc arg ->
         let* acc = acc in
@@ -450,11 +450,8 @@ let cpuset cpu =
 
 let drop_path = ref true
 
-let exec_bhyve name (config : Unikernel.config) bridge_taps blocks =
+let exec_bhyve _name (config : Unikernel.config) bridge_taps digest =
   let slot = ref 1 in
-  (* assumption is that the bridge_taps and blocks is sorted by the name (0, 1, 2)
-     -- since the name X will be /dev/vtbdX or /dev/vtnetX in the guest, and we need
-     to have the appropriate slot *)
   let network =
     List.map (fun (_bridge, tap, mac) ->
         incr slot;
@@ -464,11 +461,15 @@ let exec_bhyve name (config : Unikernel.config) bridge_taps blocks =
   let blocks =
     List.map (fun (_name, dev, _sector_size) ->
         incr slot;
+        let dev = Option.get dev in
         "-s " ^ string_of_int !slot ^ ",virtio-blk," ^ dev)
-      blocks
+      config.block_devices
   in
-  Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s 0,hostbridge" % "-s 1,lpc" %% network %% blocks
-           "-l com1,/dev/nmdm_NAMEA" % "-c CPUS" % "-m MEM" % NAME)
+  Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s 0,hostbridge" % "-s 1,lpc"
+           %% of_list network %% of_list blocks
+           % "-l com1,stdio"
+           % ("-c " ^ string_of_int config.cpus)
+           % ("-m " ^ string_of_int config.memory ^ "M") % digest)
 
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let bridge_taps =
@@ -476,61 +477,65 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
         bridge, tap, Option.value mac ~default:(Name.mac name bridge))
       bridge_taps
   in
-  let net, macs =
-    List.split
-      (List.map (fun (bridge, tap, mac) ->
-           "--net:" ^ bridge ^ "=" ^ tap,
-           "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
-          bridge_taps)
-  and blocks, block_sector_sizes =
-    List.split
-      (List.map (fun (name, dev, sector_size) ->
-           "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev),
-           Option.map
-             (fun s -> "--block-sector-size:" ^ name ^ "=" ^ string_of_int s)
-             sector_size)
-          blocks)
-  and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
-  and mem = "--mem=" ^ string_of_int config.Unikernel.memory
-  in
-  let argv =
-    (* we don't know whether the unikernel understands the --name argument
-       (since mirage 4.10.0), we restart on argument failure without the added
-       name. If the operator provided a --name themselves, the unikernel will
-       abort on first startup ('option --name cannot be repeated') with exit
-       code 64, and will be restarted without the automatically inserted --name
-    *)
-    if config.add_name then
-      let name =
-        if !drop_path then
-          match Name.name name with
-          | None -> Name.to_string name
-          | Some name -> Name.Label.to_string name
-        else
-          Name.to_string name
+  let* cmd =
+    match config.typ with
+    | `Solo5 ->
+      let net, macs =
+        List.split
+          (List.map (fun (bridge, tap, mac) ->
+               "--net:" ^ bridge ^ "=" ^ tap,
+               "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
+              bridge_taps)
+      and blocks, block_sector_sizes =
+        List.split
+          (List.map (fun (name, dev, sector_size) ->
+               "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev),
+               Option.map
+                 (fun s -> "--block-sector-size:" ^ name ^ "=" ^ string_of_int s)
+                 sector_size)
+              blocks)
+      and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
+      and mem = "--mem=" ^ string_of_int config.Unikernel.memory
       in
-      ("--name=" ^ name) :: argv
-    else
-      argv
-  in
-  let* cpuset = cpuset config.Unikernel.cpuid in
-  let* target, version =
-    let* image =
-      if config.Unikernel.compressed then
-        match Vmm_compress.uncompress config.Unikernel.image with
-        | Ok blob -> Ok blob
-        | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
-      else
-        Ok config.Unikernel.image
-    in
-    solo5_image_target image
-  in
-  let* tender = check_solo5_tender target version in
-  let cmd =
-    Bos.Cmd.(of_list cpuset %% tender % mem %%
-             of_list net %% of_list macs %% of_list blocks %%
-             of_list (List.filter_map Fun.id block_sector_sizes) %
-             "--" % p (Name.image_file name) %% of_list argv)
+      let argv =
+        (* we don't know whether the unikernel understands the --name argument
+           (since mirage 4.10.0), we restart on argument failure without the added
+           name. If the operator provided a --name themselves, the unikernel will
+           abort on first startup ('option --name cannot be repeated') with exit
+           code 64, and will be restarted without the automatically inserted --name
+        *)
+        if config.add_name then
+          let name =
+            if !drop_path then
+              match Name.name name with
+              | None -> Name.to_string name
+              | Some name -> Name.Label.to_string name
+            else
+              Name.to_string name
+          in
+          ("--name=" ^ name) :: argv
+        else
+          argv
+      in
+      let* cpuset = cpuset config.Unikernel.cpuid in
+      let* target, version =
+        let* image =
+          if config.Unikernel.compressed then
+            match Vmm_compress.uncompress config.Unikernel.image with
+            | Ok blob -> Ok blob
+            | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+          else
+            Ok config.Unikernel.image
+        in
+        solo5_image_target image
+      in
+      let* tender = check_solo5_tender target version in
+      Ok (Bos.Cmd.(of_list cpuset %% tender % mem %%
+                   of_list net %% of_list macs %% of_list blocks %%
+                   of_list (List.filter_map Fun.id block_sector_sizes) %
+                   "--" % p (Name.image_file name) %% of_list argv))
+    | `BHyve ->
+      Ok (exec_bhyve name config bridge_taps digest)
   in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in
