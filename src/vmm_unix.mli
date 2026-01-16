@@ -22,6 +22,8 @@ val prepare : Name.t -> Unikernel.config ->
 val exec : Name.t -> Unikernel.config -> (string * string * Macaddr.t option) list ->
   (string * Name.t * int option) list -> string -> (Unikernel.t, [> `Msg of string ]) result
 
+val destroy_bhyve : string -> (unit, [> `Msg of string ]) result
+
 val free_system_resources : Name.t -> string list -> (unit, [> `Msg of string ]) result
 
 val destroy : Unikernel.t -> unit

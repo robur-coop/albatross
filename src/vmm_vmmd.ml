@@ -232,6 +232,9 @@ let handle_create t name ~needs_dump unikernel_config =
     let t, stat_out = setup_stats t name unikernel in
     Ok (t, stat_out, `Success (`String "created unikernel"), name, unikernel)
   and fail () =
+    (match unikernel_config.typ with
+     | `BHyve -> Vmm_unix.destroy_bhyve digest |> ignore
+     | `Solo5 -> ());
     match Vmm_unix.free_system_resources name (List.map (fun (_,tap,_) -> tap) taps) with
     | Ok () -> `Failure "could not create unikernel: console failed"
     | Error (`Msg msg) ->
@@ -246,6 +249,9 @@ let handle_shutdown t name unikernel r =
    | Ok () -> ()
    | Error (`Msg e) ->
      Logs.err (fun m -> m "%s while shutdown unikernel %a" e Unikernel.pp unikernel));
+  (match unikernel.config.typ with
+   | `BHyve -> Vmm_unix.destroy_bhyve unikernel.digest |> ignore
+   | `Solo5 -> ());
   Logs.info (fun m -> m "unikernel %a (PID %d) stopped with %a"
                 Name.pp name unikernel.Unikernel.pid pp_process_exit r);
   let t, stat_out = remove_stats t name in

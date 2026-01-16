@@ -433,6 +433,10 @@ let unikernel_device unikernel =
   | FreeBSD -> Ok ("solo5-" ^ string_of_int unikernel.Unikernel.pid)
   | Linux -> Error (`Msg "don't know what you mean (trying to find unikernel device)")
 
+let destroy_bhyve name =
+  let cmd = Bos.Cmd.(v "bhyvectl" % "--destroy" % ("--vm=" ^ name)) in
+  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+
 let free_system_resources name taps =
   (* same order as prepare! *)
   let* () = Bos.OS.File.delete (Name.image_file name) in
