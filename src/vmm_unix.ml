@@ -384,6 +384,35 @@ let prepare name (unikernel : Unikernel.config) =
       in
       Ok digest
     | `BHyve ->
+      (* ensure that block and network devices are named 0..N (and appear in order) *)
+      let* _ =
+        List.fold_left (fun n (bridge, name, _) ->
+            let* n in
+            let* name =
+              Option.to_result
+                ~none:(`Msg ("name missing for network interface on " ^ bridge))
+                name
+            in
+            if String.equal name (string_of_int n) then
+              Ok (succ n)
+            else
+              Error (`Msg ("network device on " ^ bridge ^ " with name " ^ name ^ " not in ascending order (expected " ^ string_of_int n ^ ")")))
+          (Ok 0) unikernel.bridges
+      in
+      let* _ =
+        List.fold_left (fun n (block, name, _) ->
+            let* n in
+            let* name =
+              Option.to_result
+                ~none:(`Msg ("name missing for block interface " ^ block))
+                name
+            in
+            if String.equal name (string_of_int n) then
+              Ok (succ n)
+            else
+              Error (`Msg ("block device " ^ block ^ " with name " ^ name ^ " not in ascending order (expected " ^ string_of_int n ^ ")")))
+          (Ok 0) unikernel.block_devices
+      in
       let name = "alba-" ^ string_of_int (Random.int 100_000) in
       let* () = prepare_bhyve name unikernel in
       Ok name
