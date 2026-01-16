@@ -90,12 +90,12 @@ let read_fd_for_file = fd_for_file Unix.[ O_RDONLY ]
 
 let write_fd_for_file = fd_for_file Unix.[ O_WRONLY ; O_APPEND ]
 
-let null = match read_fd_for_file (Fpath.v "/dev/null") with
+let _null = match read_fd_for_file (Fpath.v "/dev/null") with
   | Ok fd -> fd
   | Error _ -> invalid_arg "cannot read /dev/null"
 
 let rec create_process prog args stdout =
-  try Unix.create_process prog args null stdout stdout with
+  try Unix.create_process prog args stdout stdout stdout with
   | Unix.Unix_error (Unix.EINTR, _, _) ->
       create_process prog args stdout
 
