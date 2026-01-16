@@ -96,12 +96,16 @@ let find_policy t path =
 let find_block t name = Vmm_trie.find name t.block_devices
 
 let set_block_usage t name active =
-  match Vmm_trie.find name t with
-  | None -> Error (`Msg ("block device " ^ Name.to_string name ^ " not in trie"))
-  | Some (size, curr) ->
-    if curr = active
-    then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive")))
-    else Ok (fst (Vmm_trie.insert name (size, active) t))
+  let lbl = Option.value ~default:"" (Option.map Name.Label.to_string (Name.name name)) in
+  if String.starts_with ~prefix:"/dev/zvol" lbl then
+    Ok t
+  else
+    match Vmm_trie.find name t with
+    | None -> Error (`Msg ("block device " ^ Name.to_string name ^ " not in trie"))
+    | Some (size, curr) ->
+      if curr = active
+      then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive")))
+      else Ok (fst (Vmm_trie.insert name (size, active) t))
 
 let use_blocks t name unikernel active =
   match unikernel.Unikernel.config.Unikernel.block_devices with
@@ -176,15 +180,18 @@ let check_unikernel t name unikernel =
     List.fold_left (fun r (block, dev, _sector_size) ->
         let* () = r in
         let bl = match dev with Some b -> b | None -> block in
-        let block_name = Name.block_name name bl in
-        match find_block t block_name with
-        | None ->
-          Error (`Msg (Fmt.str "block device %s not found" (Name.to_string block_name)))
-        | Some (_, active) ->
-          if active then
-            Error (`Msg (Fmt.str "block device %s already in use" (Name.to_string block_name)))
-          else
-            Ok ())
+        if String.starts_with ~prefix:"/dev/zvol" bl then
+          Ok ()
+        else
+          let block_name = Name.block_name name bl in
+          match find_block t block_name with
+          | None ->
+            Error (`Msg (Fmt.str "block device %s not found" (Name.to_string block_name)))
+          | Some (_, active) ->
+            if active then
+              Error (`Msg (Fmt.str "block device %s already in use" (Name.to_string block_name)))
+            else
+              Ok ())
       (Ok ()) unikernel.block_devices
   and unikernel_ok = match find_unikernel t name with
     | None -> Ok ()
