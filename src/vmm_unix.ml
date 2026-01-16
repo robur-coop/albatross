@@ -321,51 +321,72 @@ let bridges_exist bridges =
        bridge_exists (bridge_name b))
     (Ok ()) bridges
 
-let prepare_bhye name (unikernel : Unikernel.config) =
-  let cmd =
-    match unikernel.Unikernel.linux_boot_partition with
-    | None ->
-      Bos.Cmd.(v "bhyeload" % "-m MEMORY" % "-d DISK" % NAME)
-    | Some boot_name ->
-      let tmp = "foo" (* take first block device, and emit '(hd0) block' *) in
-      Bos.Cmd.(v "grub-bhyve" % ("-m " ^ tmp) % ("-r " ^ boot_name) % "-M MEM" % NAME)
+let prepare_bhyve name (unikernel : Unikernel.config) =
+  let* disk =
+    Option.to_result ~none:(`Msg "couldn't find initial block device")
+      (List.find_opt (fun (name, _, _) -> name = "0") unikernel.block_devices)
   in
-  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+  let* disk_name =
+    let _, n, _ = disk in
+    Option.to_result ~none:(`Msg "no name for initial disk") n
+  in
+  match unikernel.Unikernel.linux_boot_partition with
+  | None ->
+    let cmd = Bos.Cmd.(v "bhyeload" % ("-m " ^ string_of_int unikernel.memory ^ "m") % ("-d " ^  disk_name) % name) in
+    Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+  | Some boot_name ->
+    Result.join
+      (Bos.OS.File.with_tmp_oc "albatross-%s.tmp"
+         (fun file output v ->
+            output_string output v;
+            close_out_noerr output;
+            let cmd =
+              Bos.Cmd.(v "grub-bhyve" % ("-m " ^ Fpath.to_string file) % ("-r hd0," ^ boot_name) % ("-M " ^ string_of_int unikernel.memory) % name)
+            in
+            Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success))
+         ("(hd0) " ^ disk_name ^ "\n"))
 
 let prepare name (unikernel : Unikernel.config) =
-  let* image =
+  let* digest =
     match unikernel.Unikernel.typ with
     | `Solo5 ->
-      if unikernel.Unikernel.compressed then
-        match Vmm_compress.uncompress unikernel.Unikernel.image with
-        | Ok blob -> Ok blob
-        | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
-      else
-        Ok unikernel.Unikernel.image
-  in
-  let filename = Name.image_file name in
-  let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
-  let* target, version = solo5_image_target image in
-  let* _ = check_solo5_tender target version in
-  let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
-  let* () = Bos.OS.File.write filename image in
-  let* () = bridges_exist unikernel.Unikernel.bridges in
-  let fifo = Name.fifo_file name in
-  let* () =
-    match fifo_exists fifo with
-    | Ok true -> Ok ()
-    | Ok false -> Error (`Msg (Fmt.str "file %a exists and is not a fifo" Fpath.pp fifo))
-    | Error _ ->
-      let old_umask = Unix.umask 0 in
-      let _ = Unix.umask (old_umask land 0o707) in
-      try
-        let f = mkfifo fifo in
-        let _ = Unix.umask old_umask in
-        Ok f
-      with
-      | Unix.Unix_error (e, f, _) ->
-        let _ = Unix.umask old_umask in
-        Error (`Msg (Fmt.str "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e))
+      let* image =
+        if unikernel.Unikernel.compressed then
+          match Vmm_compress.uncompress unikernel.Unikernel.image with
+          | Ok blob -> Ok blob
+          | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+        else
+          Ok unikernel.Unikernel.image
+      in
+      let filename = Name.image_file name in
+      let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
+      let* target, version = solo5_image_target image in
+      let* _ = check_solo5_tender target version in
+      let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
+      let* () = Bos.OS.File.write filename image in
+      let* () = bridges_exist unikernel.Unikernel.bridges in
+      let fifo = Name.fifo_file name in
+      let* () =
+        match fifo_exists fifo with
+        | Ok true -> Ok ()
+        | Ok false -> Error (`Msg (Fmt.str "file %a exists and is not a fifo" Fpath.pp fifo))
+        | Error _ ->
+          let old_umask = Unix.umask 0 in
+          let _ = Unix.umask (old_umask land 0o707) in
+          try
+            let f = mkfifo fifo in
+            let _ = Unix.umask old_umask in
+            Ok f
+          with
+          | Unix.Unix_error (e, f, _) ->
+            let _ = Unix.umask old_umask in
+            Error (`Msg (Fmt.str "file %a error in %s: %a" Fpath.pp fifo f pp_unix_err e))
+      in
+      Ok digest
+    | `BHyve ->
+      let name = "alba-" ^ string_of_int (Random.int 100_000) in
+      let* () = prepare_bhyve name unikernel in
+      Ok name
   in
   let* taps =
     List.fold_left (fun acc arg ->
