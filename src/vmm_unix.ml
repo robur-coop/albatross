@@ -332,7 +332,7 @@ let prepare_bhyve name (unikernel : Unikernel.config) =
   in
   match unikernel.Unikernel.linux_boot_partition with
   | None ->
-    let cmd = Bos.Cmd.(v "bhyeload" % ("-m " ^ string_of_int unikernel.memory ^ "m") % ("-d " ^  disk_name) % name) in
+    let cmd = Bos.Cmd.(v "bhyveload" % ("-m" ^ string_of_int unikernel.memory ^ "m") % ("-d" ^  disk_name) % name) in
     Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
   | Some boot_name ->
     Result.join
@@ -341,7 +341,7 @@ let prepare_bhyve name (unikernel : Unikernel.config) =
             output_string output v;
             close_out_noerr output;
             let cmd =
-              Bos.Cmd.(v "grub-bhyve" % ("-m " ^ Fpath.to_string file) % ("-r hd0," ^ boot_name) % ("-M " ^ string_of_int unikernel.memory) % name)
+              Bos.Cmd.(v "grub-bhyve" % ("-m" ^ Fpath.to_string file) % ("-rhd0," ^ boot_name) % ("-M" ^ string_of_int unikernel.memory) % name)
             in
             Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success))
          ("(hd0) " ^ disk_name ^ "\n"))
@@ -369,13 +369,9 @@ let prepare name (unikernel : Unikernel.config) =
     | `BHyve ->
       (* ensure that block and network devices are named 0..N (and appear in order) *)
       let* _ =
-        List.fold_left (fun n (bridge, name, _) ->
+        List.fold_left (fun n ((name, _, _) as arg) ->
             let* n in
-            let* name =
-              Option.to_result
-                ~none:(`Msg ("name missing for network interface on " ^ bridge))
-                name
-            in
+            let bridge = bridge_name arg in
             if String.equal name (string_of_int n) then
               Ok (succ n)
             else
@@ -383,13 +379,9 @@ let prepare name (unikernel : Unikernel.config) =
           (Ok 0) unikernel.bridges
       in
       let* _ =
-        List.fold_left (fun n (block, name, _) ->
+        List.fold_left (fun n ((name, _, _) as arg) ->
             let* n in
-            let* name =
-              Option.to_result
-                ~none:(`Msg ("name missing for block interface " ^ block))
-                name
-            in
+            let block = bridge_name arg in
             if String.equal name (string_of_int n) then
               Ok (succ n)
             else
@@ -459,21 +451,21 @@ let exec_bhyve _name (config : Unikernel.config) bridge_taps digest =
   let network =
     List.map (fun (_bridge, tap, mac) ->
         incr slot;
-        "-s " ^ string_of_int !slot ^ ",virtio-net," ^ tap ^ ",mac=" ^ Macaddr.to_string mac)
+        "-s" ^ string_of_int !slot ^ ",virtio-net," ^ tap ^ ",mac=" ^ Macaddr.to_string mac)
       bridge_taps
   in
   let blocks =
     List.map (fun (_name, dev, _sector_size) ->
         incr slot;
         let dev = Option.get dev in
-        "-s " ^ string_of_int !slot ^ ",virtio-blk," ^ dev)
+        "-s" ^ string_of_int !slot ^ ",virtio-blk," ^ dev)
       config.block_devices
   in
-  Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s 0,hostbridge" % "-s 1,lpc"
+  Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s0,hostbridge" % "-s1,lpc"
            %% of_list network %% of_list blocks
-           % "-l com1,stdio"
-           % ("-c " ^ string_of_int config.cpus)
-           % ("-m " ^ string_of_int config.memory ^ "M") % digest)
+           % "-lcom1,stdio"
+           % ("-c" ^ string_of_int config.cpus)
+           % ("-m" ^ string_of_int config.memory ^ "M") % digest)
 
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let bridge_taps =
