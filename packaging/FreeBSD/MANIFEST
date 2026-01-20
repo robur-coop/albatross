@@ -73,11 +73,15 @@ messages [
 
 	you need to:
 
-   * modify /etc/devfs.rules to include:
+   * For albatross-stats:
+     - modify /etc/devfs.rules to include:
 
-	add path 'vmm/solo5*' mode 0660 group albatross
+         add path 'vmm/solo5*' mode 0660 group albatross
 
-   * start TLS endpoint on port 1025 (blackjack), put cacert.pem, server.pem
+     - Ensure that security.bsd.see_other_uids and security.bsd.see_other_gids
+       is enabled (set to 1).
+
+   * Start TLS endpoint on port 1025 (blackjack), put cacert.pem, server.pem
      and server.key into /usr/local/etc/albatross, add this to /etc/inetd.conf:
 
         blackjack  stream  tcp     nowait  albatross \
@@ -87,7 +91,8 @@ messages [
           /usr/local/etc/albatross/server.pem \
           /usr/local/etc/albatross/server.key
 
-   * install solo5-hvt in PATH or /var/db/albatross
+   * Install solo5-hvt (i.e. via the solo5 binary package or manually) in PATH
+     or /var/db/albatross
 
 ===================================================================
 EOD;
