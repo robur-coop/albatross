@@ -15,8 +15,8 @@ let create_lock = Lwt_mutex.create ()
    Vmm_vmmd.handle is getting called, and while communicating via
    console / stat socket communication. *)
 
-let rec create stat_out cons_out data_out name config =
-  (match Vmm_vmmd.handle_create !state name config with
+let rec create stat_out cons_out data_out name ~needs_dump config =
+  (match Vmm_vmmd.handle_create ~needs_dump !state name config with
    | Error `Msg msg ->
      Logs.err (fun m -> m "failed to create %a: %s" Name.pp name msg) ;
      Lwt.return (None, `Failure msg)
@@ -43,10 +43,10 @@ let rec create stat_out cons_out data_out name config =
                       if may && config.add_name && match r with `Exit 64 -> true | _ -> false then
                         (* argument error, and --name was injected *)
                         create stat_out cons_out stub_data_out
-                          name { unikernel.Unikernel.config with add_name = false }
+                          name ~needs_dump:true { unikernel.Unikernel.config with add_name = false }
                       else if may && Unikernel.restart_handler config && should_restart config name r then
                         create stat_out cons_out stub_data_out
-                          name unikernel.Unikernel.config
+                          name ~needs_dump:false unikernel.Unikernel.config
                       else
                         Lwt.return_unit)));
          stat_out "setting up stat" stat >|= fun () ->
@@ -155,7 +155,7 @@ let handle cons_out stat_out fd addr =
           out wire >|= fun () ->
           `Close
         | `Create (id, unikernel) ->
-          create stat_out cons_out out id unikernel >|= fun () ->
+          create stat_out cons_out out id ~needs_dump:true unikernel >|= fun () ->
           Lwt_mutex.unlock create_lock;
           `Close
         | `Wait (who, data) ->
@@ -172,7 +172,7 @@ let handle cons_out stat_out fd addr =
           task >>= fun r ->
           Logs.info (fun m -> m "wait returned %a" pp_process_exit r);
           Lwt_mutex.with_lock create_lock (fun () ->
-              create stat_out cons_out out id unikernel) >|= fun () ->
+              create stat_out cons_out out id ~needs_dump:true unikernel) >|= fun () ->
           `Close
         | `Replace_stats (wire, datas) ->
           (Option.fold
@@ -307,7 +307,7 @@ let jump _ systemd influx tmpdir dbdir no_drop =
          in
          Lwt_list.iter_s (fun (name, config) ->
              Lwt_mutex.with_lock create_lock (fun () ->
-                 create stat_out cons_out stub_data_out name config))
+                 create stat_out cons_out stub_data_out name ~needs_dump:true config))
            old_unikernels >>= fun () ->
          Lwt.catch (fun () ->
              let rec loop () =

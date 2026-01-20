@@ -24,7 +24,7 @@ type 'a create =
 val handle_shutdown : 'a t -> Name.t -> Unikernel.t ->
   [ `Exit of int | `Signal of int | `Stop of int ] -> 'a t * Vmm_commands.wire
 
-val handle_create : 'a t -> Name.t -> Unikernel.config ->
+val handle_create : 'a t -> Name.t -> needs_dump:bool -> Unikernel.config ->
   ('a t * 'a create, [> `Msg of string ]) result
 
 val handle_command : 'a t -> Vmm_commands.wire ->

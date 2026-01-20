@@ -24,8 +24,15 @@ and dynamically when a new unikernel is to be deployed.
 When a unikernel is deployed, albatross tries its best to keep it
 running, even when the physical hardware reboots, or albatross is restarted.
 When the unikernel exits, depending on configuration and its exit code, it is
-re-started. The current set of running unikernels is persisted on disk, though
-there is no dependency or order for restarting them.
+restarted. The current set of running unikernels is persisted on disk. If
+restart-on-failure is used, the dump is not updated. At the startup phase of
+albatross, the dump file is read and all unikernels are restored (and whenever
+a unikernel is started, the state is dumped again). At the moment, a failure
+(power loss, ...) during this startup leads to an unexpected state file - only
+those successfully started (so far) are in there. During shutdown (SIGTERM),
+unikernels are destroyed and the system resources (tap interfaces) are freed.
+The state file is not updated during the shutdown phase. This ensures that at
+the next startup, all running unikernels are restarted.
 
 The scope of albatross is to provide a minimal orchestration system that avoids
 the need for shell access on the dom0. This leads to mostly immutable - or only
