@@ -220,7 +220,7 @@ let unikernels t name =
 let insert_unikernel t name unikernel =
   let unikernels, old = Vmm_trie.insert name unikernel t.unikernels in
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
-  let* block_devices = use_blocks t.block_devices name unikernel true in
+  let* block_devices = use_blocks ?dev_zvol:t.dev_zvol t.block_devices name unikernel true in
   let t' = { t with unikernels ; block_devices } in
   report_unikernels t' name;
   Ok t'
