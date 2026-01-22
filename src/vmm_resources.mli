@@ -58,12 +58,6 @@ val check_block : t -> Name.t -> int -> (unit, [> `Msg of string ]) result
     the new [t] or an error. *)
 val insert_block : t -> Name.t -> int -> (t, [> `Msg of string]) result
 
-(** [reserve_block t name size] reserves [name] in [t] with size [size]. *)
-val reserve_block : t -> Name.t -> int -> (t, [> `Msg of string ]) result
-
-(** [commit_block t name] finishes the [reserve_block] transaction. *)
-val commit_block : t -> Name.t -> (t, [> `Msg of string ]) result
-
 (** [remove_unikernel t name] removes unikernel [name] from [t]. *)
 val remove_unikernel : t -> Name.t -> (t, [> `Msg of string ]) result
 
