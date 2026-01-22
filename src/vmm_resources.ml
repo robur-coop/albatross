@@ -8,6 +8,7 @@ type t = {
   policies : Policy.t Vmm_trie.t ;
   block_devices : (int * bool) Vmm_trie.t ;
   unikernels : Unikernel.t Vmm_trie.t ;
+  dev_zvol : Name.Path.t option ;
 }
 
 let pp ppf t =
@@ -21,10 +22,11 @@ let pp ppf t =
     (fun id unikernel () ->
        Fmt.pf ppf "unikernel %a: %a@." Name.pp id Unikernel.pp_config unikernel.Unikernel.config) ()
 
-let empty = {
+let empty dev_zvol = {
   policies = Vmm_trie.empty ;
   block_devices = Vmm_trie.empty ;
-  unikernels = Vmm_trie.empty
+  unikernels = Vmm_trie.empty ;
+  dev_zvol ;
 }
 
 let policy_metrics =
@@ -95,9 +97,15 @@ let find_policy t path =
 
 let find_block t name = Vmm_trie.find name t.block_devices
 
-let set_block_usage t name active =
-  let lbl = Option.value ~default:"" (Option.map Name.Label.to_string (Name.name name)) in
-  if String.starts_with ~prefix:"/dev/zvol" lbl then
+let zvol_allowed dev_zvol name =
+  match dev_zvol with
+  | None -> false
+  | Some x ->
+    let lbl = Option.value ~default:"" (Option.map Name.Label.to_string (Name.name name)) in
+    String.starts_with ~prefix:"/dev/zvol" lbl && Name.Path.equal (Name.path name) x
+
+let set_block_usage ?dev_zvol t name active =
+  if zvol_allowed dev_zvol name then
     Ok t
   else
     match Vmm_trie.find name t with
@@ -107,7 +115,7 @@ let set_block_usage t name active =
       then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive")))
       else Ok (fst (Vmm_trie.insert name (size, active) t))
 
-let use_blocks t name unikernel active =
+let use_blocks ?dev_zvol t name unikernel active =
   match unikernel.Unikernel.config.Unikernel.block_devices with
   | [] -> Ok t
   | blocks ->
@@ -117,12 +125,12 @@ let use_blocks t name unikernel active =
           Name.block_name name bd)
         blocks
     in
-    List.fold_left (fun t' n -> let* t' in set_block_usage t' n active) (Ok t) block_names
+    List.fold_left (fun t' n -> let* t' in set_block_usage ?dev_zvol t' n active) (Ok t) block_names
 
 let remove_unikernel t name = match find_unikernel t name with
   | None -> Error (`Msg "unknown unikernel")
   | Some unikernel ->
-    let* block_devices = use_blocks t.block_devices name unikernel false in
+    let* block_devices = use_blocks ?dev_zvol:t.dev_zvol t.block_devices name unikernel false in
     let unikernels = Vmm_trie.remove name t.unikernels in
     let t' = { t with block_devices ; unikernels } in
     report_unikernels t' name;
@@ -180,10 +188,10 @@ let check_unikernel t name unikernel =
     List.fold_left (fun r (block, dev, _sector_size) ->
         let* () = r in
         let bl = match dev with Some b -> b | None -> block in
-        if String.starts_with ~prefix:"/dev/zvol" bl then
+        let block_name = Name.block_name name bl in
+        if zvol_allowed t.dev_zvol block_name then
           Ok ()
         else
-          let block_name = Name.block_name name bl in
           match find_block t block_name with
           | None ->
             Error (`Msg (Fmt.str "block device %s not found" (Name.to_string block_name)))

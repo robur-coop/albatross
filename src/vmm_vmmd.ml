@@ -108,10 +108,13 @@ let killall t create =
 let empty = {
   console_counter = 1L ;
   stats_counter = 1L ;
-  resources = Vmm_resources.empty ;
+  resources = Vmm_resources.empty None ;
   waiters = String_map.empty ;
   restarting = String_set.empty ;
 }
+
+let allow_dev_zvol t dev_zvol =
+  { t with resources = Vmm_resources.empty dev_zvol }
 
 let init_block_devices t =
   match Vmm_unix.find_block_devices () with
