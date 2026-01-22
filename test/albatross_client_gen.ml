@@ -7,6 +7,7 @@ let u1 =
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
+    cpus = 1 ; linux_boot_partition = None ;
   }
 
 let u2 =
@@ -16,6 +17,7 @@ let u2 =
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", Some (Macaddr.of_string_exn "00:de:ad:be:ef:00") ] ;
     argv = None ;
+    cpus = 1 ; linux_boot_partition = None ;
   }
 
 let unikernels =

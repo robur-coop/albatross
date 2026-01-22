@@ -290,20 +290,21 @@ let u =
     block_devices = [] ;
     bridges = [ "service", None, None ] ;
     argv = Some [ "-l *:debug" ] ;
+    cpus = 1 ; linux_boot_partition = None ;
   }
 
 let ok_msg = Alcotest.(result unit msg)
 
 let empty_resources () =
-  Alcotest.check test_resources __LOC__ Vmm_resources.empty Vmm_resources.empty;
+  Alcotest.check test_resources __LOC__ (Vmm_resources.empty None) (Vmm_resources.empty None);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_unikernel empty (n_o_s "foo") u);
+    Vmm_resources.(check_unikernel (empty None) (n_o_s "foo") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_unikernel empty (n_o_s "bar") u);
+    Vmm_resources.(check_unikernel (empty None) (n_o_s "bar") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_unikernel empty (n_o_s "foo:bar") u);
+    Vmm_resources.(check_unikernel (empty None) (n_o_s "foo:bar") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
-    Vmm_resources.(check_block empty (n_o_s "foo:bar") 10)
+    Vmm_resources.(check_block (empty None) (n_o_s "foo:bar") 10)
 
 let p1 = Policy.{
     unikernels = 1 ;
@@ -314,7 +315,7 @@ let p1 = Policy.{
   }
 
 let r1 =
-  Result.get_ok (Vmm_resources.(insert_policy empty (p_o_s "alpha") p1))
+  Result.get_ok (Vmm_resources.(insert_policy (empty None) (p_o_s "alpha") p1))
 
 let policy_is_respected_unikernel () =
   Alcotest.check ok_msg __LOC__ (Ok ())
@@ -337,7 +338,7 @@ let policy_is_respected_block () =
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block disallowed"))
     (Vmm_resources.check_block r1 (n_o_s "alpha:bar") 10);
   let p' = { p1 with block = None } in
-  let r = Result.get_ok (Vmm_resources.(insert_policy empty (p_o_s "alpha") p')) in
+  let r = Result.get_ok (Vmm_resources.(insert_policy (empty None) (p_o_s "alpha") p')) in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block disallowed"))
     (Vmm_resources.check_block r (n_o_s "alpha:bar") 5)
 
@@ -431,10 +432,10 @@ let policy_can_be_overwritten () =
   | Error _ -> Alcotest.fail "overwriting of policy should work"
 
 let resource_insert_block () =
-  (match Vmm_resources.(insert_block empty (n_o_s "foo") 10) with
+  (match Vmm_resources.(insert_block (empty None) (n_o_s "foo") 10) with
    | Ok _ -> ()
    | Error _ -> Alcotest.fail "expected insertion of block to succeed");
-  (match Vmm_resources.(insert_block empty (n_o_s "foo") 10) with
+  (match Vmm_resources.(insert_block (empty None) (n_o_s "foo") 10) with
    | Error _ -> Alcotest.fail "expected insertion of block to succeed"
    | Ok t ->
      match Vmm_resources.(insert_block t (n_o_s "foo") 10) with
@@ -446,12 +447,12 @@ let resource_insert_block () =
          match Vmm_resources.insert_block t (n_o_s "foo") 10 with
          | Error _ -> Alcotest.fail "expected insertion of block to succeed"
          | Ok _ -> ());
-  match Vmm_resources.(remove_block empty (n_o_s "foo")) with
+  match Vmm_resources.(remove_block (empty None) (n_o_s "foo")) with
   | Error _ -> ()
   | Ok _ -> Alcotest.fail "expected removal of non-existing block to fail"
 
 let resource_remove_policy () =
-  (match Vmm_resources.(remove_policy empty (p_o_s "foo")) with
+  (match Vmm_resources.(remove_policy (empty None) (p_o_s "foo")) with
    | Error _ -> ()
    | Ok _ -> Alcotest.fail "expected removal of non-existing policy to fail");
   (match Vmm_resources.remove_policy r1 (p_o_s "alpha") with
@@ -702,6 +703,7 @@ let u1_3 =
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
+    cpus = 1 ; linux_boot_partition = None ;
   }
 
 let u2_3 =
@@ -711,6 +713,7 @@ let u2_3 =
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;
+    cpus = 1 ; linux_boot_partition = None ;
   }
 
 let ins n u t =
