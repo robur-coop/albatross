@@ -472,7 +472,7 @@ let resource_add_remove_unikernel () =
   (match Vmm_resources.remove_unikernel r1 (n_o_s "alpha:beta") with
    | Ok _ -> Alcotest.fail "expected non-existing unikernel removal to fail"
    | Error _ -> ());
-  let r2 = Vmm_resources.insert_unikernel r1 (n_o_s "alpha:beta") u1 in
+  let r2 = Result.get_ok (Vmm_resources.insert_unikernel r1 (n_o_s "alpha:beta") u1) in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "unikernel with same name already present"))
     Vmm_resources.(check_unikernel r2 (n_o_s "alpha:beta") u);
   (try
@@ -498,7 +498,7 @@ let resource_unikernel_with_block () =
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device not found"))
     Vmm_resources.(check_unikernel r1 (n_o_s "alpha:bar") uc3);
   let u = Unikernel.{ config = uc2; cmd = Array.make 0 "" ; pid = 0 ; taps = [] ; digest = "" ; started = Ptime.epoch ; } in
-  let r3 = Vmm_resources.insert_unikernel r2 (n_o_s "alpha:bar") u in
+  let r3 = Result.get_ok (Vmm_resources.insert_unikernel r2 (n_o_s "alpha:bar") u) in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "block device already in use"))
     Vmm_resources.(check_unikernel r3 (n_o_s "alpha:bar2") uc2);
   (match Vmm_resources.remove_block r3 (n_o_s "alpha:block") with

@@ -97,15 +97,15 @@ let find_block t name = Vmm_trie.find name t.block_devices
 
 let set_block_usage t name active =
   match Vmm_trie.find name t with
-  | None -> invalid_arg ("block device " ^ Name.to_string name ^ " not in trie")
+  | None -> Error (`Msg ("block device " ^ Name.to_string name ^ " not in trie"))
   | Some (size, curr) ->
     if curr = active
-    then invalid_arg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive"))
-    else fst (Vmm_trie.insert name (size, active) t)
+    then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive")))
+    else Ok (fst (Vmm_trie.insert name (size, active) t))
 
 let use_blocks t name unikernel active =
   match unikernel.Unikernel.config.Unikernel.block_devices with
-  | [] -> t
+  | [] -> Ok t
   | blocks ->
     let block_names =
       List.map (fun (bd, dev, _sector_size) ->
@@ -113,12 +113,12 @@ let use_blocks t name unikernel active =
           Name.block_name name bd)
         blocks
     in
-    List.fold_left (fun t' n -> set_block_usage t' n active) t block_names
+    List.fold_left (fun t' n -> let* t' in set_block_usage t' n active) (Ok t) block_names
 
 let remove_unikernel t name = match find_unikernel t name with
   | None -> Error (`Msg "unknown unikernel")
   | Some unikernel ->
-    let block_devices = use_blocks t.block_devices name unikernel false in
+    let* block_devices = use_blocks t.block_devices name unikernel false in
     let unikernels = Vmm_trie.remove name t.unikernels in
     let t' = { t with block_devices ; unikernels } in
     report_unikernels t' name;
@@ -205,10 +205,10 @@ let unikernels t name =
 let insert_unikernel t name unikernel =
   let unikernels, old = Vmm_trie.insert name unikernel t.unikernels in
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
-  let block_devices = use_blocks t.block_devices name unikernel true in
+  let* block_devices = use_blocks t.block_devices name unikernel true in
   let t' = { t with unikernels ; block_devices } in
   report_unikernels t' name;
-  t'
+  Ok t'
 
 let check_block t name size =
   let block_ok = match find_block t name with
