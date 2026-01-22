@@ -76,7 +76,7 @@ messages [
    * For albatross-stats:
      - modify /etc/devfs.rules to include:
 
-         add path 'vmm/solo5*' mode 0660 group albatross
+         add path 'vmm/*' mode 0660 group albatross
 
      - Ensure that security.bsd.see_other_uids and security.bsd.see_other_gids
        is enabled (set to 1).

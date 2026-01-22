@@ -60,9 +60,15 @@ let remove_vmid t vmid =
     in
     { t with pid_nic ; vmid_pid }
 
+let reported_vmmapi = ref false
+
 let open_vmmapi ~retries name =
   if retries = 0 then begin
     Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %s" name) ;
+    if not !reported_vmmapi then begin
+      reported_vmmapi := true;
+      Logs.err (fun m -> m "HINT: are the VMM devices readable by the albatross user? Did you add a local devfs ruleset 'add path 'vmm/*' mode 0660 group albatross' to /etc/devfs.rules, enable it in /etc/rc.conf and did a 'service devfs restart'?")
+    end;
     Error 0
   end else
     match wrap vmmapi_open name with
@@ -184,9 +190,20 @@ let linux_rusage pid =
   else
     Error (`Msg "couldn't read /proc/<pid>/stat")
 
+let reported_rusage_hint = ref false
+
 let rusage pid =
   match Lazy.force Vmm_unix.uname with
-  | Vmm_unix.FreeBSD -> wrap sysctl_kinfo_proc pid
+  | Vmm_unix.FreeBSD ->
+    begin match wrap sysctl_kinfo_proc pid with
+      | None ->
+        if not !reported_rusage_hint then begin
+          reported_rusage_hint := true;
+          Logs.err (fun m -> m "HINT: Is the process visible? Are sysctls 'security.bsd.see_other_uids' and 'security.bsd.see_other_gids' enabled (set to 1)?")
+        end;
+        None
+      | Some x -> Some x
+    end
   | Vmm_unix.Linux -> match linux_rusage pid with
     | Ok x -> Some x
     | Error (`Msg msg) ->
