@@ -48,7 +48,8 @@ let rec create stat_out cons_out data_out name ~needs_dump config =
                         create stat_out cons_out stub_data_out
                           name ~needs_dump:false unikernel.Unikernel.config
                       else
-                        Lwt.return_unit)));
+                        (Vmm_vmmd.dump_state !state;
+                         Lwt.return_unit))));
          stat_out "setting up stat" stat >|= fun () ->
          (Some unikernel, data)) >>= fun (started, data) ->
   (match started with
