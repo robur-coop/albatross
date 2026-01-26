@@ -86,13 +86,7 @@ let fd_for_file flag f =
   try Ok (openfile (Fpath.to_string f) (Unix.O_CLOEXEC :: flag) 0o644)
   with Unix.Unix_error (e, _, _) -> err_file f e
 
-let read_fd_for_file = fd_for_file Unix.[ O_RDONLY ]
-
 let write_fd_for_file = fd_for_file Unix.[ O_WRONLY ; O_APPEND ]
-
-let _null = match read_fd_for_file (Fpath.v "/dev/null") with
-  | Ok fd -> fd
-  | Error _ -> invalid_arg "cannot read /dev/null"
 
 let rec create_process prog args stdout =
   (* NOTE: we use [stdout] for stdin with the assumption that it's not open for
