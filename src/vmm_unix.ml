@@ -302,7 +302,7 @@ let manifest_devices_match ~bridges ~block_devices image =
   in
   devices_match ~bridges ~block_devices mft
 
-let bridge_name (service, b, _mac) = match b with None -> service | Some b -> b
+let device_name (service, b, _mac) = match b with None -> service | Some b -> b
 
 let bridge_exists bridge_name =
   let cmd =
@@ -318,7 +318,7 @@ let bridges_exist bridges =
   List.fold_left
     (fun acc b ->
        let* () = acc in
-       bridge_exists (bridge_name b))
+       bridge_exists (device_name b))
     (Ok ()) bridges
 
 let prepare_bhyve name (unikernel : Unikernel.config) =
@@ -371,7 +371,7 @@ let prepare name (unikernel : Unikernel.config) =
       let* _ =
         List.fold_left (fun n ((name, _, _) as arg) ->
             let* n in
-            let bridge = bridge_name arg in
+            let bridge = device_name arg in
             if String.equal name (string_of_int n) then
               Ok (succ n)
             else
@@ -381,7 +381,7 @@ let prepare name (unikernel : Unikernel.config) =
       let* _ =
         List.fold_left (fun n ((name, _, _) as arg) ->
             let* n in
-            let block = bridge_name arg in
+            let block = device_name arg in
             if String.equal name (string_of_int n) then
               Ok (succ n)
             else
@@ -412,7 +412,7 @@ let prepare name (unikernel : Unikernel.config) =
   let* taps =
     List.fold_left (fun acc arg ->
         let* acc = acc in
-        let bridge = bridge_name arg in
+        let bridge = device_name arg in
         let* tap = create_tap bridge in
         let (service, _, mac) = arg in
         Ok ((service, tap, mac) :: acc))
