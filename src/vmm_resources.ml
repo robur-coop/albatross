@@ -167,8 +167,10 @@ let check_policy (p : Policy.t) (running_unikernels, used_memory) (unikernel : U
     Error (`Msg (Fmt.str
                    "maximum allowed memory (%d, used %d) would be exceeded (requesting %d)"
                    p.Policy.memory used_memory unikernel.Unikernel.memory))
-  else if not (IS.mem unikernel.Unikernel.cpuid p.Policy.cpuids) then
-    Error (`Msg (Fmt.str "CPUid %u is not allowed by policy" unikernel.Unikernel.cpuid))
+  else if not (IS.subset unikernel.Unikernel.cpuids p.Policy.cpuids) then
+    Error (`Msg (Fmt.str "CPUids %a is not allowed by policy (%a)"
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements unikernel.cpuids)
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements p.cpuids)))
   else
     match List.partition (bridge_allowed p.Policy.bridges) (Unikernel.bridges unikernel) with
     | _, [] -> Ok ()
@@ -287,7 +289,7 @@ let check_unikernels t path p =
       (fun _ unikernel (bridges, cpuids) ->
          let config = unikernel.Unikernel.config in
          (String_set.(union (of_list (Unikernel.bridges config)) bridges),
-          IS.add config.Unikernel.cpuid cpuids))
+          IS.union config.Unikernel.cpuids cpuids))
       (String_set.empty, IS.empty)
   in
   let policy_block = match p.Policy.block with None -> 0 | Some x -> x in

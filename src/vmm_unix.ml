@@ -435,8 +435,10 @@ let free_system_resources name taps =
       destroy_tap n)
     (Ok ()) taps
 
-let cpuset cpu =
-  let cpustring = string_of_int cpu in
+let cpuset cpus =
+  let cpustring =
+    String.concat "," (List.map string_of_int (IS.elements cpus))
+  in
   match Lazy.force uname with
   | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
@@ -510,7 +512,7 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
         else
           argv
       in
-      let* cpuset = cpuset config.Unikernel.cpuid in
+      let* cpuset = cpuset config.Unikernel.cpuids in
       let* target, version =
         let* image =
           if config.Unikernel.compressed then

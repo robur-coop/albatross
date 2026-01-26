@@ -261,7 +261,7 @@ let unikernel_config_eq =
      | `Restart None, `Restart None -> true
      | `Restart Some a, `Restart Some b -> IS.equal a b
      | _ -> false) &&
-    a.cpuid = b.cpuid && a.memory = b.memory &&
+    IS.equal a.cpuids b.cpuids && a.memory = b.memory &&
     eq_triple_list_opt_int a.block_devices b.block_devices &&
     eq_triple_list_opt_mac a.bridges b.bridges &&
     Option.equal (List.equal String.equal) a.argv b.argv
@@ -286,7 +286,7 @@ let test_resources =
 let u =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "" ;
-    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuid = 0 ; memory = 10 ;
+    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuids = IS.singleton 0 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", None, None ] ;
     argv = Some [ "-l *:debug" ] ;
@@ -322,7 +322,7 @@ let policy_is_respected_unikernel () =
     (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u);
   Alcotest.check ok_msg __LOC__ (Ok ())
     (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u);
-  let u' = { u with cpuid = 1 } in
+  let u' = { u with cpuids = IS.singleton 1 } in
   Alcotest.check ok_msg __LOC__ (Error (`Msg "cpuid not allowed"))
     (Vmm_resources.check_unikernel r1 (n_o_s "alpha:bar") u');
   let u' = { u with memory = 11 } in
@@ -699,7 +699,7 @@ let dec_b64_unik data =
 let u1_3 =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "" ;
-    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuid = 0 ; memory = 1 ;
+    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuids = IS.singleton 0 ; memory = 1 ;
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
@@ -709,7 +709,7 @@ let u1_3 =
 let u2_3 =
   Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "" ;
-    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuid = 2 ; memory = 10 ;
+    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuids = IS.singleton 2 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;

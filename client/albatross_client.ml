@@ -91,7 +91,7 @@ let output_result state ((hdr, reply) as wire) =
         write_to_file name compressed image;
         Lwt.return (Ok `End)
       | `Empty | `String _ | `Block_devices _
-      | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Unikernel_info _
+      | `Old_unikernel_info3 _ | `Old_unikernel_info4 _ | `Old_unikernel_info5 _ | `Unikernel_info _
       | `Policies _ | `Consoles _ ->
         begin match state with
           | `Single | `End -> Lwt.return (Ok `End)
@@ -181,11 +181,13 @@ let http_get_binary ~happy_eyeballs host job build =
 
 let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info3
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info4
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuid ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ])) ->
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
+  | Ok (_hdr, `Success (`Old_unikernel_info5
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ])) ->
     begin
       let hash = Ohex.encode digest in
       can_update ~happy_eyeballs host hash >>= function
@@ -229,7 +231,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
                 | 0 -> false, unikernel
                 | _ -> true, Vmm_compress.compress ~level unikernel
               in
-              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = true; cpuid; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition } in
+              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = true; cpuids; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition } in
               Lwt.return (Ok (`Unikernel_force_create config))
     end
   | Ok w ->
@@ -238,7 +240,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
     Lwt.return (Error Communication_failed)
   | Error _ -> Lwt.return (Error Communication_failed)
 
-let create_unikernel typ force image startup no_add_name cpuid memory argv block_devices bridges compression restart_on_fail exit_codes cpus linux_boot_partition =
+let create_unikernel typ force image startup no_add_name cpuids memory argv block_devices bridges compression restart_on_fail exit_codes cpus linux_boot_partition =
   let ( let* ) = Result.bind in
   let* () =
     if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
@@ -272,7 +274,14 @@ let create_unikernel typ force image startup no_add_name cpuid memory argv block
     let exits = match exit_codes with [] -> None | xs -> Some (Vmm_core.IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
-  let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = not no_add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition } in
+  let* cpuids =
+    let cpus = Vmm_core.IS.of_list cpuids in
+    if Vmm_core.IS.cardinal cpus = 0 then
+      Error (`Msg "CPUids may not be empty")
+    else
+      Ok cpus
+  in
+  let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let policy unikernels memory cpus block bridgesl =
@@ -792,13 +801,13 @@ let get () compression name dst =
 
 let destroy () = jump (`Unikernel_cmd `Unikernel_destroy)
 
-let create () typ force image startup no_add_name cpuid memory argv block network compression restart_on_fail exit_code
+let create () typ force image startup no_add_name cpuids memory argv block network compression restart_on_fail exit_code
   cpus linux_boot_partition name d cert key ca key_type tmpdir =
-  match create_unikernel typ force image startup no_add_name cpuid memory argv block network (compress_default compression d) restart_on_fail exit_code cpus linux_boot_partition with
+  match create_unikernel typ force image startup no_add_name cpuids memory argv block network (compress_default compression d) restart_on_fail exit_code cpus linux_boot_partition with
   | Ok cmd -> jump (`Unikernel_cmd cmd) name d cert key ca key_type tmpdir
   | Error _ as e -> e
 
-let restart () replace startup no_add_name cpuid memory argv block_devices bridges restart_on_fail exit_codes cpus linux_boot_partition name d cert key ca key_type tmpdir =
+let restart () replace startup no_add_name cpuids memory argv block_devices bridges restart_on_fail exit_codes cpus linux_boot_partition name d cert key ca key_type tmpdir =
   let ( let* ) = Result.bind in
   let* args =
     if replace then
@@ -819,7 +828,14 @@ let restart () replace startup no_add_name cpuid memory argv block_devices bridg
         if restart_on_fail then `Restart exits else `Quit
       and argv = match argv with [] -> None | xs -> Some xs
       in
-      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; startup ; add_name = not no_add_name ; cpuid ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition })
+      let* cpuids =
+        let cpus = Vmm_core.IS.of_list cpuids in
+        if Vmm_core.IS.cardinal cpus = 0 then
+          Error (`Msg "CPUids cannot be empty")
+        else
+          Ok cpus
+      in
+      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition })
     else
       Ok None
   in
@@ -1192,10 +1208,6 @@ let bridge =
   let doc = "Bridge names to allow (may be repeated)." in
   Arg.(value & opt_all string [] & info [ "bridge" ] ~doc)
 
-let cpu =
-  let doc = "CPUid to use." in
-  Arg.(value & opt int 0 & info [ "cpu" ] ~doc)
-
 let number_cpus =
   let doc = "How many CPUs to use." in
   Arg.(value & opt int 1 & info [ "cpus" ] ~doc)
@@ -1437,7 +1449,7 @@ let restart_cmd =
      `P "Restarts a unikernel."]
   in
   let term =
-    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ replace_args $ startup $ no_add_name $ cpu $ unikernel_mem $ args $ block $ net $ restart_on_fail $ exit_code $ number_cpus $ linux_boot_partition $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const restart $ (Albatross_cli.setup_log (const false)) $ replace_args $ startup $ no_add_name $ cpus $ unikernel_mem $ args $ block $ net $ restart_on_fail $ exit_code $ number_cpus $ linux_boot_partition $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "restart" ~doc ~man ~exits
   in
   Cmd.v info term
@@ -1518,7 +1530,7 @@ let create_cmd =
      `P "Creates a unikernel."]
   in
   let term =
-    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ u_typ $ force $ image $ startup $ no_add_name $ cpu $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ number_cpus $ linux_boot_partition $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const create $ (Albatross_cli.setup_log (const false)) $ u_typ $ force $ image $ startup $ no_add_name $ cpus $ unikernel_mem $ args $ block $ net $ compress_level $ restart_on_fail $ exit_code $ number_cpus $ linux_boot_partition $ unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "create" ~doc ~man ~exits
   in
   Cmd.v info term

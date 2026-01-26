@@ -327,6 +327,18 @@ let handle_unikernel_cmd t id =
           (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
     in
     Ok (t, `End (`Success (`Old_unikernel_info4 infos)))
+  | `Old_unikernel_info5 ->
+    Logs.debug (fun m -> m "old info5 %a" Name.pp id) ;
+    let infos =
+      match Name.name id with
+      | None ->
+        Vmm_trie.fold (Name.path id) t.resources.Vmm_resources.unikernels
+          (fun id unikernel unikernels -> (id, Unikernel.info (block_size id) unikernel) :: unikernels) []
+      | Some _ ->
+        Option.fold ~none:[] ~some:(fun unikernel -> [ id, Unikernel.info (block_size id) unikernel ])
+          (Vmm_trie.find id t.resources.Vmm_resources.unikernels)
+    in
+    Ok (t, `End (`Success (`Old_unikernel_info5 infos)))
   | `Unikernel_info ->
     Logs.debug (fun m -> m "info %a" Name.pp id) ;
     let infos =
@@ -399,7 +411,7 @@ let handle_unikernel_cmd t id =
               fail_behaviour = a.fail_behaviour ;
               startup = a.startup ;
               add_name = a.add_name ;
-              cpuid = a.cpuid ;
+              cpuids = a.cpuids ;
               block_devices = a.block_devices ;
               bridges = a.bridges ;
               argv = a.argv }
