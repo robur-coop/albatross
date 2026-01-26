@@ -403,13 +403,17 @@ module Unikernel = struct
   }
 
   let pp ppf unikernel =
-    let hex_digest = Ohex.encode unikernel.digest in
-    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
+    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a %s "
       unikernel.pid
       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string Macaddr.pp)) unikernel.taps
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.config.block_devices
-      Fmt.(array ~sep:(any " ") string) unikernel.cmd
-      hex_digest
+      Fmt.(array ~sep:(any " ") string) unikernel.cmd;
+    match unikernel.config.typ with
+    | `Solo5 ->
+      Fmt.pf ppf "digest %s"
+        (Ohex.encode unikernel.digest)
+    | `Bhyve ->
+      Fmt.pf ppf "bhyve-vmname %s" unikernel.digest
 
   type block_info = {
     unikernel_device : string ;
