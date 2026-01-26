@@ -225,6 +225,7 @@ let jump _ systemd influx tmpdir dbdir no_drop dev_zvol =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
+  Random.self_init ();
   Vmm_unix.drop_path := not no_drop;
   state := Vmm_vmmd.allow_dev_zvol !state dev_zvol;
   state := Vmm_vmmd.init_block_devices !state;
