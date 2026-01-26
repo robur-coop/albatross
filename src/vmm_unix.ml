@@ -95,6 +95,9 @@ let _null = match read_fd_for_file (Fpath.v "/dev/null") with
   | Error _ -> invalid_arg "cannot read /dev/null"
 
 let rec create_process prog args stdout =
+  (* NOTE: we use [stdout] for stdin with the assumption that it's not open for
+     reading and the other end never writes. This is due to bhyve calling
+     mevent_add on the fd which makes /dev/null not work. *)
   try Unix.create_process prog args stdout stdout stdout with
   | Unix.Unix_error (Unix.EINTR, _, _) ->
       create_process prog args stdout
