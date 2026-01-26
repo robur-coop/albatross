@@ -402,18 +402,20 @@ module Unikernel = struct
     started : Ptime.t ;
   }
 
+  let pp_digest typ ppf digest =
+    match typ with
+    | `Solo5 ->
+      Fmt.pf ppf "digest %s" (Ohex.encode digest)
+    | `BHyve ->
+      Fmt.pf ppf "bhyve-vmname %s" digest
+
   let pp ppf unikernel =
-    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a %s "
+    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a %a"
       unikernel.pid
       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string Macaddr.pp)) unikernel.taps
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.config.block_devices
-      Fmt.(array ~sep:(any " ") string) unikernel.cmd;
-    match unikernel.config.typ with
-    | `Solo5 ->
-      Fmt.pf ppf "digest %s"
-        (Ohex.encode unikernel.digest)
-    | `Bhyve ->
-      Fmt.pf ppf "bhyve-vmname %s" unikernel.digest
+      Fmt.(array ~sep:(any " ") string) unikernel.cmd
+      (pp_digest unikernel.config.typ) unikernel.digest
 
   type block_info = {
     unikernel_device : string ;
@@ -473,8 +475,7 @@ module Unikernel = struct
       cpus = cfg.cpus ; linux_boot_partition = cfg.linux_boot_partition }
 
   let pp_info ppf (info : info) =
-    let hex_digest = Ohex.encode info.digest in
-    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ startup at %a@ cpu %u@ %u MB memory@ block devices %a@ bridge %a@ digest %s@ cpus %u@ linux_boot_partition %a"
+    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ startup at %a@ cpu %u@ %u MB memory@ block devices %a@ bridge %a@ %a@ cpus %u@ linux_boot_partition %a"
       pp_typ info.typ
       (Ptime.pp_rfc3339 ()) info.started
       pp_fail_behaviour info.fail_behaviour
@@ -482,7 +483,7 @@ module Unikernel = struct
       info.cpuid info.memory
       Fmt.(list ~sep:(any ", ") pp_block_info) info.block_devices
       Fmt.(list ~sep:(any ", ") pp_net_info) info.bridges
-      hex_digest
+      (pp_digest info.typ) info.digest
       info.cpus
       Fmt.(option ~none:(any "not specified") string) info.linux_boot_partition
 
