@@ -225,7 +225,7 @@ let handle_create t name ~needs_dump unikernel_config =
     in
     let* unikernel = Vmm_unix.exec name unikernel_config taps block_devices digest in
     Logs.debug (fun m -> m "exec()ed unikernel") ;
-    let resources = Vmm_resources.insert_unikernel t.resources name unikernel in
+    let* resources = Vmm_resources.insert_unikernel t.resources name unikernel in
     let t = { t with resources } in
     if needs_dump then dump_state t ;
     Logs.info (fun m -> m "created %a: %a" Name.pp name Unikernel.pp unikernel);

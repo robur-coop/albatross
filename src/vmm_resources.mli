@@ -40,15 +40,12 @@ val check_unikernel : t -> Name.t -> Unikernel.config -> (unit, [> `Msg of strin
 (** [insert_unikernel t name unikernel] inserts [unikernel] under [name] in [t],
     and returns the new [t]. The caller has to ensure (using {!check_unikernel})
     that an unikernel with the same name does not yet exist, and the block
-    device is not in use.
-
-    @raise Invalid_argument if block device is already in use, or unikernel
-    already exists. *)
-val insert_unikernel : t -> Name.t -> Unikernel.t -> t
+    device is not in use. *)
+val insert_unikernel : t -> Name.t -> Unikernel.t -> (t, [> `Msg of string ]) result
 
 (** [insert_policy t path policy] inserts [policy] under [path] in [t], and
     returns the new [t] or an error. *)
-val insert_policy : t -> Name.Path.t -> Policy.t -> (t, [> `Msg of string]) result
+val insert_policy : t -> Name.Path.t -> Policy.t -> (t, [> `Msg of string ]) result
 
 (** [check_block t name size] checks whether [size] under [name] in [t] would be
     allowed under the current policies. *)
