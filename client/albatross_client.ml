@@ -181,13 +181,13 @@ let http_get_binary ~happy_eyeballs host job build =
 
 let prepare_update ~happy_eyeballs level host dryrun = function
   | Ok (_hdr, `Success (`Unikernel_info
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; numcpus ; linux_boot_partition ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info3
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; numcpus ; linux_boot_partition ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info4
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ]))
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; numcpus ; linux_boot_partition ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info5
-      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; cpus ; linux_boot_partition ; _ } ])) ->
+      [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; numcpus ; linux_boot_partition ; _ } ])) ->
     begin
       let hash = Ohex.encode digest in
       can_update ~happy_eyeballs host hash >>= function
@@ -231,7 +231,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
                 | 0 -> false, unikernel
                 | _ -> true, Vmm_compress.compress ~level unikernel
               in
-              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = true; cpuids; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition } in
+              let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = true; cpuids; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition } in
               Lwt.return (Ok (`Unikernel_force_create config))
     end
   | Ok w ->
@@ -240,7 +240,7 @@ let prepare_update ~happy_eyeballs level host dryrun = function
     Lwt.return (Error Communication_failed)
   | Error _ -> Lwt.return (Error Communication_failed)
 
-let create_unikernel typ force image startup no_add_name cpuids memory argv block_devices bridges compression restart_on_fail exit_codes cpus linux_boot_partition =
+let create_unikernel typ force image startup no_add_name cpuids memory argv block_devices bridges compression restart_on_fail exit_codes numcpus linux_boot_partition =
   let ( let* ) = Result.bind in
   let* () =
     if Vmm_core.String_set.(cardinal (of_list (List.map (fun (n, _, _) -> n) bridges))) = List.length bridges then
@@ -281,7 +281,7 @@ let create_unikernel typ force image startup no_add_name cpuids memory argv bloc
     else
       Ok cpus
   in
-  let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition } in
+  let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
 let policy unikernels memory cpus block bridgesl =
@@ -802,12 +802,12 @@ let get () compression name dst =
 let destroy () = jump (`Unikernel_cmd `Unikernel_destroy)
 
 let create () typ force image startup no_add_name cpuids memory argv block network compression restart_on_fail exit_code
-  cpus linux_boot_partition name d cert key ca key_type tmpdir =
-  match create_unikernel typ force image startup no_add_name cpuids memory argv block network (compress_default compression d) restart_on_fail exit_code cpus linux_boot_partition with
+  numcpus linux_boot_partition name d cert key ca key_type tmpdir =
+  match create_unikernel typ force image startup no_add_name cpuids memory argv block network (compress_default compression d) restart_on_fail exit_code numcpus linux_boot_partition with
   | Ok cmd -> jump (`Unikernel_cmd cmd) name d cert key ca key_type tmpdir
   | Error _ as e -> e
 
-let restart () replace startup no_add_name cpuids memory argv block_devices bridges restart_on_fail exit_codes cpus linux_boot_partition name d cert key ca key_type tmpdir =
+let restart () replace startup no_add_name cpuids memory argv block_devices bridges restart_on_fail exit_codes numcpus linux_boot_partition name d cert key ca key_type tmpdir =
   let ( let* ) = Result.bind in
   let* args =
     if replace then
@@ -835,7 +835,7 @@ let restart () replace startup no_add_name cpuids memory argv block_devices brid
         else
           Ok cpus
       in
-      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition })
+      Ok (Some { Vmm_core.Unikernel.fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition })
     else
       Ok None
   in

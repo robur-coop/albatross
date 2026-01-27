@@ -290,7 +290,7 @@ let u =
     block_devices = [] ;
     bridges = [ "service", None, None ] ;
     argv = Some [ "-l *:debug" ] ;
-    cpus = 1 ; linux_boot_partition = None ;
+    numcpus = 1 ; linux_boot_partition = None ;
   }
 
 let ok_msg = Alcotest.(result unit msg)
@@ -703,7 +703,7 @@ let u1_3 =
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
-    cpus = 1 ; linux_boot_partition = None ;
+    numcpus = 1 ; linux_boot_partition = None ;
   }
 
 let u2_3 =
@@ -713,7 +713,7 @@ let u2_3 =
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", None ] ;
     argv = None ;
-    cpus = 1 ; linux_boot_partition = None ;
+    numcpus = 1 ; linux_boot_partition = None ;
   }
 
 let ins n u t =

@@ -361,7 +361,7 @@ let v0_unikernel_config =
     and add_name = true
     and cpuids = IS.singleton cpuid
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus = 1 ; linux_boot_partition = None }
   and g _unikernel = failwith "cannot encode v0 unikernel configs"
   in
   Asn.S.map f g @@
@@ -384,7 +384,7 @@ let v1_unikernel_config =
     and add_name = true
     and cpuids = IS.singleton cpuid
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus = 1 ; linux_boot_partition = None }
   and g _unikernel = failwith "cannot encode v1 unikernel configs"
   in
   Asn.S.(map f g @@ sequence @@
@@ -407,7 +407,7 @@ let v2_unikernel_config =
     and add_name = true
     and cpuids = IS.singleton cpuid
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus = 1 ; linux_boot_partition = None }
   and g (unikernel : config) =
     let bridges =
       match unikernel.bridges with
@@ -448,7 +448,7 @@ let v3_unikernel_config =
     and add_name = true
     and cpuids = IS.singleton cpuid
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus = 1 ; linux_boot_partition = None }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus = 1 ; linux_boot_partition = None }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -486,11 +486,11 @@ let v4_unikernel_config =
   let f (typ, (compressed, (image, (startup, (add_name, (fail_behaviour, (cpuid, (memory, (blocks, (bridges, argv)))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
-    and cpus = 1
+    and numcpus = 1
     and cpuids = IS.singleton cpuid
     and linux_boot_partition = None
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -527,19 +527,19 @@ let v4_unikernel_config =
 
 let unikernel_config =
   let open Unikernel in
-  let f (typ, (compressed, (image, (startup, (add_name, (fail_behaviour, (cpuids, (memory, (blocks, (bridges, (argv, (cpus, linux_boot_partition)))))))))))) =
+  let f (typ, (compressed, (image, (startup, (add_name, (fail_behaviour, (cpuids, (memory, (blocks, (bridges, (argv, (numcpus, linux_boot_partition)))))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
     and cpuids = IS.of_list cpuids
-    and cpus = Option.value ~default:1 cpus
+    and numcpus = Option.value ~default:1 numcpus
     in
-    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition }
+    { typ ; compressed ; image ; fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition }
   and g (unikernel : config) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     and cpuids = IS.elements unikernel.cpuids
     in
-    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.startup, (unikernel.add_name, (unikernel.fail_behaviour, (cpuids, (unikernel.memory, (blocks, (bridges, (unikernel.argv, (Some unikernel.cpus, unikernel.linux_boot_partition))))))))))))
+    (unikernel.typ, (unikernel.compressed, (unikernel.image, (unikernel.startup, (unikernel.add_name, (unikernel.fail_behaviour, (cpuids, (unikernel.memory, (blocks, (bridges, (unikernel.argv, (Some unikernel.numcpus, unikernel.linux_boot_partition))))))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)
@@ -568,19 +568,19 @@ let unikernel_config =
 
 let unikernel_arguments =
   let open Unikernel in
-  let f (fail_behaviour, (startup, (add_name, (cpuids, (memory, (blocks, (bridges, (argv, (cpus, linux_boot_partition))))))))) =
+  let f (fail_behaviour, (startup, (add_name, (cpuids, (memory, (blocks, (bridges, (argv, (numcpus, linux_boot_partition))))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
-    and cpus = Option.value ~default:1 cpus
+    and numcpus = Option.value ~default:1 numcpus
     and cpuids = IS.of_list cpuids
     in
-    { fail_behaviour; startup; add_name; cpuids; memory; block_devices; bridges; argv; cpus; linux_boot_partition }
+    { fail_behaviour; startup; add_name; cpuids; memory; block_devices; bridges; argv; numcpus; linux_boot_partition }
   and g (unikernel : arguments) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
     and cpuids = IS.elements unikernel.cpuids
     in
-    (unikernel.fail_behaviour, (unikernel.startup, (unikernel.add_name, (cpuids, (unikernel.memory, (blocks, (bridges, (unikernel.argv, (Some unikernel.cpus, unikernel.linux_boot_partition)))))))))
+    (unikernel.fail_behaviour, (unikernel.startup, (unikernel.add_name, (cpuids, (unikernel.memory, (blocks, (bridges, (unikernel.argv, (Some unikernel.numcpus, unikernel.linux_boot_partition)))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"fail-behaviour" fail_behaviour)
@@ -609,11 +609,11 @@ let unikernel_arguments_v1 =
   let f (fail_behaviour, (startup, (add_name, (cpuid, (memory, (blocks, (bridges, argv))))))) =
     let bridges = match bridges with None -> [] | Some xs -> xs
     and block_devices = match blocks with None -> [] | Some xs -> xs
-    and cpus = 1
+    and numcpus = 1
     and cpuids = IS.singleton cpuid
     and linux_boot_partition = None
     in
-    { fail_behaviour; startup; add_name; cpuids; memory; block_devices; bridges; argv; cpus; linux_boot_partition }
+    { fail_behaviour; startup; add_name; cpuids; memory; block_devices; bridges; argv; numcpus; linux_boot_partition }
   and g (unikernel : arguments) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -653,10 +653,10 @@ let unikernel_arguments_v0 =
     and startup = None
     and add_name = true
     and cpuids = IS.singleton cpuid
-    and cpus = 1
+    and numcpus = 1
     and linux_boot_partition = None
     in
-    { fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; cpus ; linux_boot_partition }
+    { fail_behaviour ; startup ; add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition }
   and g (unikernel : arguments) =
     let bridges = match unikernel.bridges with [] -> None | xs -> Some xs
     and blocks = match unikernel.block_devices with [] -> None | xs -> Some xs
@@ -878,7 +878,7 @@ let old_unikernel_info3 =
     and startup = None
     and cpuids = IS.singleton cpuid
     in
-    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus = 1 ; linux_boot_partition = None }
+    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; numcpus = 1 ; linux_boot_partition = None }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -932,7 +932,7 @@ let old_unikernel_info4 =
     and startup = None
     and cpuids = IS.singleton cpuid
     in
-    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus = 1 ; linux_boot_partition = None }
+    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; numcpus = 1 ; linux_boot_partition = None }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -984,11 +984,11 @@ let old_unikernel_info5 =
           { unikernel_device ; host_device ; sector_size ; size })
         xs
     and started = Option.value ~default:Ptime.epoch started
-    and cpus = 1
+    and numcpus = 1
     and cpuids = IS.singleton cpuid
     and linux_boot_partition = None
     in
-    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus ; linux_boot_partition }
+    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; numcpus ; linux_boot_partition }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -1031,7 +1031,7 @@ let old_unikernel_info5 =
 
 let unikernel_info =
   let open Unikernel in
-  let f (typ, (startup, (fail_behaviour, (cpuids, (memory, (digest, (blocks, (bridges, (argv, (started, (cpus, linux_boot_partition))))))))))) =
+  let f (typ, (startup, (fail_behaviour, (cpuids, (memory, (digest, (blocks, (bridges, (argv, (started, (numcpus, linux_boot_partition))))))))))) =
     let bridges = match bridges with None -> [] | Some xs ->
       List.map (fun (unikernel_device, host_device, mac) ->
           { unikernel_device ; host_device ; mac })
@@ -1041,10 +1041,10 @@ let unikernel_info =
           { unikernel_device ; host_device ; sector_size ; size })
         xs
     and started = Option.value ~default:Ptime.epoch started
-    and cpus = Option.value ~default:1 cpus
+    and numcpus = Option.value ~default:1 numcpus
     and cpuids = IS.of_list cpuids
     in
-    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; cpus ; linux_boot_partition }
+    { typ ; fail_behaviour ; startup ; cpuids ; memory ; block_devices ; bridges ; argv ; digest ; started ; numcpus ; linux_boot_partition }
   and g (unikernel : info) =
     let bridges = match unikernel.bridges with
       | [] -> None
@@ -1056,7 +1056,7 @@ let unikernel_info =
           unikernel_device, host_device, sector_size, size) xs)
     and cpuids = IS.elements unikernel.cpuids
     in
-    (unikernel.typ, (unikernel.startup, (unikernel.fail_behaviour, (cpuids, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, (Some unikernel.started, (Some unikernel.cpus, unikernel.linux_boot_partition)))))))))))
+    (unikernel.typ, (unikernel.startup, (unikernel.fail_behaviour, (cpuids, (unikernel.memory, (unikernel.digest, (blocks, (bridges, (unikernel.argv, (Some unikernel.started, (Some unikernel.numcpus, unikernel.linux_boot_partition)))))))))))
   in
   Asn.S.(map f g @@ sequence @@
            (required ~label:"typ" typ)

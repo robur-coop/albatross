@@ -463,7 +463,7 @@ let exec_bhyve _name (config : Unikernel.config) bridge_taps digest =
   Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s0,hostbridge" % "-s1,lpc"
            %% of_list network %% of_list blocks
            % "-lcom1,stdio"
-           % ("-c" ^ string_of_int config.cpus)
+           % ("-c" ^ string_of_int config.numcpus)
            % ("-m" ^ string_of_int config.memory ^ "M") % digest)
 
 let exec name (config : Unikernel.config) bridge_taps blocks digest =

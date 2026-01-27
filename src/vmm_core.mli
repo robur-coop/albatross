@@ -129,7 +129,7 @@ module Unikernel : sig
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
-    cpus : int ;
+    numcpus : int ;
     linux_boot_partition : string option ;
   }
 
@@ -152,7 +152,7 @@ module Unikernel : sig
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
-    cpus : int ;
+    numcpus : int ;
     linux_boot_partition : string option ;
   }
 
@@ -195,7 +195,7 @@ module Unikernel : sig
     argv : string list option ;
     digest : string ;
     started : Ptime.t ;
-    cpus : int ;
+    numcpus : int ;
     linux_boot_partition : string option ;
   }
 
