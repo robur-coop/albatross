@@ -60,6 +60,7 @@ type unikernel_cmd = [
   | `Unikernel_get of int
   | `Old_unikernel_info3
   | `Old_unikernel_info4
+  | `Old_unikernel_info5
 ]
 
 let pp_unikernel_cmd ~verbose ppf = function
@@ -80,6 +81,7 @@ let pp_unikernel_cmd ~verbose ppf = function
   | `Unikernel_get level -> Fmt.pf ppf "unikernel get compress level %d" level
   | `Old_unikernel_info3 -> Fmt.string ppf "old unikernel info3"
   | `Old_unikernel_info4 -> Fmt.string ppf "old unikernel info4"
+  | `Old_unikernel_info5 -> Fmt.string ppf "old unikernel info5"
 
 type policy_cmd = [
   | `Policy_info
@@ -160,6 +162,7 @@ type success = [
   | `Empty
   | `String of string
   | `Policies of (Name.t * Policy.t) list
+  | `Old_unikernel_info5 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
@@ -183,7 +186,7 @@ let pp_success ~verbose ppf = function
   | `String data -> Fmt.pf ppf "success: %s" data
   | `Policies ps ->
     my_fmt_list "no policies" Fmt.(pair ~sep:(any ": ") Name.pp Policy.pp) ppf ps
-  | `Unikernel_info infos | `Old_unikernel_info3 infos | `Old_unikernel_info4 infos ->
+  | `Unikernel_info infos | `Old_unikernel_info3 infos | `Old_unikernel_info4 infos | `Old_unikernel_info5 infos ->
     my_fmt_list "no unikernels"
       Fmt.(pair ~sep:(any ": ") Name.pp
              (if verbose then Unikernel.pp_info_with_argv else Unikernel.pp_info))

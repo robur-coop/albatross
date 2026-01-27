@@ -6,6 +6,8 @@ type 'a t
 
 val empty : 'a t
 
+val allow_dev_zvol : 'a t -> Name.Path.t option -> 'a t
+
 val init_block_devices : 'a t -> 'a t
 
 val waiter : 'a t -> Name.t -> 'a t * 'a option

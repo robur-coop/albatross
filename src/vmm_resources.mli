@@ -18,11 +18,12 @@ type t = private {
   policies : Policy.t Vmm_trie.t ;
   block_devices : (int * bool) Vmm_trie.t ;
   unikernels : Unikernel.t Vmm_trie.t ;
+  dev_zvol : Name.Path.t option ;
 }
 
 
 (** [empty] is the empty tree. *)
-val empty : t
+val empty : Name.Path.t option -> t
 
 (** [find_unikernel t name] is either [Some unikernel] or [None]. *)
 val find_unikernel : t -> Name.t -> Unikernel.t option

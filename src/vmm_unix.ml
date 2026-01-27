@@ -86,16 +86,13 @@ let fd_for_file flag f =
   try Ok (openfile (Fpath.to_string f) (Unix.O_CLOEXEC :: flag) 0o644)
   with Unix.Unix_error (e, _, _) -> err_file f e
 
-let read_fd_for_file = fd_for_file Unix.[ O_RDONLY ]
-
 let write_fd_for_file = fd_for_file Unix.[ O_WRONLY ; O_APPEND ]
 
-let null = match read_fd_for_file (Fpath.v "/dev/null") with
-  | Ok fd -> fd
-  | Error _ -> invalid_arg "cannot read /dev/null"
-
 let rec create_process prog args stdout =
-  try Unix.create_process prog args null stdout stdout with
+  (* NOTE: we use [stdout] for stdin with the assumption that it's not open for
+     reading and the other end never writes. This is due to bhyve calling
+     mevent_add on the fd which makes /dev/null not work. *)
+  try Unix.create_process prog args stdout stdout stdout with
   | Unix.Unix_error (Unix.EINTR, _, _) ->
       create_process prog args stdout
 
@@ -302,7 +299,7 @@ let manifest_devices_match ~bridges ~block_devices image =
   in
   devices_match ~bridges ~block_devices mft
 
-let bridge_name (service, b, _mac) = match b with None -> service | Some b -> b
+let device_name (service, b, _mac) = match b with None -> service | Some b -> b
 
 let bridge_exists bridge_name =
   let cmd =
@@ -318,27 +315,80 @@ let bridges_exist bridges =
   List.fold_left
     (fun acc b ->
        let* () = acc in
-       bridge_exists (bridge_name b))
+       bridge_exists (device_name b))
     (Ok ()) bridges
 
+let prepare_bhyve name (unikernel : Unikernel.config) =
+  let* disk =
+    Option.to_result ~none:(`Msg "couldn't find initial block device")
+      (List.find_opt (fun (name, _, _) -> name = "0") unikernel.block_devices)
+  in
+  let* disk_name =
+    let _, n, _ = disk in
+    Option.to_result ~none:(`Msg "no name for initial disk") n
+  in
+  match unikernel.Unikernel.linux_boot_partition with
+  | None ->
+    let cmd = Bos.Cmd.(v "bhyveload" % ("-m" ^ string_of_int unikernel.memory ^ "m") % ("-d" ^  disk_name) % name) in
+    Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+  | Some boot_name ->
+    Result.join
+      (Bos.OS.File.with_tmp_oc "albatross-%s.tmp"
+         (fun file output v ->
+            output_string output v;
+            close_out_noerr output;
+            let cmd =
+              Bos.Cmd.(v "grub-bhyve" % ("-m" ^ Fpath.to_string file) % ("-rhd0," ^ boot_name) % ("-M" ^ string_of_int unikernel.memory) % name)
+            in
+            Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success))
+         ("(hd0) " ^ disk_name ^ "\n"))
+
 let prepare name (unikernel : Unikernel.config) =
-  let* image =
+  let* digest =
     match unikernel.Unikernel.typ with
     | `Solo5 ->
-      if unikernel.Unikernel.compressed then
-        match Vmm_compress.uncompress unikernel.Unikernel.image with
-        | Ok blob -> Ok blob
-        | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
-      else
-        Ok unikernel.Unikernel.image
+      let* image =
+        if unikernel.Unikernel.compressed then
+          match Vmm_compress.uncompress unikernel.Unikernel.image with
+          | Ok blob -> Ok blob
+          | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+        else
+          Ok unikernel.Unikernel.image
+      in
+      let filename = Name.image_file name in
+      let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
+      let* target, version = solo5_image_target image in
+      let* _ = check_solo5_tender target version in
+      let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
+      let* () = Bos.OS.File.write filename image in
+      let* () = bridges_exist unikernel.Unikernel.bridges in
+      Ok digest
+    | `BHyve ->
+      (* ensure that block and network devices are named 0..N (and appear in order) *)
+      let* _ =
+        List.fold_left (fun n ((name, _, _) as arg) ->
+            let* n in
+            let bridge = device_name arg in
+            if String.equal name (string_of_int n) then
+              Ok (succ n)
+            else
+              Error (`Msg ("network device on " ^ bridge ^ " with name " ^ name ^ " not in ascending order (expected " ^ string_of_int n ^ ")")))
+          (Ok 0) unikernel.bridges
+      in
+      let* _ =
+        List.fold_left (fun n ((name, _, _) as arg) ->
+            let* n in
+            let block = device_name arg in
+            if String.equal name (string_of_int n) then
+              Ok (succ n)
+            else
+              Error (`Msg ("block device " ^ block ^ " with name " ^ name ^ " not in ascending order (expected " ^ string_of_int n ^ ")")))
+          (Ok 0) unikernel.block_devices
+      in
+      let name = "alba-" ^ string_of_int (Random.int 100_000) in
+      let* () = prepare_bhyve name unikernel in
+      Ok name
   in
-  let filename = Name.image_file name in
-  let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
-  let* target, version = solo5_image_target image in
-  let* _ = check_solo5_tender target version in
-  let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
-  let* () = Bos.OS.File.write filename image in
-  let* () = bridges_exist unikernel.Unikernel.bridges in
   let fifo = Name.fifo_file name in
   let* () =
     match fifo_exists fifo with
@@ -359,7 +409,7 @@ let prepare name (unikernel : Unikernel.config) =
   let* taps =
     List.fold_left (fun acc arg ->
         let* acc = acc in
-        let bridge = bridge_name arg in
+        let bridge = device_name arg in
         let* tap = create_tap bridge in
         let (service, _, mac) = arg in
         Ok ((service, tap, mac) :: acc))
@@ -372,6 +422,10 @@ let unikernel_device unikernel =
   | FreeBSD -> Ok ("solo5-" ^ string_of_int unikernel.Unikernel.pid)
   | Linux -> Error (`Msg "don't know what you mean (trying to find unikernel device)")
 
+let destroy_bhyve name =
+  let cmd = Bos.Cmd.(v "bhyvectl" % "--destroy" % ("--vm=" ^ name)) in
+  Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
+
 let free_system_resources name taps =
   (* same order as prepare! *)
   let* () = Bos.OS.File.delete (Name.image_file name) in
@@ -381,13 +435,36 @@ let free_system_resources name taps =
       destroy_tap n)
     (Ok ()) taps
 
-let cpuset cpu =
-  let cpustring = string_of_int cpu in
+let cpuset cpus =
+  let cpustring =
+    String.concat "," (List.map string_of_int (IS.elements cpus))
+  in
   match Lazy.force uname with
   | FreeBSD -> Ok ([ "cpuset" ; "-l" ; cpustring ])
   | Linux -> Ok ([ "taskset" ; "-c" ; cpustring ])
 
 let drop_path = ref true
+
+let exec_bhyve _name (config : Unikernel.config) bridge_taps digest =
+  let slot = ref 1 in
+  let network =
+    List.map (fun (_bridge, tap, mac) ->
+        incr slot;
+        "-s" ^ string_of_int !slot ^ ",virtio-net," ^ tap ^ ",mac=" ^ Macaddr.to_string mac)
+      bridge_taps
+  in
+  let blocks =
+    List.map (fun (_name, dev, _sector_size) ->
+        incr slot;
+        let dev = Option.get dev in
+        "-s" ^ string_of_int !slot ^ ",virtio-blk," ^ dev)
+      config.block_devices
+  in
+  Bos.Cmd.(v "bhyve" % "-A" % "-H" % "-P" % "-s0,hostbridge" % "-s1,lpc"
+           %% of_list network %% of_list blocks
+           % "-lcom1,stdio"
+           % ("-c" ^ string_of_int config.numcpus)
+           % ("-m" ^ string_of_int config.memory ^ "M") % digest)
 
 let exec name (config : Unikernel.config) bridge_taps blocks digest =
   let bridge_taps =
@@ -395,61 +472,65 @@ let exec name (config : Unikernel.config) bridge_taps blocks digest =
         bridge, tap, Option.value mac ~default:(Name.mac name bridge))
       bridge_taps
   in
-  let net, macs =
-    List.split
-      (List.map (fun (bridge, tap, mac) ->
-           "--net:" ^ bridge ^ "=" ^ tap,
-           "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
-          bridge_taps)
-  and blocks, block_sector_sizes =
-    List.split
-      (List.map (fun (name, dev, sector_size) ->
-           "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev),
-           Option.map
-             (fun s -> "--block-sector-size:" ^ name ^ "=" ^ string_of_int s)
-             sector_size)
-          blocks)
-  and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
-  and mem = "--mem=" ^ string_of_int config.Unikernel.memory
-  in
-  let argv =
-    (* we don't know whether the unikernel understands the --name argument
-       (since mirage 4.10.0), we restart on argument failure without the added
-       name. If the operator provided a --name themselves, the unikernel will
-       abort on first startup ('option --name cannot be repeated') with exit
-       code 64, and will be restarted without the automatically inserted --name
-    *)
-    if config.add_name then
-      let name =
-        if !drop_path then
-          match Name.name name with
-          | None -> Name.to_string name
-          | Some name -> Name.Label.to_string name
-        else
-          Name.to_string name
+  let* cmd =
+    match config.typ with
+    | `Solo5 ->
+      let net, macs =
+        List.split
+          (List.map (fun (bridge, tap, mac) ->
+               "--net:" ^ bridge ^ "=" ^ tap,
+               "--net-mac:" ^ bridge ^ "=" ^ Macaddr.to_string mac)
+              bridge_taps)
+      and blocks, block_sector_sizes =
+        List.split
+          (List.map (fun (name, dev, sector_size) ->
+               "--block:" ^ name ^ "=" ^ Fpath.to_string (block_file dev),
+               Option.map
+                 (fun s -> "--block-sector-size:" ^ name ^ "=" ^ string_of_int s)
+                 sector_size)
+              blocks)
+      and argv = match config.Unikernel.argv with None -> [] | Some xs -> xs
+      and mem = "--mem=" ^ string_of_int config.Unikernel.memory
       in
-      ("--name=" ^ name) :: argv
-    else
-      argv
-  in
-  let* cpuset = cpuset config.Unikernel.cpuid in
-  let* target, version =
-    let* image =
-      if config.Unikernel.compressed then
-        match Vmm_compress.uncompress config.Unikernel.image with
-        | Ok blob -> Ok blob
-        | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
-      else
-        Ok config.Unikernel.image
-    in
-    solo5_image_target image
-  in
-  let* tender = check_solo5_tender target version in
-  let cmd =
-    Bos.Cmd.(of_list cpuset %% tender % mem %%
-             of_list net %% of_list macs %% of_list blocks %%
-             of_list (List.filter_map Fun.id block_sector_sizes) %
-             "--" % p (Name.image_file name) %% of_list argv)
+      let argv =
+        (* we don't know whether the unikernel understands the --name argument
+           (since mirage 4.10.0), we restart on argument failure without the added
+           name. If the operator provided a --name themselves, the unikernel will
+           abort on first startup ('option --name cannot be repeated') with exit
+           code 64, and will be restarted without the automatically inserted --name
+        *)
+        if config.add_name then
+          let name =
+            if !drop_path then
+              match Name.name name with
+              | None -> Name.to_string name
+              | Some name -> Name.Label.to_string name
+            else
+              Name.to_string name
+          in
+          ("--name=" ^ name) :: argv
+        else
+          argv
+      in
+      let* cpuset = cpuset config.Unikernel.cpuids in
+      let* target, version =
+        let* image =
+          if config.Unikernel.compressed then
+            match Vmm_compress.uncompress config.Unikernel.image with
+            | Ok blob -> Ok blob
+            | Error `Msg msg -> Error (`Msg ("failed to uncompress: " ^ msg))
+          else
+            Ok config.Unikernel.image
+        in
+        solo5_image_target image
+      in
+      let* tender = check_solo5_tender target version in
+      Ok (Bos.Cmd.(of_list cpuset %% tender % mem %%
+                   of_list net %% of_list macs %% of_list blocks %%
+                   of_list (List.filter_map Fun.id block_sector_sizes) %
+                   "--" % p (Name.image_file name) %% of_list argv))
+    | `BHyve ->
+      Ok (exec_bhyve name config bridge_taps digest)
   in
   let line = Bos.Cmd.to_list cmd in
   let prog = try List.hd line with Failure _ -> failwith err_empty_line in

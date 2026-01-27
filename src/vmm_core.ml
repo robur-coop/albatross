@@ -235,7 +235,7 @@ module Policy = struct
     let bridges =
       if String_set.is_empty res.bridges then "" else ", bridges: "
     in
-    Fmt.pf ppf "policy: %d unikernels %a cpus %d MB memory %a block%s%a"
+    Fmt.pf ppf "policy: %d unikernels %a CPUids %u MB memory %a block%s%a"
       res.unikernels pp_is res.cpuids res.memory
       Fmt.(option ~none:(any "no") (int ++ any " MB")) res.block
       bridges
@@ -268,9 +268,9 @@ module Policy = struct
       Error (`Msg (Fmt.str "policy above allows %d MB memory, which is fewer than %d MB"
                      super.memory sub.memory))
     else if not (IS.subset sub.cpuids super.cpuids) then
-      Error (`Msg (Fmt.str "policy above allows CPUids %a, which is not a superset of %a"
-                     Fmt.(list ~sep:(any ", ") int) (IS.elements super.cpuids)
-                     Fmt.(list ~sep:(any ", ") int) (IS.elements sub.cpuids)))
+      let diff = IS.diff sub.cpuids super.cpuids in
+      Error (`Msg (Fmt.str "policy above does not allow CPUids %a"
+                     Fmt.(list ~sep:(any ", ") int) (IS.elements diff)))
     else if not (String_set.subset sub.bridges super.bridges) then
       Error (`Msg (Fmt.str "policy above allows bridge(s) %a, which is not a superset of %a"
                      Fmt.(list ~sep:(any ", ") string) (String_set.elements super.bridges)
@@ -284,10 +284,11 @@ module Policy = struct
 end
 
 module Unikernel = struct
-  type typ = [ `Solo5 ]
+  type typ = [ `Solo5 | `BHyve ]
 
   let pp_typ ppf = function
     | `Solo5 -> Fmt.pf ppf "solo5"
+    | `BHyve -> Fmt.pf ppf "BHyve"
 
   type fail_behaviour = [ `Quit | `Restart of IS.t option ]
 
@@ -305,11 +306,13 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     startup : int option ;
     add_name : bool;
-    cpuid : int ;
+    cpuids : IS.t ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
+    numcpus : int ; (* for bhyve *)
+    linux_boot_partition : string option ; (* for bhyve, esp. linux *)
   }
 
   let bridges (unikernel : config) =
@@ -319,9 +322,10 @@ module Unikernel = struct
 
   let fine_with_policy (p : Policy.t) (c : config) =
     let bridge_allowed set s = String_set.mem s set in
-    if not (IS.mem c.cpuid p.cpuids) then
-      Error (`Msg (Fmt.str "CPUid of unikernel (%d) not allowed by policy (%a)"
-                     c.cpuid Fmt.(list ~sep:(any ", ") int) (IS.elements p.cpuids)))
+    if not (IS.subset c.cpuids p.cpuids) then
+      let diff = IS.diff c.cpuids p.cpuids in
+      Error (`Msg (Fmt.str "the CPUids %a requested by the unikernel are not allowed by policy"
+                     Fmt.(list ~sep:(any ", ") int) (IS.elements diff)))
     else if c.memory > p.memory then
       Error (`Msg (Fmt.str "%u MB memory assigned to unikernel exceeds policy (%uMB)"
                      c.memory p.memory))
@@ -342,16 +346,19 @@ module Unikernel = struct
       Fmt.(option ((any "@") ++ Macaddr.pp)) mac
 
   let pp_config ppf (unikernel : config) =
-    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ startup at %a@ add_name %B@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
+    Fmt.pf ppf "typ %a@ compression %B image %d bytes@ fail behaviour %a@ startup at %a@ add_name %B@ CPUids %a@ %d MB memory@ block devices %a@ bridge %a@ #cpus %u@ linux_boot %a"
       pp_typ unikernel.typ
       unikernel.compressed
       (String.length unikernel.image)
       pp_fail_behaviour unikernel.fail_behaviour
       Fmt.(option ~none:(any "not specified") int) unikernel.startup
       unikernel.add_name
-      unikernel.cpuid unikernel.memory
+      Fmt.(list ~sep:(any ", ") int) (IS.elements unikernel.cpuids)
+      unikernel.memory
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
+      unikernel.numcpus
+      Fmt.(option ~none:(any "not specified") string) unikernel.linux_boot_partition
 
   let pp_config_with_argv ppf (unikernel : config) =
     Fmt.pf ppf "%a@ argv %a" pp_config unikernel
@@ -364,21 +371,26 @@ module Unikernel = struct
     fail_behaviour : fail_behaviour;
     startup : int option;
     add_name : bool;
-    cpuid : int ;
+    cpuids : IS.t ;
     memory : int ;
     block_devices : (string * string option * int option) list ;
     bridges : (string * string option * Macaddr.t option) list ;
     argv : string list option ;
+    numcpus : int ; (* for bhyve *)
+    linux_boot_partition : string option ; (* for bhyve, esp. linux *)
   }
 
   let pp_arguments ppf (unikernel : arguments) =
-    Fmt.pf ppf "fail behaviour %a@ startup at %a@ add_name %B@ cpu %d@ %d MB memory@ block devices %a@ bridge %a"
+    Fmt.pf ppf "fail behaviour %a@ startup at %a@ add_name %B@ CPUids %a@ %d MB memory@ block devices %a@ bridge %a@ #cpus %u@ linux_boot_partition %a"
       pp_fail_behaviour unikernel.fail_behaviour
       Fmt.(option ~none:(any "not specified") int) unikernel.startup
       unikernel.add_name
-      unikernel.cpuid unikernel.memory
+      Fmt.(list ~sep:(any ", ") int) (IS.elements unikernel.cpuids)
+      unikernel.memory
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.block_devices
       Fmt.(list ~sep:(any ", ") pp_bridge) unikernel.bridges
+      unikernel.numcpus
+      Fmt.(option ~none:(any "not specified") string) unikernel.linux_boot_partition
 
   let pp_arguments_with_argv ppf (unikernel : arguments) =
     Fmt.pf ppf "%a@ argv %a" pp_arguments unikernel
@@ -393,14 +405,20 @@ module Unikernel = struct
     started : Ptime.t ;
   }
 
+  let pp_digest typ ppf digest =
+    match typ with
+    | `Solo5 ->
+      Fmt.pf ppf "digest %s" (Ohex.encode digest)
+    | `BHyve ->
+      Fmt.pf ppf "bhyve-vmname %s" digest
+
   let pp ppf unikernel =
-    let hex_digest = Ohex.encode unikernel.digest in
-    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a digest %s"
+    Fmt.pf ppf "pid %d@ taps %a (block %a) cmdline %a %a"
       unikernel.pid
       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string Macaddr.pp)) unikernel.taps
       Fmt.(list ~sep:(any ", ") pp_block) unikernel.config.block_devices
       Fmt.(array ~sep:(any " ") string) unikernel.cmd
-      hex_digest
+      (pp_digest unikernel.config.typ) unikernel.digest
 
   type block_info = {
     unikernel_device : string ;
@@ -427,13 +445,15 @@ module Unikernel = struct
     typ : typ ;
     fail_behaviour : fail_behaviour ;
     startup : int option ;
-    cpuid : int ;
+    cpuids : IS.t ;
     memory : int ;
     block_devices : block_info list ;
     bridges : net_info list ;
     argv : string list option ;
     digest : string ;
     started : Ptime.t ;
+    numcpus : int ; (* for bhyve *)
+    linux_boot_partition : string option ; (* for bhyve, esp. linux *)
   }
 
   let info block_size t =
@@ -453,20 +473,23 @@ module Unikernel = struct
         ) cfg.bridges t.taps
     in
     { typ = cfg.typ ; fail_behaviour = cfg.fail_behaviour ; startup = cfg.startup ;
-      cpuid = cfg.cpuid ; memory = cfg.memory ; block_devices ;
-      bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started }
+      cpuids = cfg.cpuids ; memory = cfg.memory ; block_devices ;
+      bridges ; argv = cfg.argv ; digest = t.digest ; started = t.started ;
+      numcpus = cfg.numcpus ; linux_boot_partition = cfg.linux_boot_partition }
 
   let pp_info ppf (info : info) =
-    let hex_digest = Ohex.encode info.digest in
-    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ startup at %a@ cpu %u@ %u MB memory@ block devices %a@ bridge %a@ digest %s"
+    Fmt.pf ppf "typ %a@ started %a@ fail behaviour %a@ startup at %a@ CPUids %a@ %u MB memory@ block devices %a@ bridge %a@ %a@ #cpus %u@ linux_boot_partition %a"
       pp_typ info.typ
       (Ptime.pp_rfc3339 ()) info.started
       pp_fail_behaviour info.fail_behaviour
       Fmt.(option ~none:(any "not specified") int) info.startup
-      info.cpuid info.memory
+      Fmt.(list ~sep:(any ", ") int) (IS.elements info.cpuids)
+      info.memory
       Fmt.(list ~sep:(any ", ") pp_block_info) info.block_devices
       Fmt.(list ~sep:(any ", ") pp_net_info) info.bridges
-      hex_digest
+      (pp_digest info.typ) info.digest
+      info.numcpus
+      Fmt.(option ~none:(any "not specified") string) info.linux_boot_partition
 
   let pp_info_with_argv ppf (info : info) =
     Fmt.pf ppf "%a@ argv %a"

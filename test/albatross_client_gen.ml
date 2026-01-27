@@ -3,19 +3,21 @@
 let u1 =
   Vmm_core.Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "";
-    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuid = 0 ; memory = 1 ;
+    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuids = Vmm_core.IS.singleton 0 ; memory = 1 ;
     block_devices = [ "block", None, None ; "secondblock", Some "second-data", None ] ;
     bridges = [ "service", None, None ; "other-net", Some "second-bridge", None ] ;
     argv = Some [ "-l *:debug" ] ;
+    numcpus = 1 ; linux_boot_partition = None ;
   }
 
 let u2 =
   Vmm_core.Unikernel.{
     typ = `Solo5 ; compressed = false ; image = "";
-    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuid = 2 ; memory = 10 ;
+    fail_behaviour = `Quit ; startup = None ; add_name = true ; cpuids = Vmm_core.IS.singleton 2 ; memory = 10 ;
     block_devices = [] ;
     bridges = [ "service", Some "bridge-interface", Some (Macaddr.of_string_exn "00:de:ad:be:ef:00") ] ;
     argv = None ;
+    numcpus = 1 ; linux_boot_partition = None ;
   }
 
 let unikernels =

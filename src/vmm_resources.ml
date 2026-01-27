@@ -8,6 +8,7 @@ type t = {
   policies : Policy.t Vmm_trie.t ;
   block_devices : (int * bool) Vmm_trie.t ;
   unikernels : Unikernel.t Vmm_trie.t ;
+  dev_zvol : Name.Path.t option ;
 }
 
 let pp ppf t =
@@ -21,10 +22,11 @@ let pp ppf t =
     (fun id unikernel () ->
        Fmt.pf ppf "unikernel %a: %a@." Name.pp id Unikernel.pp_config unikernel.Unikernel.config) ()
 
-let empty = {
+let empty dev_zvol = {
   policies = Vmm_trie.empty ;
   block_devices = Vmm_trie.empty ;
-  unikernels = Vmm_trie.empty
+  unikernels = Vmm_trie.empty ;
+  dev_zvol ;
 }
 
 let policy_metrics =
@@ -95,15 +97,25 @@ let find_policy t path =
 
 let find_block t name = Vmm_trie.find name t.block_devices
 
-let set_block_usage t name active =
-  match Vmm_trie.find name t with
-  | None -> Error (`Msg ("block device " ^ Name.to_string name ^ " not in trie"))
-  | Some (size, curr) ->
-    if curr = active
-    then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive")))
-    else Ok (fst (Vmm_trie.insert name (size, active) t))
+let zvol_allowed dev_zvol name =
+  match dev_zvol with
+  | None -> false
+  | Some x ->
+    let lbl = Option.value ~default:"" (Option.map Name.Label.to_string (Name.name name)) in
+    String.starts_with ~prefix:"/dev/zvol" lbl && Name.Path.equal (Name.path name) x
 
-let use_blocks t name unikernel active =
+let set_block_usage ?dev_zvol t name active =
+  if zvol_allowed dev_zvol name then
+    Ok t
+  else
+    match Vmm_trie.find name t with
+    | None -> Error (`Msg ("block device " ^ Name.to_string name ^ " not in trie"))
+    | Some (size, curr) ->
+      if curr = active
+      then Error (`Msg ("block device " ^ Name.to_string name ^ " already in state " ^ (if curr then "active" else "inactive")))
+      else Ok (fst (Vmm_trie.insert name (size, active) t))
+
+let use_blocks ?dev_zvol t name unikernel active =
   match unikernel.Unikernel.config.Unikernel.block_devices with
   | [] -> Ok t
   | blocks ->
@@ -113,12 +125,12 @@ let use_blocks t name unikernel active =
           Name.block_name name bd)
         blocks
     in
-    List.fold_left (fun t' n -> let* t' in set_block_usage t' n active) (Ok t) block_names
+    List.fold_left (fun t' n -> let* t' in set_block_usage ?dev_zvol t' n active) (Ok t) block_names
 
 let remove_unikernel t name = match find_unikernel t name with
   | None -> Error (`Msg "unknown unikernel")
   | Some unikernel ->
-    let* block_devices = use_blocks t.block_devices name unikernel false in
+    let* block_devices = use_blocks ?dev_zvol:t.dev_zvol t.block_devices name unikernel false in
     let unikernels = Vmm_trie.remove name t.unikernels in
     let t' = { t with block_devices ; unikernels } in
     report_unikernels t' name;
@@ -155,8 +167,10 @@ let check_policy (p : Policy.t) (running_unikernels, used_memory) (unikernel : U
     Error (`Msg (Fmt.str
                    "maximum allowed memory (%d, used %d) would be exceeded (requesting %d)"
                    p.Policy.memory used_memory unikernel.Unikernel.memory))
-  else if not (IS.mem unikernel.Unikernel.cpuid p.Policy.cpuids) then
-    Error (`Msg (Fmt.str "CPUid %u is not allowed by policy" unikernel.Unikernel.cpuid))
+  else if not (IS.subset unikernel.Unikernel.cpuids p.Policy.cpuids) then
+    let diff = IS.diff unikernel.cpuids p.cpuids in
+    Error (`Msg (Fmt.str "CPUids %a are not allowed by policy"
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements diff)))
   else
     match List.partition (bridge_allowed p.Policy.bridges) (Unikernel.bridges unikernel) with
     | _, [] -> Ok ()
@@ -177,14 +191,17 @@ let check_unikernel t name unikernel =
         let* () = r in
         let bl = match dev with Some b -> b | None -> block in
         let block_name = Name.block_name name bl in
-        match find_block t block_name with
-        | None ->
-          Error (`Msg (Fmt.str "block device %s not found" (Name.to_string block_name)))
-        | Some (_, active) ->
-          if active then
-            Error (`Msg (Fmt.str "block device %s already in use" (Name.to_string block_name)))
-          else
-            Ok ())
+        if zvol_allowed t.dev_zvol block_name then
+          Ok ()
+        else
+          match find_block t block_name with
+          | None ->
+            Error (`Msg (Fmt.str "block device %s not found" (Name.to_string block_name)))
+          | Some (_, active) ->
+            if active then
+              Error (`Msg (Fmt.str "block device %s already in use" (Name.to_string block_name)))
+            else
+              Ok ())
       (Ok ()) unikernel.block_devices
   and unikernel_ok = match find_unikernel t name with
     | None -> Ok ()
@@ -205,7 +222,7 @@ let unikernels t name =
 let insert_unikernel t name unikernel =
   let unikernels, old = Vmm_trie.insert name unikernel t.unikernels in
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
-  let* block_devices = use_blocks t.block_devices name unikernel true in
+  let* block_devices = use_blocks ?dev_zvol:t.dev_zvol t.block_devices name unikernel true in
   let t' = { t with unikernels ; block_devices } in
   report_unikernels t' name;
   Ok t'
@@ -272,14 +289,14 @@ let check_unikernels t path p =
       (fun _ unikernel (bridges, cpuids) ->
          let config = unikernel.Unikernel.config in
          (String_set.(union (of_list (Unikernel.bridges config)) bridges),
-          IS.add config.Unikernel.cpuid cpuids))
+          IS.union config.Unikernel.cpuids cpuids))
       (String_set.empty, IS.empty)
   in
   let policy_block = match p.Policy.block with None -> 0 | Some x -> x in
   if not (IS.subset cpuids p.Policy.cpuids) then
-    Error (`Msg (Fmt.str "policy allows CPUids %a, which is not a superset of %a"
-                   Fmt.(list ~sep:(any ", ") int) (IS.elements p.Policy.cpuids)
-                   Fmt.(list ~sep:(any ", ") int) (IS.elements cpuids)))
+    let diff = IS.diff cpuids p.cpuids in
+    Error (`Msg (Fmt.str "policy does not allow CPUids %a"
+                   Fmt.(list ~sep:(any ", ") int) (IS.elements diff)))
   else if not (String_set.subset bridges p.Policy.bridges) then
     Error (`Msg (Fmt.str "policy allows bridges %a, which is not a superset of %a"
                    Fmt.(list ~sep:(any ", ") string) (String_set.elements p.Policy.bridges)
