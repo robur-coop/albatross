@@ -268,9 +268,9 @@ module Policy = struct
       Error (`Msg (Fmt.str "policy above allows %d MB memory, which is fewer than %d MB"
                      super.memory sub.memory))
     else if not (IS.subset sub.cpuids super.cpuids) then
-      Error (`Msg (Fmt.str "policy above allows CPUids %a, which is not a superset of %a"
-                     Fmt.(list ~sep:(any ", ") int) (IS.elements super.cpuids)
-                     Fmt.(list ~sep:(any ", ") int) (IS.elements sub.cpuids)))
+      let diff = IS.diff sub.cpuids super.cpuids in
+      Error (`Msg (Fmt.str "policy above does not allow CPUids %a"
+                     Fmt.(list ~sep:(any ", ") int) (IS.elements diff)))
     else if not (String_set.subset sub.bridges super.bridges) then
       Error (`Msg (Fmt.str "policy above allows bridge(s) %a, which is not a superset of %a"
                      Fmt.(list ~sep:(any ", ") string) (String_set.elements super.bridges)
@@ -323,9 +323,9 @@ module Unikernel = struct
   let fine_with_policy (p : Policy.t) (c : config) =
     let bridge_allowed set s = String_set.mem s set in
     if not (IS.subset c.cpuids p.cpuids) then
-      Error (`Msg (Fmt.str "CPUid of unikernel (%a) not allowed by policy (%a)"
-                     Fmt.(list ~sep:(any ", ") int) (IS.elements c.cpuids)
-                     Fmt.(list ~sep:(any ", ") int) (IS.elements p.cpuids)))
+      let diff = IS.diff c.cpuids p.cpuids in
+      Error (`Msg (Fmt.str "the CPUids %a requested by the unikernel are not allowed by policy"
+                     Fmt.(list ~sep:(any ", ") int) (IS.elements diff)))
     else if c.memory > p.memory then
       Error (`Msg (Fmt.str "%u MB memory assigned to unikernel exceeds policy (%uMB)"
                      c.memory p.memory))
