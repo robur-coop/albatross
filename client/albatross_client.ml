@@ -1475,17 +1475,20 @@ let policy_cmd =
   in
   Cmd.v info term
 
-let add_policy_cmd =
-  let doc = "Add a policy." in
+let add_policy_cmd, replace_policy_cmd =
+  let doc = "Add or replace a policy." in
   let man =
     [`S "DESCRIPTION";
-     `P "Adds a policy."]
+     `P "Adds a policy. If a policy was already present it will be replaced
+     provided the existing resources are within the new policy. The
+     replace-policy sub-command is an alias of add-policy."]
   in
   let term =
     Term.(term_result (const add_policy $ (Albatross_cli.setup_log (const false)) $ unikernels $ mem $ cpus $ opt_block_size $ bridge $ path $  dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
-  and info = Cmd.info "add-policy" ~doc ~man ~exits
+  and info_add_policy = Cmd.info "add-policy" ~doc ~man ~exits
+  and info_replace_policy = Cmd.info "replace-policy" ~doc ~man ~exits
   in
-  Cmd.v info term
+  Cmd.v info_add_policy term, Cmd.v info_replace_policy term
 
 let create_cmd =
   let doc = "Creates a unikernel." in
@@ -1746,7 +1749,7 @@ let help_cmd =
   Term.(ret (const help $ (Albatross_cli.setup_log (const false)) $ Arg.man_format $ Term.choice_names $ topic))
 
 let cmds = [
-  policy_cmd ; remove_policy_cmd ; add_policy_cmd ;
+  policy_cmd ; remove_policy_cmd ; add_policy_cmd ; replace_policy_cmd ;
   info_cmd ; get_cmd ; destroy_cmd ; create_cmd ; restart_cmd ;
   block_info_cmd ; block_create_cmd ; block_destroy_cmd ;
   block_set_cmd ; block_dump_cmd ;
