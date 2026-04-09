@@ -1174,7 +1174,7 @@ let dryrun =
 
 let cpus =
   let doc = "CPUids to allow for this policy (argument may be repeated)." in
-  Arg.(value & opt_all int [] & info [ "cpu" ] ~doc)
+  Arg.(value & opt_all int [ 0 ] & info [ "cpu" ] ~doc)
 
 let unikernels =
   let doc = "Number of unikernels to allow running at the same time." in
