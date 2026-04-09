@@ -340,7 +340,9 @@ let prepare_bhyve name (unikernel : Unikernel.config) =
             let cmd =
               Bos.Cmd.(v "grub-bhyve" % ("-m" ^ Fpath.to_string file) % ("-rhd0," ^ boot_name) % ("-M" ^ string_of_int unikernel.memory) % name)
             in
-            Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success))
+            let cmd_string = Bos.Cmd.to_string cmd in
+            let res = Sys.command cmd_string in
+            if res = 0 then Ok () else Error (`Msg ("grub-bhyve returned " ^ string_of_int res)))
          ("(hd0) " ^ disk_name ^ "\n"))
 
 let prepare name (unikernel : Unikernel.config) =
