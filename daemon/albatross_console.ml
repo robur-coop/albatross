@@ -83,7 +83,7 @@ let read_console (path, lbl) name ringbuffer fd =
         let get_slack lines =
             match List.rev lines with
             | [] | [ _ ] -> lines, ""
-            | slack::tl -> List.rev tl, slack
+            | slack::tl -> List.map String.escaped (List.rev tl), slack
         in
         let mode, lines, slack =
           (* anything exceeding 512 bytes get dropped until a newline is read *)
@@ -104,10 +104,11 @@ let read_console (path, lbl) name ringbuffer fd =
             match String.split_on_char '\n' data with
             | [] -> assert false
             | [ x ] ->
-              if String.length x >= 512 then
+              let esc = String.escaped x in
+              if String.length esc >= 512 then
                 (* if there is no newline, drop *)
                 let data =
-                  if String.length x = 512 then x else String.sub x 0 512
+                  if String.length esc = 512 then esc else String.sub esc 0 512
                 in
                 `Drop, [ data ^ " [truncated]" ], ""
               else
