@@ -329,7 +329,7 @@ let prepare_bhyve name (unikernel : Unikernel.config) =
   in
   match unikernel.Unikernel.linux_boot_partition with
   | None ->
-    let cmd = Bos.Cmd.(v "bhyveload" % ("-m" ^ string_of_int unikernel.memory ^ "m") % ("-d" ^  disk_name) % name) in
+    let cmd = Bos.Cmd.(v "timeout" % "1s" % "bhyveload" % ("-m" ^ string_of_int unikernel.memory ^ "m") % ("-d" ^  disk_name) % name) in
     Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success)
   | Some boot_name ->
     Result.join
@@ -338,11 +338,9 @@ let prepare_bhyve name (unikernel : Unikernel.config) =
             output_string output v;
             close_out_noerr output;
             let cmd =
-              Bos.Cmd.(v "grub-bhyve" % ("-m" ^ Fpath.to_string file) % ("-rhd0," ^ boot_name) % ("-M" ^ string_of_int unikernel.memory) % name)
+              Bos.Cmd.(v "timeout" % "1s"% "grub-bhyve" % ("-m" ^ Fpath.to_string file) % ("-rhd0," ^ boot_name) % ("-M" ^ string_of_int unikernel.memory) % name)
             in
-            let cmd_string = Bos.Cmd.to_string cmd in
-            let res = Sys.command cmd_string in
-            if res = 0 then Ok () else Error (`Msg ("grub-bhyve returned " ^ string_of_int res)))
+            Bos.OS.Cmd.(run_out ~err:err_null cmd |> out_null |> success))
          ("(hd0) " ^ disk_name ^ "\n"))
 
 let prepare name (unikernel : Unikernel.config) =
