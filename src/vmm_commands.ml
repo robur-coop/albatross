@@ -143,6 +143,9 @@ type data = [
 
 let pp_data ppf = function
   | `Console_data (ts, line) ->
+    (* We escape the line as it may contain arbitrary more or less untrusted
+       data and could mess up the terminal it's printed to. *)
+    let line = String.escaped line in
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
   | `Block_data s ->
