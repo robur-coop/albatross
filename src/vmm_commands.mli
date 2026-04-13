@@ -39,6 +39,7 @@ type unikernel_cmd = [
   | `Unikernel_get of int
   | `Old_unikernel_info3
   | `Old_unikernel_info4
+  | `Old_unikernel_info5
 ]
 
 type policy_cmd = [
@@ -90,6 +91,7 @@ type success = [
   | `Policies of (Name.t * Policy.t) list
   | `Old_unikernel_info3 of (Name.t * Unikernel.info) list
   | `Old_unikernel_info4 of (Name.t * Unikernel.info) list
+  | `Old_unikernel_info5 of (Name.t * Unikernel.info) list
   | `Unikernel_info of (Name.t * Unikernel.info) list
   | `Unikernel_image of bool * string
   | `Block_devices of (Name.t * int * bool) list

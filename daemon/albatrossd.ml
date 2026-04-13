@@ -221,11 +221,13 @@ let write_reply name fd txt (hdr, cmd) =
 
 let m = conn_metrics "unix"
 
-let jump _ systemd influx tmpdir dbdir no_drop =
+let jump _ systemd influx tmpdir dbdir no_drop dev_zvol =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   Albatross_cli.set_dbdir dbdir;
+  Random.self_init ();
   Vmm_unix.drop_path := not no_drop;
+  state := Vmm_vmmd.allow_dev_zvol !state dev_zvol;
   state := Vmm_vmmd.init_block_devices !state;
   (match Vmm_unix.check_commands () with
    | Error `Msg m -> invalid_arg m
@@ -332,6 +334,15 @@ let no_drop_path =
   let doc = "Do not drop unikernel path for --name (use --name=path:hello instead of --name=hello)" in
   Arg.(value & flag & info [ "no-drop-path" ] ~doc)
 
+let path_c =
+  Arg.conv
+    (Name.Path.of_string,
+     fun ppf p -> Name.pp ppf (Name.make_of_path p))
+
+let allow_dev_zvol =
+  let doc = "Allow /dev/zvol access to a certain arc" in
+  Arg.(value & opt (some path_c) None & info [ "allow-zvol-for" ] ~doc)
+
 let cmd =
   let doc = "Albatross daemon" in
   let man = [
@@ -353,7 +364,7 @@ let cmd =
       creation and attaching tap devices to bridges."
   ] in
   let term =
-    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir $ no_drop_path)
+    Term.(const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ Albatrossd_utils.influx $ Albatross_cli.tmpdir $ Albatross_cli.dbdir $ no_drop_path $ allow_dev_zvol)
   and info = Cmd.info "albatrossd" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term
