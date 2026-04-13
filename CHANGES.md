@@ -1,3 +1,26 @@
+# v2.7.0 (2026-04-13)
+
+* Be able to start and monitor BHyve virtual machines (#250, fixes #54 @hannesm
+  @reynir)
+  - extends the unikernel with numcpus and linux_boot_partition, cpuids is a set
+  - typ can be either `Solo5 or `BHyve
+  - there's an escape for /dev/zvol (to have block devices which are zfs
+    volumes) (until we have a separate block device daemon) via the albatrossd
+    command-line option --allow-dev-zvol=<user>
+* Albatross-daemon: avoid dumping when a restart-on-failure unikernel is
+  restarted (#249 #257 @hannesm)
+* Accept URLs without a trailing slash (#245 @reynir)
+* Document and provide hints when statistics gathering fails
+  (#251 #253, fixes #252 @hannesm @reynir)
+* Vmm_resource: remove unusued functions (reserve_block, commit_block)
+  (#254 @hannesm)
+* Vmm_resources.insert_unikernel now returns a result, and does not raise an
+  exception (#256, fixes #255 @hannesm)
+* Albatross-client: add a replace-policy subcommand (alias to add-policy)
+  (#261 @reynir)
+* Escape console data when printing (#266 @reynir)
+* Remove Old_unikernel_info3 and Old_restart (#231 @hannesm)
+
 # v2.6.2 (2025-12-15)
 
 * Update to cachet.0.0.3 and use `Bstr.t` (#246 @dinosaure @hannesm @reynir)
