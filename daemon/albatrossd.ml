@@ -164,6 +164,7 @@ let handle cons_out stat_out fd addr =
           state := state';
           Lwt_mutex.unlock create_lock;
           task >>= fun r ->
+          Vmm_vmmd.dump_state !state;
           out (data r) >|= fun () ->
           `Close
         | `Wait_and_create (who, (id, unikernel)) ->

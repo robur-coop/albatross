@@ -80,18 +80,20 @@ let may_restart t id =
   else
     t, false
 
-let stop_create t id =
+let stop_create ~needs_dump t id =
   let name = Name.to_string id in
   match String_map.find_opt name t.waiters with
   | None ->
     let t, may = may_restart t id in
-    if may then
+    if may then begin
+      if needs_dump then dump_state t;
       Ok (t, `End (`Success (`String "destroyed: removed from restarting")))
-    else
+    end else
       Error (`Msg "destroy: not found")
   | Some _ ->
     let waiters = String_map.remove name t.waiters in
     let t = { t with waiters } in
+    if needs_dump then dump_state t;
     Ok (t, `End (`Success (`String "destroyed: removed waiter")))
 
 let killall t create =
@@ -372,7 +374,7 @@ let handle_unikernel_cmd t id =
       let* () = Vmm_resources.check_unikernel resources id unikernel_config in
       match Vmm_resources.find_unikernel t.resources id with
       | None ->
-        ignore (stop_create t id);
+        ignore (stop_create ~needs_dump:false t id);
         Ok (t, `Create (id, unikernel_config))
       | Some unikernel ->
         (match Vmm_unix.destroy unikernel with
@@ -387,7 +389,7 @@ let handle_unikernel_cmd t id =
         (* TODO: unsure about the semantics here -- a restart on a non-existing
            unikernel should do what? and on a currently restart(ing-on-failure)
            one? *)
-        stop_create t id
+        stop_create ~needs_dump:false t id
       | Some unikernel ->
         let* resources = Vmm_resources.remove_unikernel t.resources id in
         let* () = Vmm_resources.check_unikernel resources id unikernel.Unikernel.config in
@@ -424,7 +426,7 @@ let handle_unikernel_cmd t id =
     end
   | `Unikernel_destroy ->
     match Vmm_resources.find_unikernel t.resources id with
-    | None -> stop_create t id
+    | None -> stop_create ~needs_dump:true t id
     | Some unikernel ->
       (try
          Vmm_unix.destroy unikernel
