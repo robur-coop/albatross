@@ -1,3 +1,9 @@
+# v2.7.1 (2026-05-05)
+
+* Albatross-daemon: dump state after destroy (#269, fixes #268 @hannesm)
+  bug introduced in v2.7.0 "avoid dumping when a restart-on-failure unikernel is
+  restarted"
+
 # v2.7.0 (2026-04-13)
 
 * Be able to start and monitor BHyve virtual machines (#250, fixes #54 @hannesm
