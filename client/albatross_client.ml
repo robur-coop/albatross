@@ -1196,7 +1196,7 @@ let opt_block_data =
 
 let opt_block_size =
   let doc = "Block storage to allow (in MB)." in
-  Arg.(value & opt (some int) None & info [ "size" ] ~doc)
+  Arg.(value & opt (some int) None & info [ "block"; "size" ] ~doc)
 
 let mem =
   let doc = "Memory to allow (in MB)." in
@@ -1204,7 +1204,7 @@ let mem =
 
 let bridge =
   let doc = "Bridge names to allow (may be repeated)." in
-  Arg.(value & opt_all string [] & info [ "bridge" ] ~doc)
+  Arg.(value & opt_all string [] & info [ "network"; "bridge" ] ~doc)
 
 let number_cpus =
   let doc = "How many CPUs to use." in
