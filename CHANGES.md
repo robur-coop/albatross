@@ -1,3 +1,9 @@
+# v2.7.2 (2026-05-29)
+
+* SECURITY FIX fix unbounded resource usage in albatross-console when querying
+  for a very high or negative count or a date earlier than all messages, both
+  when the ring buffer is full (@reynir)
+
 # v2.7.1 (2026-05-05)
 
 * Albatross-daemon: dump state after destroy (#269, fixes #268 @hannesm)
