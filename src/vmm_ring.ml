@@ -38,6 +38,7 @@ let read_last t ?(tst = fun _ -> true) n =
         else
           one (dec t idx) count acc
   in
+  let n = min n t.size in
   one (dec t t.write) n []
 
 let read_history t ?(tst = fun _ -> true) since =
@@ -47,9 +48,16 @@ let read_history t ?(tst = fun _ -> true) since =
     | Some entry ->
       if Ptime.is_earlier (fst entry) ~than:since then
         acc
-      else if tst (snd entry) then
-        go (dec t idx) (entry :: acc)
       else
-        go (dec t idx) acc
+        let acc =
+          if tst (snd entry) then
+            entry :: acc
+          else acc
+        in
+        if idx = t.write then
+          (* Don't loop over the ring again *)
+          acc
+        else
+          go (dec t idx) acc
   in
   go (dec t t.write) []
