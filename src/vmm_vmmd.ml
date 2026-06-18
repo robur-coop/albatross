@@ -397,14 +397,14 @@ let handle_unikernel_cmd t id =
           match args with
           | None -> unikernel.Unikernel.config
           | Some (a : Unikernel.arguments) ->
+            let { Unikernel.fail_behaviour ; startup ; add_name ;
+                  cpuids ; memory ;
+                  block_devices ; bridges ; argv ;
+                  numcpus ; linux_boot_partition } = a
+            in
             { unikernel.Unikernel.config with
-              fail_behaviour = a.fail_behaviour ;
-              startup = a.startup ;
-              add_name = a.add_name ;
-              cpuids = a.cpuids ;
-              block_devices = a.block_devices ;
-              bridges = a.bridges ;
-              argv = a.argv }
+              fail_behaviour ; startup ; add_name ; cpuids ; memory ;
+              block_devices ; bridges ; argv ; numcpus ; linux_boot_partition }
         in
         let* () =
           let* image =
