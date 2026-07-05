@@ -118,12 +118,20 @@ let pp_block_cmd ppf = function
   | `Block_add size -> Fmt.pf ppf "block add %d" size
   | `Block_set compressed -> Fmt.pf ppf "block set compressed %B" compressed
 
+type log_cmd = [
+  | `Log_subscribe
+]
+
+let pp_log_cmd ppf = function
+  | `Log_subscribe -> Fmt.string ppf "log subscribe"
+
 type t = [
     | `Console_cmd of console_cmd
     | `Stats_cmd of stats_cmd
     | `Unikernel_cmd of unikernel_cmd
     | `Policy_cmd of policy_cmd
     | `Block_cmd of block_cmd
+    | `Log_cmd of log_cmd
   ]
 
 let pp ~verbose ppf = function
@@ -132,11 +140,13 @@ let pp ~verbose ppf = function
   | `Unikernel_cmd v -> pp_unikernel_cmd ~verbose ppf v
   | `Policy_cmd p -> pp_policy_cmd ppf p
   | `Block_cmd b -> pp_block_cmd ppf b
+  | `Log_cmd l -> pp_log_cmd ppf l
 
 type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
   | `Block_data of string option
+  | `Log_data of Logging.t
 ]
 
 let pp_data ppf = function
@@ -150,6 +160,7 @@ let pp_data ppf = function
     Fmt.pf ppf "block data %a"
       Fmt.(option ~none:(any "eof") (int ++ any " bytes"))
       (Option.map String.length s)
+  | `Log_data e -> Fmt.pf ppf "log data %a" Logging.pp e
 
 type header = {
   version : version ;
@@ -228,3 +239,4 @@ let endpoint = function
   | `Stats_cmd _ -> `Stats, `Single
   | `Console_cmd `Console_list_inactive -> `Console, `Single
   | `Console_cmd _ -> `Console, `Read
+  | `Log_cmd _ -> `Vmmd, `Read

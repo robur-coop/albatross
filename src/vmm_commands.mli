@@ -58,12 +58,17 @@ type block_cmd = [
   | `Block_set of bool
 ]
 
+type log_cmd = [
+  | `Log_subscribe
+]
+
 type t = [
   | `Console_cmd of console_cmd
   | `Stats_cmd of stats_cmd
   | `Unikernel_cmd of unikernel_cmd
   | `Policy_cmd of policy_cmd
   | `Block_cmd of block_cmd
+  | `Log_cmd of log_cmd
 ]
 
 val pp : verbose:bool -> t Fmt.t
@@ -72,6 +77,7 @@ type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
   | `Block_data of string option
+  | `Log_data of Logging.t
 ]
 
 val pp_data : data Fmt.t

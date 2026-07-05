@@ -8,12 +8,42 @@ let state = ref Vmm_vmmd.empty
 
 let stats_fd = ref None
 
+let (log_fds : (Lwt_unix.file_descr * Vmm_commands.version * int64) Vmm_trie.t ref) =
+  ref Vmm_trie.empty
+
 let stub_data_out _ = Lwt.return_unit
 
 let create_lock = Lwt_mutex.create ()
 (* the global lock held during execution of create -- and also while
    Vmm_vmmd.handle is getting called, and while communicating via
    console / stat socket communication. *)
+
+let send_log ev =
+  let name = Vmm_core.Logging.name ev in
+  let fds = Vmm_trie.collect name !log_fds in
+  Lwt_list.map_p (fun (name, (fd, version, sequence)) ->
+      let header = Vmm_commands.header ~version ~sequence name in
+      Vmm_lwt.write_wire fd (header, `Data (`Log_data ev)) >>= function
+      | Ok () -> Lwt.return (name, Some (Int64.succ sequence))
+      | Error _ ->
+        Logs.info (fun m -> m "log failed to write");
+        Vmm_lwt.safe_close fd >|= fun () ->
+        (name, None))
+    fds >|= fun to_change ->
+  let new_log_fds =
+    List.fold_left (fun fds (name, data) ->
+        match Vmm_trie.find name fds, data with
+        | None, Some _ ->
+          (* uh oh, how did we end up here? *)
+          Logs.warn (fun m -> m "log fd for %a no longer present" Name.pp name);
+          fds
+        | None, None -> fds
+        | Some _, None -> Vmm_trie.remove name fds
+        | Some (efd, ver, _), Some seq ->
+          fst (Vmm_trie.insert name (efd, ver, seq) fds))
+      !log_fds to_change
+  in
+  log_fds := new_log_fds
 
 let rec create stat_out cons_out data_out name ~needs_dump config =
   (match Vmm_vmmd.handle_create ~needs_dump !state name config with
@@ -56,7 +86,9 @@ let rec create stat_out cons_out data_out name ~needs_dump config =
    | None -> ()
    | Some unikernel ->
      Lwt.async (fun () ->
+         send_log (`Unikernel_started name) >>= fun () ->
          Vmm_lwt.wait_and_clear unikernel.Unikernel.pid >>= fun r ->
+         send_log (`Unikernel_stopped (name, r)) >>= fun () ->
          Lwt_mutex.with_lock create_lock (fun () ->
              let state', stat' = Vmm_vmmd.handle_shutdown !state name unikernel r in
              state := state';
@@ -184,6 +216,19 @@ let handle cons_out stat_out fd addr =
           stats_fd := Some fd;
           out wire >>= fun () ->
           Lwt_list.iter_s (stat_out "setting up stats") datas >|= fun () ->
+          Lwt_mutex.unlock create_lock;
+          `Retain
+        | `Add_log (id, version) ->
+          let new_log_fds, replaced =
+            Vmm_trie.insert id (fd, version, 0L) !log_fds
+          in
+          (match replaced with
+           | Some (fd, _, _) ->
+             Logs.info (fun m -> m "logs for %a has been replaced"
+                           Vmm_core.Name.pp id);
+             Vmm_lwt.safe_close fd
+           | None -> Lwt.return_unit) >|= fun () ->
+          log_fds := new_log_fds;
           Lwt_mutex.unlock create_lock;
           `Retain
   in

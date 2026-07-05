@@ -594,6 +594,9 @@ let handle_stats_initial t stats_counter =
   in
   Ok (t, `Replace_stats (`Success `Empty, data))
 
+let handle_log_cmd t id version = function
+  | `Log_subscribe -> Ok (t, `Add_log (id, version))
+
 let handle_command t (header, payload) =
   let msg_to_err = function
     | Ok x -> Ok x
@@ -601,6 +604,7 @@ let handle_command t (header, payload) =
       Logs.err (fun m -> m "error while processing command: %s" msg) ;
       Error (`Failure msg)
   and id = header.Vmm_commands.name
+  and version = header.version
   in
   msg_to_err (
     match payload with
@@ -609,6 +613,7 @@ let handle_command t (header, payload) =
     | `Command (`Block_cmd bc) -> handle_block_cmd t id bc
     | `Command (`Stats_cmd `Stats_initial) ->
       handle_stats_initial t header.Vmm_commands.sequence
+    | `Command (`Log_cmd l) -> handle_log_cmd t id version l
     | _ ->
       Logs.err (fun m -> m "ignoring %a"
                    (Vmm_commands.pp_wire ~verbose:false) (header, payload)) ;
