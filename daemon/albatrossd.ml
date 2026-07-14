@@ -40,7 +40,7 @@ let rec create stat_out cons_out data_out name ~needs_dump config =
                   Lwt_mutex.with_lock create_lock (fun () ->
                       let state', may = Vmm_vmmd.may_restart !state name in
                       state := state';
-                      if may && config.add_name && match r with `Exit 64 -> true | _ -> false then
+                      if may && config.add_name && match r with `Exit 64 | `Exit 124 -> true | _ -> false then
                         (* argument error, and --name was injected *)
                         create stat_out cons_out stub_data_out
                           name ~needs_dump:true { unikernel.Unikernel.config with add_name = false }

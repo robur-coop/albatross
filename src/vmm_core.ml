@@ -587,6 +587,10 @@ let pp_process_exit ppf = function
   | `Signal n -> Fmt.pf ppf "signal %a (numeric %d)" Fmt.Dump.signal n n
   | `Stop n -> Fmt.pf ppf "stop %a (numeric %d)" Fmt.Dump.signal n n
 
+let included_in_argv ~arg s =
+  let strings = String.split_on_char ' ' s in
+  List.exists (String.equal arg) strings
+
 let should_restart (config : Unikernel.config) name = function
   | (`Signal _ | `Stop _) as r ->
     (* signal 11 is if a kill -TERM was sent (i.e. our destroy) *)
@@ -634,6 +638,9 @@ opam exit codes:
        50  Configuration error. Opam or system configuration doesn't allow operation, and needs fixing.
        60  Solver failure. The solver failed to return a sound answer. It can be due to a broken external solver, or an error in solver configuration.
        99  Internal error. Something went wrong, likely due to a bug in opam itself.
+       123 cmdliner some error
+       124 cmdliner cli error
+       125 cmdliner internal error
        130 User interrupt. SIGINT was received, generally due to the user pressing Ctrl-C.
  *)
     let opt_mem i =
@@ -647,14 +654,23 @@ opam exit codes:
       Logs.warn (fun m -> m "unikernel %a solo5 exit failure (1)"
                     Name.pp name);
       false
-    | 60 | 61 | 62 | 63 | 64 ->
+    | 60 | 61 | 62 | 63 | 64 | 123 | 124 | 125 ->
       Logs.warn (fun m -> m "unikernel %a exited %d, not restarting"
                     Name.pp name i);
       false
     | _ when opt_mem i ->
-      Logs.info (fun m -> m "unikernel %a exited %d, restarting"
-                    Name.pp name i);
-      true
+      if i = 0 &&
+         List.exists (fun s -> included_in_argv ~arg:"--help" s || included_in_argv ~arg:"--version" s)
+           (Option.value ~default:[] config.argv)
+      then begin
+        Logs.info (fun m -> m "unikernel %a exited %d, not restarting (has --version or --help in argv)"
+                      Name.pp name i);
+        false
+      end else begin
+        Logs.info (fun m -> m "unikernel %a exited %d, restarting"
+                      Name.pp name i);
+        true
+      end
     | _ ->
       Logs.info (fun m -> m "unikernel %a exited %d, not restarting %a"
                     Name.pp name i Unikernel.pp_fail_behaviour config.fail_behaviour);
