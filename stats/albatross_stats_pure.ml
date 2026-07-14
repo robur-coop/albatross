@@ -186,40 +186,41 @@ let gather pid nics =
     [] nics
 
 let tick t =
-  let outs, to_remove =
-    List.fold_left (fun (out, to_remove) (vmid, pid) ->
-        let listeners = Vmm_trie.collect vmid t.name_sockets in
-        match listeners with
-        | [] -> Logs.debug (fun m -> m "nobody is listening") ; (out, to_remove)
-        | xs -> match IM.find_opt pid t.pid_nic with
-          | None ->
-            Logs.warn (fun m -> m "couldn't find nics of %d" pid) ;
-            out, to_remove
+  let outs, stats, to_remove =
+    List.fold_left (fun (out, stats, to_remove) (vmid, pid) ->
+        let stat =
+          match IM.find_opt pid t.pid_nic with
+          | None -> None
           | Some nics ->
             let ru, mem, ifd = gather pid nics in
             match ru with
-            | None ->
-              Logs.err (fun m -> m "failed to get rusage for %d" pid) ;
-              out, vmid :: to_remove
-            | Some ru' ->
-              let stats = ru', mem, ifd in
-              let outs =
-                List.fold_left (fun out (id, (version, socket, curr_old)) ->
-                    let listening_path = Vmm_core.Name.path id in
-                    let real_id = Vmm_core.Name.drop_prefix_exn vmid listening_path in
-                    let header = Vmm_commands.header ~version real_id in
-                    let data = match curr_old with
-                      | `Current -> `Stats_data stats
-                      | `Old -> `Old_stats_data (ru', mem, None, ifd)
-                    in
-                    ((socket, id, (header, `Data data)) :: out))
-                  out xs
-              in
-              outs, to_remove)
-          ([], []) (Vmm_trie.all t.vmid_pid)
+            | None -> None
+            | Some ru -> Some (ru, mem, ifd)
+        in
+        let stats = match stat with None -> stats | Some x -> (vmid, x) :: stats in
+        let listeners = Vmm_trie.collect vmid t.name_sockets in
+        match listeners with
+        | [] -> Logs.debug (fun m -> m "nobody is listening") ; (out, stats, to_remove)
+        | xs -> match stat with
+          | None -> out, stats, to_remove
+          | Some (ru, mem, ifd) ->
+            let outs =
+              List.fold_left (fun out (id, (version, socket, curr_old)) ->
+                  let listening_path = Vmm_core.Name.path id in
+                  let real_id = Vmm_core.Name.drop_prefix_exn vmid listening_path in
+                  let header = Vmm_commands.header ~version real_id in
+                  let data = match curr_old with
+                    | `Current -> `Stats_data (ru, mem, ifd)
+                    | `Old -> `Old_stats_data (ru, mem, None, ifd)
+                  in
+                  ((socket, id, (header, `Data data)) :: out))
+                out xs
+            in
+            outs, stats, to_remove)
+          ([], [], []) (Vmm_trie.all t.vmid_pid)
   in
   let t' = List.fold_left remove_vmid t to_remove in
-  (t', outs)
+  (t', stats, outs)
 
 let add_pid t vmid pid nics =
     let nic_ids =
