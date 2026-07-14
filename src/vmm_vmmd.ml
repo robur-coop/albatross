@@ -178,14 +178,11 @@ let restore_policies t policies =
 
 let setup_stats t name unikernel =
   let stat_out =
-    let name = match Vmm_unix.unikernel_device unikernel with
-      | Error _ -> ""
-      | Ok name -> name
-    and ifs =
+    let ifs =
       Unikernel.(List.combine (List.map (fun (x,_,_) -> x) unikernel.config.bridges)
                    (List.map fst unikernel.taps))
     in
-    `Stats_add (name, unikernel.Unikernel.pid, ifs)
+    `Stats_add (unikernel.Unikernel.pid, ifs)
   in
   let header = Vmm_commands.header ~sequence:t.stats_counter name in
   let t = { t with stats_counter = Int64.succ t.stats_counter } in

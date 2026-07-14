@@ -852,9 +852,8 @@ let inactive_consoles () path =
 let log_subscribe () path =
   jump (`Log_cmd `Log_subscribe) (Vmm_core.Name.make_of_path path)
 
-let stats_add () vmmdev pid bridge_taps =
-  let vmmdev = Option.value ~default:"" vmmdev in
-  jump (`Stats_cmd (`Stats_add (vmmdev, pid, bridge_taps)))
+let stats_add () pid bridge_taps =
+  jump (`Stats_cmd (`Stats_add (pid, bridge_taps)))
 
 let stats_remove () = jump (`Stats_cmd `Stats_remove)
 
@@ -1141,10 +1140,6 @@ let bridge_taps =
 let pid_req0 =
   let doc = "Process ID of the process to monitor." in
   Arg.(required & pos 0 (some int) None & info [] ~doc ~docv:"PID")
-
-let vmm_dev =
-  let doc = "VMM device name for gathering VMM statistics (/dev/vmm/<YYY>)." in
-  Arg.(value & opt (some string) None & info [ "vmmdev" ] ~doc)
 
 let uri_c =
   let parse s =
@@ -1606,7 +1601,7 @@ let stats_add_cmd =
      `P "Add unikernel to statistics gathering."]
   in
   let term =
-    Term.(term_result (const stats_add $ (Albatross_cli.setup_log (const false)) $ vmm_dev $ pid_req0 $ bridge_taps $ opt_unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
+    Term.(term_result (const stats_add $ (Albatross_cli.setup_log (const false)) $ pid_req0 $ bridge_taps $ opt_unikernel_name $ dst $ ca_cert $ ca_key $ server_ca $ pub_key_type $ Albatross_cli.tmpdir))
   and info = Cmd.info "stats-add" ~doc ~man ~exits
   in
   Cmd.v info term

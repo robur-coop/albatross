@@ -37,15 +37,15 @@ let pp_console_cmd ppf = function
   | `Console_list_inactive -> Fmt.pf ppf "console list inactive available ringbuffers"
 
 type stats_cmd = [
-  | `Stats_add of string * int * (string * string) list
+  | `Stats_add of int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
   | `Stats_initial
 ]
 
 let pp_stats_cmd ppf = function
-  | `Stats_add (vmmdev, pid, taps) ->
-    Fmt.pf ppf "stats add: vmm device %s pid %d taps %a" vmmdev pid
+  | `Stats_add (pid, taps) ->
+    Fmt.pf ppf "stats add: pid %d taps %a" pid
       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string string)) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"

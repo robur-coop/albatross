@@ -539,13 +539,6 @@ module Stats = struct
     Fmt.pf ppf "virtual-size %Lu rss %Lu text-size %Lu data-size %Lu stack-size %Lu runtime %Lu cow %u start %Lu.%06d"
       t.vsize t.rss t.tsize t.dsize t.ssize t.runtime t.cow (fst t.start) (snd t.start)
 
-  type vmm = (string * int64) list
-  let pp_vmm ppf vmm =
-    Fmt.(list ~sep:(any "@.") (pair ~sep:(any ": ") string int64)) ppf vmm
-  let pp_vmm_mem ppf vmm =
-    Fmt.(list ~sep:(any "@.") (pair ~sep:(any ": ") string int64)) ppf
-      (List.filter (fun (k, _) -> k = "Resident memory" || k = "Wired memory") vmm)
-
   type ifdata = {
     bridge : string ;
     flags : int32 ;
@@ -571,12 +564,11 @@ module Stats = struct
     Fmt.pf ppf "bridge %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
       i.bridge i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
-  type t = rusage * kinfo_mem option * vmm option * ifdata list
-  let pp ppf (ru, mem, vmm, ifs) =
-    Fmt.pf ppf "%a@.%a@.%a@.%a"
+  type t = rusage * kinfo_mem option * ifdata list
+  let pp ppf (ru, mem, ifs) =
+    Fmt.pf ppf "%a@.%a@.%a"
       pp_rusage ru
       Fmt.(option ~none:(any "no kinfo_mem stats") pp_kinfo_mem) mem
-      Fmt.(option ~none:(any "no vmm stats") pp_vmm) vmm
       Fmt.(list ~sep:(any "@.@.") pp_ifdata) ifs
 end
 

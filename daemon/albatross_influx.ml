@@ -200,7 +200,7 @@ let rec read_sock_write_tcp no_drop c ?fd fam addr =
       safe_close fd >>= fun () ->
       safe_close c >|= fun () ->
       true
-    | Ok (hdr, `Data (`Stats_data (ru, mem, vmm, ifs))) ->
+    | Ok (hdr, `Data (`Stats_data (ru, mem, ifs))) ->
       let name =
         let orig = hdr.Vmm_commands.name in
         if no_drop then
@@ -212,9 +212,8 @@ let rec read_sock_write_tcp no_drop c ?fd fam addr =
       in
       let ru = P.encode_ru name ru in
       let mem = match mem with None -> [] | Some m -> [ P.encode_kinfo_mem name m ] in
-      let vmm = match vmm with None -> [] | Some vmm -> [ P.encode_vmm name vmm ] in
       let taps = List.map (P.encode_if name) ifs in
-      let out = (String.concat "\n" (ru :: mem @ vmm @ taps)) ^ "\n" in
+      let out = (String.concat "\n" (ru :: mem @ taps)) ^ "\n" in
       Logs.debug (fun m -> m "writing %d via tcp" (String.length out)) ;
       begin
         Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function

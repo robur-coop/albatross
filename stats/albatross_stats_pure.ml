@@ -202,7 +202,7 @@ let tick t =
               Logs.err (fun m -> m "failed to get rusage for %d" pid) ;
               out, vmid :: to_remove
             | Some ru' ->
-              let stats = ru', mem, None, ifd in
+              let stats = ru', mem, ifd in
               let outs =
                 List.fold_left (fun out (id, (version, socket)) ->
                     let listening_path = Vmm_core.Name.path id in
@@ -242,7 +242,7 @@ let handle t socket (hdr, wire) =
       | `Stats_initial ->
         Logs.warn (fun m -> m "unexpected message initial");
         Error (`Msg "unexpected message initial")
-      | `Stats_add (_, pid, taps) ->
+      | `Stats_add (pid, taps) ->
         let* t = add_pid t id pid taps in
         Ok (t, None, "added")
       | `Stats_remove ->

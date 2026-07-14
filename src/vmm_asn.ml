@@ -260,12 +260,12 @@ let ifdata =
 
 let stats_cmd =
   let f = function
-    | `C1 (name, pid, taps) -> `Stats_add (name, pid, taps)
+    | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
     | `C3 () -> `Stats_subscribe
     | `C4 () -> `Stats_initial
   and g = function
-    | `Stats_add (name, pid, taps) -> `C1 (name, pid, taps)
+    | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
     | `Stats_subscribe -> `C3 ()
     | `Stats_initial -> `C4 ()
@@ -273,8 +273,7 @@ let stats_cmd =
   Asn.S.map f g @@
   Asn.S.(choice4
            (my_explicit 0 ~label:"add"
-              (sequence3
-                 (required ~label:"vmmdev" utf8_string)
+              (sequence2
                  (required ~label:"pid" int)
                  (required ~label:"network"
                     (sequence_of
@@ -860,14 +859,14 @@ let log_ev =
 
 let data =
   let f = function
-    | `C1 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
+    | `C1 (ru, ifs, mem) -> `Stats_data (ru, mem, ifs)
     | `C2 (timestamp, data) -> `Console_data (timestamp, data)
     | `C3 `C1 s -> `Block_data (Some s)
     | `C3 `C2 () -> `Block_data None
     | `C4 e -> `Log_data e
   and g = function
     | `Console_data (timestamp, data) -> `C2 (timestamp, data)
-    | `Stats_data (ru, mem, ifs, vmm) -> `C1 (ru, vmm, ifs, mem)
+    | `Stats_data (ru, mem, ifs) -> `C1 (ru, ifs, mem)
     | `Block_data None -> `C3 (`C2 ())
     | `Block_data Some s -> `C3 (`C1 s)
     | `Log_data e -> `C4 e
@@ -875,13 +874,9 @@ let data =
   Asn.S.map f g @@
   Asn.S.(choice4
            (my_explicit 1 ~label:"statistics"
-              (sequence4
+              (sequence3
                  (required ~label:"resource-usage" ru)
                  (required ~label:"ifdata" (sequence_of ifdata))
-                 (optional ~label:"vmm-stats" @@ my_explicit 0
-                    (sequence_of (sequence2
-                                    (required ~label:"key" utf8_string)
-                                    (required ~label:"value" int64))))
                  (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
            (my_explicit 2 ~label:"console"
               (sequence2
