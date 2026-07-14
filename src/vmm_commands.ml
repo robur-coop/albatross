@@ -41,6 +41,7 @@ type stats_cmd = [
   | `Stats_remove
   | `Stats_subscribe
   | `Stats_initial
+  | `Old_stats_subscribe
 ]
 
 let pp_stats_cmd ppf = function
@@ -50,6 +51,7 @@ let pp_stats_cmd ppf = function
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
   | `Stats_initial -> Fmt.string ppf "stat initial"
+  | `Old_stats_subscribe -> Fmt.string ppf "old stat subscribe"
 
 type unikernel_cmd = [
   | `Unikernel_info
@@ -145,6 +147,7 @@ let pp ~verbose ppf = function
 type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
+  | `Old_stats_data of Stats.rusage * Stats.kinfo_mem option * (string * int64) list option * Stats.ifdata list
   | `Block_data of string option
   | `Log_data of Logging.t
 ]
@@ -156,6 +159,8 @@ let pp_data ppf = function
     let line = String.escaped line in
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
+  | `Old_stats_data (ru, kinfo, _, ifdata) ->
+    Fmt.pf ppf "old stats: %a" Stats.pp (ru, kinfo, ifdata)
   | `Block_data s ->
     Fmt.pf ppf "block data %a"
       Fmt.(option ~none:(any "eof") (int ++ any " bytes"))

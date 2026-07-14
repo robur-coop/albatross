@@ -39,7 +39,7 @@ let handle s addr =
         Vmm_lwt.write_wire s (fst wire, `Success (`String out)) >>= function
         | Ok () ->
           (match close with
-           | Some (_, s') ->
+           | Some (_, s', _) ->
              Vmm_lwt.safe_close s' >>= fun () ->
              (* read the next *)
              loop ()

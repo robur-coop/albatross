@@ -204,11 +204,15 @@ let tick t =
             | Some ru' ->
               let stats = ru', mem, ifd in
               let outs =
-                List.fold_left (fun out (id, (version, socket)) ->
+                List.fold_left (fun out (id, (version, socket, curr_old)) ->
                     let listening_path = Vmm_core.Name.path id in
                     let real_id = Vmm_core.Name.drop_prefix_exn vmid listening_path in
                     let header = Vmm_commands.header ~version real_id in
-                    ((socket, id, (header, `Data (`Stats_data stats))) :: out))
+                    let data = match curr_old with
+                      | `Current -> `Stats_data stats
+                      | `Old -> `Old_stats_data (ru', mem, None, ifd)
+                    in
+                    ((socket, id, (header, `Data data)) :: out))
                   out xs
               in
               outs, to_remove)
@@ -250,9 +254,15 @@ let handle t socket (hdr, wire) =
         Ok (t, None, "removed")
       | `Stats_subscribe ->
         let name_sockets, close =
-          Vmm_trie.insert id (hdr.Vmm_commands.version, socket) t.name_sockets
+          Vmm_trie.insert id (hdr.Vmm_commands.version, socket, `Current) t.name_sockets
         in
         Ok ({ t with name_sockets }, close, "subscribed")
+      | `Old_stats_subscribe ->
+        let name_sockets, close =
+          Vmm_trie.insert id (hdr.Vmm_commands.version, socket, `Old) t.name_sockets
+        in
+        Ok ({ t with name_sockets }, close, "subscribed")
+
     end
   | _ ->
     Logs.err (fun m -> m "unexpected wire %a"

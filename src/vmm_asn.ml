@@ -262,16 +262,18 @@ let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
-    | `C3 () -> `Stats_subscribe
+    | `C3 () -> `Old_stats_subscribe
     | `C4 () -> `Stats_initial
+    | `C5 () -> `Stats_subscribe
   and g = function
     | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
-    | `Stats_subscribe -> `C3 ()
+    | `Old_stats_subscribe -> `C3 ()
     | `Stats_initial -> `C4 ()
+    | `Stats_subscribe -> `C5 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
+  Asn.S.(choice5
            (my_explicit 0 ~label:"add"
               (sequence2
                  (required ~label:"pid" int)
@@ -282,7 +284,8 @@ let stats_cmd =
                           (required ~label:"tap" utf8_string))))))
            (my_explicit 1 ~label:"remove" null)
            (my_explicit 2 ~label:"subscribe" null)
-           (my_explicit 3 ~label:"initial" null))
+           (my_explicit 3 ~label:"initial" null)
+           (my_explicit 4 ~label:"subscribe" null))
 
 let name =
   let f str =
@@ -859,24 +862,30 @@ let log_ev =
 
 let data =
   let f = function
-    | `C1 (ru, ifs, mem) -> `Stats_data (ru, mem, ifs)
+    | `C1 (ru, ifs, _vmm, mem) -> `Stats_data (ru, mem, ifs)
     | `C2 (timestamp, data) -> `Console_data (timestamp, data)
     | `C3 `C1 s -> `Block_data (Some s)
     | `C3 `C2 () -> `Block_data None
     | `C4 e -> `Log_data e
+    | `C5 (ru, ifs, mem) -> `Stats_data (ru, mem, ifs)
   and g = function
     | `Console_data (timestamp, data) -> `C2 (timestamp, data)
-    | `Stats_data (ru, mem, ifs) -> `C1 (ru, ifs, mem)
+    | `Old_stats_data (ru, mem, vmm, ifs) -> `C1 (ru, ifs, vmm, mem)
     | `Block_data None -> `C3 (`C2 ())
     | `Block_data Some s -> `C3 (`C1 s)
     | `Log_data e -> `C4 e
+    | `Stats_data (ru, mem, ifs) -> `C5 (ru, ifs, mem)
   in
   Asn.S.map f g @@
-  Asn.S.(choice4
-           (my_explicit 1 ~label:"statistics"
-              (sequence3
+  Asn.S.(choice5
+           (my_explicit 1 ~label:"old-statistics"
+              (sequence4
                  (required ~label:"resource-usage" ru)
                  (required ~label:"ifdata" (sequence_of ifdata))
+                 (optional ~label:"vmm-stats" @@ my_explicit 0
+                    (sequence_of (sequence2
+                                    (required ~label:"key" utf8_string)
+                                    (required ~label:"value" int64))))
                  (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
            (my_explicit 2 ~label:"console"
               (sequence2
@@ -886,7 +895,12 @@ let data =
               (choice2
                  (my_explicit 0 ~label:"some data" octet_string)
                  (my_explicit 1 ~label:"no data" null)))
-           (my_explicit 4 ~label:"log" log_ev))
+           (my_explicit 4 ~label:"log" log_ev)
+           (my_explicit 5 ~label:"statistics"
+              (sequence3
+                 (required ~label:"resource-usage" ru)
+                 (required ~label:"ifdata" (sequence_of ifdata))
+                 (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem))))
 
 let old_unikernel_info4 =
   let open Unikernel in
