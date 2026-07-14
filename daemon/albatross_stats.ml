@@ -51,8 +51,8 @@ let handle s addr =
   loop () >>= fun () ->
   Vmm_lwt.safe_close s
 
-let timer gather_bhyve () =
-  let t', outs = tick gather_bhyve !t in
+let timer () =
+  let t', outs = tick !t in
   t := t' ;
   Lwt_list.iter_p (fun (s, id, stat) ->
       Vmm_lwt.write_wire s stat >>= function
@@ -65,7 +65,7 @@ let timer gather_bhyve () =
 
 let m = Vmm_core.conn_metrics "unix"
 
-let jump _ systemd interval gather_bhyve influx tmpdir =
+let jump _ systemd interval influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);
   Albatross_cli.set_tmpdir tmpdir;
   let interval = Duration.(to_f (of_sec interval)) in
@@ -105,7 +105,7 @@ let jump _ systemd interval gather_bhyve influx tmpdir =
      in
      Lwt.async vmmd_connect;
      socket () >>= fun s ->
-     let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async (timer gather_bhyve)) in
+     let _ev = Lwt_engine.on_timer interval true (fun _e -> Lwt.async timer) in
      let rec loop () =
        Lwt_unix.accept s >>= fun (cs, addr) ->
        m `Open;
@@ -120,10 +120,6 @@ let interval =
   let doc = "Interval between statistics gatherings (in seconds)" in
   Arg.(value & opt int 10 & info [ "interval" ] ~doc)
 
-let gather_bhyve =
-  let doc = "Gather BHyve debug statistics (VMM)" in
-  Arg.(value & flag & info [ "gather-bhyve-stats" ] ~doc)
-
 let cmd =
   let doc = "Statistics collection of unikernels" in
   let man = [
@@ -132,11 +128,10 @@ let cmd =
         list of running unikernels, together with PID and used tap devices, from
         albatross-daemon. The it starts collecting data periodically, preserving
         the latest data point. Data collection uses network interface
-        statistics, resource usage (using getrusage), and VMM API debug counters
-        (only supported on FreeBSD)."
+        statistics, and resource usage (using getrusage)."
   ] in
   let term =
-    Term.(term_result (const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ interval $ gather_bhyve $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
+    Term.(term_result (const jump $ (Albatross_cli.setup_log Albatrossd_utils.syslog) $ Albatrossd_utils.systemd_socket_activation $ interval $ Albatrossd_utils.influx $ Albatross_cli.tmpdir))
   and info = Cmd.info "albatross-stats" ~version:Albatross_cli.version ~doc ~man
   in
   Cmd.v info term

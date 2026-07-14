@@ -11,16 +11,8 @@ external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
 external get_ifindex_by_name : string -> int = "vmmanage_get_ifindex_by_name"
 external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
-type vmctx
-
-type vcpu
-
-external vmmapi_open : string -> (vmctx * vcpu) = "vmmanage_vmmapi_open"
-external vmmapi_close : vmctx -> vcpu -> unit = "vmmanage_vmmapi_close"
-external vmmapi_stats : vmctx -> vcpu -> (string * int64) list = "vmmanage_vmmapi_stats"
-
 type 'a t = {
-  pid_nic : ((vmctx * vcpu, int) result * string * (string * int * string) list) IM.t ;
+  pid_nic : (string * int * string) list IM.t ;
   vmid_pid : int Vmm_trie.t ;
   name_sockets : 'a Vmm_trie.t ;
 }
@@ -52,44 +44,12 @@ let remove_vmid t vmid =
   | None -> Logs.warn (fun m -> m "no pid found for %a" Vmm_core.Name.pp vmid) ; t
   | Some pid ->
     Logs.info (fun m -> m "removing pid %d" pid) ;
-    (match IM.find_opt pid t.pid_nic with
-     | Some (Ok (vmctx, vcpu), _, _) -> ignore (wrap (vmmapi_close vmctx) vcpu) ; vmmapi `Close
-     | _ -> ()) ;
     let pid_nic = IM.remove pid t.pid_nic
     and vmid_pid = Vmm_trie.remove vmid t.vmid_pid
     in
     { t with pid_nic ; vmid_pid }
 
 let reported_vmmapi = ref false
-
-let open_vmmapi ~retries name =
-  if retries = 0 then begin
-    Logs.debug (fun m -> m "(ignored 0) vmmapi_open failed for %s" name) ;
-    if not !reported_vmmapi then begin
-      reported_vmmapi := true;
-      Logs.err (fun m -> m "HINT: are the VMM devices readable by the albatross user? Did you add a local devfs ruleset 'add path 'vmm/*' mode 0660 group albatross' to /etc/devfs.rules, enable it in /etc/rc.conf and did a 'service devfs restart'?")
-    end;
-    Error 0
-  end else
-    match wrap vmmapi_open name with
-    | None ->
-      let left = max 0 (pred retries) in
-      Logs.warn (fun m -> m "(ignored, %d attempts left) vmmapi_open failed for %s" left name) ;
-      Error left
-    | Some vmctx ->
-      vmmapi `Open;
-      Logs.info (fun m -> m "vmmapi_open succeeded for %s" name) ;
-      Ok vmctx
-
-let try_open_vmmapi pid_nic =
-  IM.fold (fun pid (vmctx, vmmdev, nics) fresh ->
-      let vmctx =
-        match vmctx with
-        | Ok vmctx -> Ok vmctx
-        | Error retries -> open_vmmapi ~retries vmmdev
-      in
-      IM.add pid (vmctx, vmmdev, nics) fresh)
-    pid_nic IM.empty
 
 let string_of_file filename =
   try
@@ -210,16 +170,13 @@ let rusage pid =
       Logs.err (fun m -> m "error %s while reading /proc/" msg);
       None
 
-let gather pid vmctx nics =
+let gather pid nics =
   let ru, mem =
     match rusage pid with
     | None -> None, None
     | Some (mem, ru) -> Some mem, Some ru
   in
   ru, mem,
-  (match vmctx with
-   | Error _ -> None
-   | Ok (vmctx, vcpu) -> wrap (vmmapi_stats vmctx) vcpu),
   List.fold_left (fun ifd (bridge, nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
@@ -228,28 +185,24 @@ let gather pid vmctx nics =
       | Some data -> { data with Stats.bridge }::ifd)
     [] nics
 
-let tick gather_bhyve t =
-  let pid_nic = if gather_bhyve then try_open_vmmapi t.pid_nic else t.pid_nic in
-  let t' = { t with pid_nic } in
+let tick t =
   let outs, to_remove =
     List.fold_left (fun (out, to_remove) (vmid, pid) ->
-        let listeners = Vmm_trie.collect vmid t'.name_sockets in
+        let listeners = Vmm_trie.collect vmid t.name_sockets in
         match listeners with
         | [] -> Logs.debug (fun m -> m "nobody is listening") ; (out, to_remove)
         | xs -> match IM.find_opt pid t.pid_nic with
           | None ->
             Logs.warn (fun m -> m "couldn't find nics of %d" pid) ;
             out, to_remove
-          | Some (vmctx, _, nics) ->
-            let ru, mem, vmm, ifd = gather pid vmctx nics in
+          | Some nics ->
+            let ru, mem, ifd = gather pid nics in
             match ru with
             | None ->
               Logs.err (fun m -> m "failed to get rusage for %d" pid) ;
               out, vmid :: to_remove
             | Some ru' ->
-              let stats =
-                ru', mem, vmm, ifd
-              in
+              let stats = ru', mem, None, ifd in
               let outs =
                 List.fold_left (fun out (id, (version, socket)) ->
                     let listening_path = Vmm_core.Name.path id in
@@ -259,12 +212,12 @@ let tick gather_bhyve t =
                   out xs
               in
               outs, to_remove)
-          ([], []) (Vmm_trie.all t'.vmid_pid)
+          ([], []) (Vmm_trie.all t.vmid_pid)
   in
-  let t'' = List.fold_left remove_vmid t' to_remove in
-  (t'', outs)
+  let t' = List.fold_left remove_vmid t to_remove in
+  (t', outs)
 
-let add_pid t vmid vmmdev pid nics =
+let add_pid t vmid pid nics =
     let nic_ids =
       List.filter_map
         (fun (bridge, tap) ->
@@ -274,7 +227,7 @@ let add_pid t vmid vmmdev pid nics =
         nics
     in
     Logs.info (fun m -> m "adding %a %d %a" Name.pp vmid pid pp_nics nics) ;
-    let pid_nic = IM.add pid (Error 4, vmmdev, nic_ids) t.pid_nic
+    let pid_nic = IM.add pid nic_ids t.pid_nic
     and vmid_pid, ret = Vmm_trie.insert vmid pid t.vmid_pid
     in
     assert (ret = None) ;
@@ -289,8 +242,8 @@ let handle t socket (hdr, wire) =
       | `Stats_initial ->
         Logs.warn (fun m -> m "unexpected message initial");
         Error (`Msg "unexpected message initial")
-      | `Stats_add (vmmdev, pid, taps) ->
-        let* t = add_pid t id vmmdev pid taps in
+      | `Stats_add (_, pid, taps) ->
+        let* t = add_pid t id pid taps in
         Ok (t, None, "added")
       | `Stats_remove ->
         let t = remove_vmid t id in
