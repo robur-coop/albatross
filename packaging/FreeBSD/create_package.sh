@@ -25,14 +25,12 @@ mkdir -p "$sbindir" "$libexecdir" "$rcdir"
 for f in albatross_stats \
 	 albatross_console \
 	 albatross_daemon \
-	 albatross_influx \
 	 albatross_tls
 do install -U $pdir/rc.d/$f $rcdir/$f; done
 
 # stage albatross app binaries
 for f in albatrossd \
              albatross-console \
-             albatross-influx \
              albatross-tls-endpoint \
              albatross-stats
 do install -U $bdir/$f $libexecdir/$f; done
