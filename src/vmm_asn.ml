@@ -847,19 +847,16 @@ let exit_c =
 
 let log_ev =
   let f = function
-    | `C1 name -> `Unikernel_started name
-    | `C2 (name, ex) -> `Unikernel_stopped (name, ex)
+    | `C1 () -> `Unikernel_started
+    | `C2 ex -> `Unikernel_stopped ex
   and g = function
-    | `Unikernel_started name -> `C1 name
-    | `Unikernel_stopped (name, ex) -> `C2 (name, ex)
+    | `Unikernel_started -> `C1 ()
+    | `Unikernel_stopped ex -> `C2 ex
   in
   Asn.S.map f g @@
   Asn.S.(choice2
-           (my_explicit 0 ~label:"unikernel-start" name)
-           (my_explicit 1 ~label:"unikernel-stop"
-              (sequence2
-                 (required ~label:"name" name)
-                 (required ~label:"exit" exit_c))))
+           (my_explicit 0 ~label:"unikernel-start" null)
+           (my_explicit 1 ~label:"unikernel-stop" exit_c))
 
 let data =
   let f = function

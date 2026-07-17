@@ -280,11 +280,9 @@ val should_restart : Unikernel.config -> Name.t -> process_exit -> bool
 
 module Logging : sig
   type t = [
-    | `Unikernel_started of Name.t
-    | `Unikernel_stopped of Name.t * process_exit
+    | `Unikernel_started
+    | `Unikernel_stopped of process_exit
   ]
-
-  val name : t -> Name.t
 
   val pp : t Fmt.t
 end

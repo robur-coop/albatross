@@ -18,8 +18,7 @@ let create_lock = Lwt_mutex.create ()
    Vmm_vmmd.handle is getting called, and while communicating via
    console / stat socket communication. *)
 
-let send_log ev =
-  let name = Vmm_core.Logging.name ev in
+let send_log name ev =
   let fds = Vmm_trie.collect name !log_fds in
   Lwt_list.map_p (fun (name, (fd, version, sequence)) ->
       let header = Vmm_commands.header ~version ~sequence name in
@@ -86,9 +85,9 @@ let rec create stat_out cons_out data_out name ~needs_dump config =
    | None -> ()
    | Some unikernel ->
      Lwt.async (fun () ->
-         send_log (`Unikernel_started name) >>= fun () ->
+         send_log name `Unikernel_started >>= fun () ->
          Vmm_lwt.wait_and_clear unikernel.Unikernel.pid >>= fun r ->
-         send_log (`Unikernel_stopped (name, r)) >>= fun () ->
+         send_log name (`Unikernel_stopped r) >>= fun () ->
          Lwt_mutex.with_lock create_lock (fun () ->
              let state', stat' = Vmm_vmmd.handle_shutdown !state name unikernel r in
              state := state';

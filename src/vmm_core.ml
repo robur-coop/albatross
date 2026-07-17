@@ -662,16 +662,12 @@ opam exit codes:
 
 module Logging = struct
   type t = [
-    | `Unikernel_started of Name.t
-    | `Unikernel_stopped of Name.t * process_exit
+    | `Unikernel_started
+    | `Unikernel_stopped of process_exit
   ]
 
-  let name = function
-    | `Unikernel_started name -> name
-    | `Unikernel_stopped (name, _) -> name
-
   let pp ppf = function
-    | `Unikernel_started n -> Fmt.pf ppf "unikernel %a started" Name.pp n
-    | `Unikernel_stopped (n, e) ->
-      Fmt.pf ppf "unikernel %a stopped with %a" Name.pp n pp_process_exit e
+    | `Unikernel_started -> Fmt.pf ppf "unikernel started"
+    | `Unikernel_stopped e ->
+      Fmt.pf ppf "unikernel stopped with %a" pp_process_exit e
 end
