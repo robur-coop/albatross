@@ -277,3 +277,12 @@ type process_exit = [ `Exit of int | `Signal of int | `Stop of int ]
 val pp_process_exit : process_exit Fmt.t
 
 val should_restart : Unikernel.config -> Name.t -> process_exit -> bool
+
+module Logging : sig
+  type t = [
+    | `Unikernel_started
+    | `Unikernel_stopped of process_exit
+  ]
+
+  val pp : t Fmt.t
+end

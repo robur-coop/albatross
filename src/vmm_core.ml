@@ -675,3 +675,15 @@ opam exit codes:
       Logs.info (fun m -> m "unikernel %a exited %d, not restarting %a"
                     Name.pp name i Unikernel.pp_fail_behaviour config.fail_behaviour);
       false
+
+module Logging = struct
+  type t = [
+    | `Unikernel_started
+    | `Unikernel_stopped of process_exit
+  ]
+
+  let pp ppf = function
+    | `Unikernel_started -> Fmt.pf ppf "unikernel started"
+    | `Unikernel_stopped e ->
+      Fmt.pf ppf "unikernel stopped with %a" pp_process_exit e
+end

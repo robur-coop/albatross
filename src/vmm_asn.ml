@@ -736,7 +736,6 @@ let unikernel_cmd =
              (my_explicit 20 ~label:"create" unikernel_config)
              (my_explicit 21 ~label:"force-create" unikernel_config)))
 
-
 let policy_cmd =
   let f = function
     | `C1 () -> `Policy_info
@@ -793,42 +792,85 @@ let block_cmd =
              (my_explicit 6 ~label:"dump" int)
              (my_explicit 7 ~label:"set" bool)))
 
+let log_cmd =
+  let f = function
+    | `C1 () -> `Log_subscribe
+    | `C2 _ -> assert false
+  and g = function
+    | `Log_subscribe -> `C1 ()
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice2
+           (my_explicit 0 ~label:"subscribe" null)
+           (my_explicit 1 ~label:"PLACEHOLDER" bool))
+
 let wire_command =
   let f = function
     | `C1 console -> `Console_cmd console
     | `C2 stats -> `Stats_cmd stats
-    | `C3 () -> Asn.S.parse_error "support for log dropped"
-    | `C4 unikernel -> `Unikernel_cmd unikernel
-    | `C5 policy -> `Policy_cmd policy
-    | `C6 block -> `Block_cmd block
+    | `C3 unikernel -> `Unikernel_cmd unikernel
+    | `C4 policy -> `Policy_cmd policy
+    | `C5 block -> `Block_cmd block
+    | `C6 log -> `Log_cmd log
   and g = function
     | `Console_cmd c -> `C1 c
     | `Stats_cmd c -> `C2 c
-    | `Unikernel_cmd c -> `C4 c
-    | `Policy_cmd c -> `C5 c
-    | `Block_cmd c -> `C6 c
+    | `Unikernel_cmd c -> `C3 c
+    | `Policy_cmd c -> `C4 c
+    | `Block_cmd c -> `C5 c
+    | `Log_cmd c -> `C6 c
   in
   Asn.S.map f g @@
   Asn.S.(choice6
            (my_explicit 0 ~label:"console" console_cmd)
            (my_explicit 1 ~label:"statistics" stats_cmd)
-           (my_explicit 2 ~label:"log" null)
            (my_explicit 3 ~label:"unikernel" unikernel_cmd)
            (my_explicit 4 ~label:"policy" policy_cmd)
-           (my_explicit 5 ~label:"block" block_cmd))
+           (my_explicit 5 ~label:"block" block_cmd)
+           (my_explicit 6 ~label:"log" log_cmd))
+
+let exit_c =
+  let f = function
+    | `C1 i -> `Exit i
+    | `C2 i -> `Signal i
+    | `C3 i -> `Stop i
+  and g = function
+    | `Exit i -> `C1 i
+    | `Signal i -> `C2 i
+    | `Stop i -> `C3 i
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice3
+           (my_explicit 0 ~label:"exit" int)
+           (my_explicit 1 ~label:"signal" int)
+           (my_explicit 2 ~label:"stop" int))
+
+let log_ev =
+  let f = function
+    | `C1 () -> `Unikernel_started
+    | `C2 ex -> `Unikernel_stopped ex
+  and g = function
+    | `Unikernel_started -> `C1 ()
+    | `Unikernel_stopped ex -> `C2 ex
+  in
+  Asn.S.map f g @@
+  Asn.S.(choice2
+           (my_explicit 0 ~label:"unikernel-start" null)
+           (my_explicit 1 ~label:"unikernel-stop" exit_c))
 
 let data =
   let f = function
     | `C1 (ru, ifs, vmm, mem) -> `Stats_data (ru, mem, vmm, ifs)
-    | `C2 () -> Asn.S.parse_error "support for log was dropped"
-    | `C3 (timestamp, data) -> `Console_data (timestamp, data)
-    | `C4 `C1 s -> `Block_data (Some s)
-    | `C4 `C2 () -> `Block_data None
+    | `C2 (timestamp, data) -> `Console_data (timestamp, data)
+    | `C3 `C1 s -> `Block_data (Some s)
+    | `C3 `C2 () -> `Block_data None
+    | `C4 e -> `Log_data e
   and g = function
-    | `Console_data (timestamp, data) -> `C3 (timestamp, data)
+    | `Console_data (timestamp, data) -> `C2 (timestamp, data)
     | `Stats_data (ru, mem, ifs, vmm) -> `C1 (ru, vmm, ifs, mem)
-    | `Block_data None -> `C4 (`C2 ())
-    | `Block_data Some s -> `C4 (`C1 s)
+    | `Block_data None -> `C3 (`C2 ())
+    | `Block_data Some s -> `C3 (`C1 s)
+    | `Log_data e -> `C4 e
   in
   Asn.S.map f g @@
   Asn.S.(choice4
@@ -841,15 +883,15 @@ let data =
                                     (required ~label:"key" utf8_string)
                                     (required ~label:"value" int64))))
                  (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
-           (my_explicit 2 ~label:"log" null)
-           (my_explicit 3 ~label:"console"
+           (my_explicit 2 ~label:"console"
               (sequence2
                  (required ~label:"timestamp" generalized_time)
                  (required ~label:"data" utf8_string)))
-           (my_explicit 4 ~label:"block"
+           (my_explicit 3 ~label:"block"
               (choice2
                  (my_explicit 0 ~label:"some data" octet_string)
-                 (my_explicit 1 ~label:"no data" null))))
+                 (my_explicit 1 ~label:"no data" null)))
+           (my_explicit 4 ~label:"log" log_ev))
 
 let old_unikernel_info4 =
   let open Unikernel in

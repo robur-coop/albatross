@@ -38,7 +38,8 @@ val handle_command : 'a t -> Vmm_commands.wire ->
    | `End of Vmm_commands.res
    | `Wait of Name.t * (process_exit -> Vmm_commands.res)
    | `Wait_and_create of Name.t * (Name.t * Unikernel.config)
-   | `Replace_stats of Vmm_commands.res * Vmm_commands.wire list ],
+   | `Replace_stats of Vmm_commands.res * Vmm_commands.wire list
+   | `Add_log of Name.t * Vmm_commands.version ],
    Vmm_commands.res) result
 
 val killall : 'a t -> (unit -> 'b * 'a) -> 'a t * 'b list
