@@ -1,8 +1,22 @@
+# v2.8.0 (2026-08-03)
+
+- Embed influx output into albatross_stats, albatross_influx is no more
+  (#283 @hannesm)
+- Remove bhyve statistics gathering (#283 @hannesm, fixes #258)
+- Add "logging service", which reports of vm creation and destroyal (all
+  in-memory, served by albatross-daemon) (#280 @hannesm)
+- Adjust restarting for cmdliner exit code, and --help/--version (#282 @hannesm,
+  fixes #279)
+- `restart` command: respect memory; numcpus ; linux_boot_partition
+  (#276 @hannesm, fixes #275)
+- FreeBSD packaging: pass `-t` to `pkg create` to preserve mtime
+  (2eb7551630fe3fb7cc7ff0e9811fdd286ef6b097 @hannesm)
+
 # v2.7.2 (2026-05-29)
 
 * SECURITY FIX fix unbounded resource usage in albatross-console when querying
   for a very high or negative count or a date earlier than all messages, both
-  when the ring buffer is full (@reynir)
+  when the ring buffer is full (e07de2a904133e633773302d335ceb1f2c9945da @reynir)
 
 # v2.7.1 (2026-05-05)
 
