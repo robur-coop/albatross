@@ -1157,13 +1157,21 @@ let dryrun =
 
 let cpus =
   let doc = "CPUids to allow for this policy (argument may be repeated)." in
+  (* Since we use a very naïve algorithm we put a limit on the CPU ID *)
+  let unreasonably_large_cpu_id = 10_240 in
   let cpu_range_conv =
     let parser s =
       let ( let* ) = Result.bind in
       let cpuid_of_string s =
-        (* TODO: check that CPUID is reasonable *)
-        int_of_string_opt s
-        |> Option.to_result ~none:"Not a valid CPU"
+        let r =
+          int_of_string_opt s
+          |> Option.to_result ~none:"Not a valid CPU"
+        in
+        Result.bind r @@ fun n ->
+        if n < 0 || n >= unreasonably_large_cpu_id then
+          Error (Fmt.str "Only CPU IDs between 0 and %d are accepted"
+                   unreasonably_large_cpu_id)
+        else Ok n
       in
       match String.index_opt s '-' with
       | None ->
