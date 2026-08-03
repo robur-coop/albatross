@@ -272,24 +272,13 @@ let create_unikernel typ force image startup no_add_name cpuids memory argv bloc
     let exits = match exit_codes with [] -> None | xs -> Some (Vmm_core.IS.of_list xs) in
     if restart_on_fail then `Restart exits else `Quit
   in
-  let* cpuids =
-    let cpus = Vmm_core.IS.of_list cpuids in
-    if Vmm_core.IS.cardinal cpus = 0 then
-      Error (`Msg "CPUids may not be empty")
-    else
-      Ok cpus
-  in
   let config = { Vmm_core.Unikernel.typ ; compressed ; image ; fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition } in
   if force then Ok (`Unikernel_force_create config) else Ok (`Unikernel_create config)
 
-let policy unikernels memory cpus block bridgesl =
-  let bridges = Vmm_core.String_set.of_list bridgesl
-  and cpuids = Vmm_core.IS.of_list cpus
-  in
+let policy unikernels memory cpuids block bridgesl =
+  let bridges = Vmm_core.String_set.of_list bridgesl in
   if not (Vmm_core.String_set.cardinal bridges = List.length bridgesl) then
     Logs.warn (fun m -> m "Bridges is not a set");
-  if not (Vmm_core.IS.cardinal cpuids = List.length cpus) then
-    Logs.warn (fun m -> m "CPUids is not a set");
   Vmm_core.Policy.{ unikernels ; cpuids ; memory ; block ; bridges }
 
 let to_exit_code state = function
@@ -826,13 +815,6 @@ let restart () replace startup no_add_name cpuids memory argv block_devices brid
         if restart_on_fail then `Restart exits else `Quit
       and argv = match argv with [] -> None | xs -> Some xs
       in
-      let* cpuids =
-        let cpus = Vmm_core.IS.of_list cpuids in
-        if Vmm_core.IS.cardinal cpus = 0 then
-          Error (`Msg "CPUids cannot be empty")
-        else
-          Ok cpus
-      in
       Ok (Some { Vmm_core.Unikernel.fail_behaviour ; startup ; add_name = not no_add_name ; cpuids ; memory ; block_devices ; bridges ; argv ; numcpus ; linux_boot_partition })
     else
       Ok None
@@ -1175,7 +1157,59 @@ let dryrun =
 
 let cpus =
   let doc = "CPUids to allow for this policy (argument may be repeated)." in
-  Arg.(value & opt_all int [ 0 ] & info [ "cpu" ] ~doc)
+  let cpu_range_conv =
+    let parser s =
+      let ( let* ) = Result.bind in
+      let cpuid_of_string s =
+        (* TODO: check that CPUID is reasonable *)
+        int_of_string_opt s
+        |> Option.to_result ~none:"Not a valid CPU"
+      in
+      match String.index_opt s '-' with
+      | None ->
+        let* cpuid = cpuid_of_string s in
+        Ok (`Single cpuid)
+      | Some idx ->
+        let start = String.sub s 0 idx in
+        let fin = String.sub s (succ idx) (String.length s - succ idx) in
+        let* start = cpuid_of_string start in
+        let* fin = cpuid_of_string fin in
+        if start > fin then
+          Error "Empty range"
+        else
+          Ok (`Range (start, fin))
+    in
+    let pp ppf = function
+      | `Single id -> Fmt.int ppf id
+      | `Range (start, fin) ->
+        Fmt.pf ppf "%d-%d" start fin
+    in
+    Arg.Conv.make ~docv:"CPU-RANGE"
+    ~parser ~pp ()
+  in
+  let open Term.Syntax in
+  let+ cpu_ids =
+    Arg.(value & opt_all cpu_range_conv [ `Single 0 ] & info [ "cpu" ] ~doc)
+  in
+  List.fold_left
+    (fun acc cpu_id ->
+       let add cpu_id acc =
+         if IS.mem cpu_id acc then
+           Logs.warn (fun m -> m "CPUids is not a set");
+         IS.add cpu_id acc
+       in
+       match cpu_id with
+       | `Single cpu_id -> add cpu_id acc
+       | `Range (start, fin) ->
+         let rec go acc start =
+           if start > fin then
+             acc
+           else
+             go (add start acc) (succ start)
+         in
+         go acc start)
+    IS.empty
+    cpu_ids
 
 let unikernels =
   let doc = "Number of unikernels to allow running at the same time." in
