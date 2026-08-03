@@ -242,10 +242,6 @@ module Stats : sig
 
   val pp_kinfo_mem : kinfo_mem Fmt.t
 
-  type vmm = (string * int64) list
-  val pp_vmm : vmm Fmt.t
-  val pp_vmm_mem : vmm Fmt.t
-
   type ifdata = {
     bridge : string;
     flags : int32;
@@ -268,7 +264,7 @@ module Stats : sig
   }
   val pp_ifdata : ifdata Fmt.t
 
-  type t = rusage * kinfo_mem option * vmm option * ifdata list
+  type t = rusage * kinfo_mem option * ifdata list
   val pp : t Fmt.t
 end
 

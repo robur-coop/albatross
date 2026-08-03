@@ -37,19 +37,21 @@ let pp_console_cmd ppf = function
   | `Console_list_inactive -> Fmt.pf ppf "console list inactive available ringbuffers"
 
 type stats_cmd = [
-  | `Stats_add of string * int * (string * string) list
+  | `Stats_add of int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
   | `Stats_initial
+  | `Old_stats_subscribe
 ]
 
 let pp_stats_cmd ppf = function
-  | `Stats_add (vmmdev, pid, taps) ->
-    Fmt.pf ppf "stats add: vmm device %s pid %d taps %a" vmmdev pid
+  | `Stats_add (pid, taps) ->
+    Fmt.pf ppf "stats add: pid %d taps %a" pid
       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ": ") string string)) taps
   | `Stats_remove -> Fmt.string ppf "stat remove"
   | `Stats_subscribe -> Fmt.string ppf "stat subscribe"
   | `Stats_initial -> Fmt.string ppf "stat initial"
+  | `Old_stats_subscribe -> Fmt.string ppf "old stat subscribe"
 
 type unikernel_cmd = [
   | `Unikernel_info
@@ -145,6 +147,7 @@ let pp ~verbose ppf = function
 type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
+  | `Old_stats_data of Stats.rusage * Stats.kinfo_mem option * (string * int64) list option * Stats.ifdata list
   | `Block_data of string option
   | `Log_data of Logging.t
 ]
@@ -156,6 +159,8 @@ let pp_data ppf = function
     let line = String.escaped line in
     Fmt.pf ppf "console %a: %s" (Ptime.pp_rfc3339 ()) ts line
   | `Stats_data stats -> Fmt.pf ppf "stats: %a" Stats.pp stats
+  | `Old_stats_data (ru, kinfo, _, ifdata) ->
+    Fmt.pf ppf "old stats: %a" Stats.pp (ru, kinfo, ifdata)
   | `Block_data s ->
     Fmt.pf ppf "block data %a"
       Fmt.(option ~none:(any "eof") (int ++ any " bytes"))

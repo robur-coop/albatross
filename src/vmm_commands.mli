@@ -24,10 +24,11 @@ type console_cmd = [
 ]
 
 type stats_cmd = [
-  | `Stats_add of string * int * (string * string) list
+  | `Stats_add of int * (string * string) list
   | `Stats_remove
   | `Stats_subscribe
   | `Stats_initial
+  | `Old_stats_subscribe
 ]
 
 type unikernel_cmd = [
@@ -76,6 +77,7 @@ val pp : verbose:bool -> t Fmt.t
 type data = [
   | `Console_data of Ptime.t * string
   | `Stats_data of Stats.t
+  | `Old_stats_data of Stats.rusage * Stats.kinfo_mem option * (string * int64) list option * Stats.ifdata list
   | `Block_data of string option
   | `Log_data of Logging.t
 ]

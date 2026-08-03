@@ -24,7 +24,6 @@ mkdir -p "$libexecdir" "$bindir" "$debiandir" "$systemddir" "$examplesdir"
 # stage daemon binaries
 for f in albatrossd \
              albatross-console \
-             albatross-influx \
              albatross-tls-endpoint \
              albatross-stats
 do install $bdir/$f $libexecdir/$f; done
@@ -40,8 +39,6 @@ do
     install -m 0644 $basedir/packaging/Linux/$f.service $systemddir/$f.service;
     install -m 0644 $basedir/packaging/Linux/$f.socket $systemddir/$f.socket;
 done
-install -m 0644 $basedir/packaging/Linux/albatross_influx.service \
-        $systemddir/albatross_influx.service
 install -m 0644 $basedir/packaging/Linux/albatross_tls_endpoint.service \
 	$systemddir/albatross_tls_endpoint.service
 install -m 0644 $basedir/packaging/Linux/albatross_tls_endpoint.socket \

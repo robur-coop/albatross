@@ -31,10 +31,6 @@ CAMLprim value vmmanage_sysconf_clock_tick(value unit) {
 #include <sys/sysctl.h>
 #include <sys/socket.h>
 #include <net/if_mib.h>
-#include <vm/vm.h>
-#include <machine/vmm.h>
-#include <machine/vmm_dev.h>
-#include <vmmapi.h>
 
 CAMLprim value vmmanage_sysctl_kinfo_proc (value pid_r) {
   CAMLparam1(pid_r);
@@ -103,71 +99,6 @@ CAMLprim value vmmanage_sysctl_kinfo_proc (value pid_r) {
   Store_field (res, 1, res1);
   Store_field (res, 0, res2);
 
-  CAMLreturn(res);
-}
-
-CAMLprim value vmmanage_vmmapi_open (value name) {
-  CAMLparam1(name);
-  struct vmctx *ctx;
-  const char *devname;
-  CAMLlocal1(res);
-
-  if (! caml_string_is_c_safe(name)) caml_raise_not_found();
-
-  devname = String_val(name);
-  ctx = vm_open(devname);
-  if (ctx == NULL) uerror("vm_open", Nothing);
-  struct vcpu *vcpu;
-#if __FreeBSD_version >= 1400000
-  vcpu = vm_vcpu_open(ctx, 0);
-#else
-  vcpu = NULL;
-#endif
-  res = caml_alloc(2, 0);
-  Store_field (res, 1, (value)ctx);
-  Store_field (res, 0, (value)vcpu);
-  CAMLreturn(res);
-}
-
-CAMLprim value vmmanage_vmmapi_close (value octx, value ovcpu) {
-  struct vmctx *ctx = (struct vmctx*)octx;
-  struct vcpu *vcpu = (struct vcpu*)ovcpu;
-
-#if __FreeBSD_version >= 1400000
-  vm_vcpu_close(vcpu);
-#endif
-
-  close(vm_get_device_fd(ctx));
-  free(ctx);
-  return Val_unit;
-}
-
-CAMLprim value vmmanage_vmmapi_stats (value octx, value ovcpu) {
-  CAMLparam0();
-  CAMLlocal3(res, tmp, pair);
-  int i, num_stats;
-  uint64_t *stats;
-  const char *desc;
-  struct vmctx *ctx = (struct vmctx*)octx;
-  struct vcpu *vcpu = (struct vcpu*)ovcpu;
-
-#if __FreeBSD_version >= 1400000
-  stats = vm_get_stats(vcpu, NULL, &num_stats);
-#else
-  stats = vm_get_stats(ctx, 0, NULL, &num_stats);
-#endif
-  if (stats != NULL) {
-    for (i = 0; i < num_stats; i++) {
-      tmp = caml_alloc(2, 0);
-      pair = caml_alloc_tuple(2);
-      desc = vm_get_stat_desc(ctx, i);
-      Store_field (pair, 0, caml_copy_string(desc));
-      Store_field (pair, 1, Val64(stats[i]));
-      Store_field (tmp, 0, pair);
-      Store_field (tmp, 1, res);
-      res = tmp;
-    }
-  }
   CAMLreturn(res);
 }
 
@@ -306,26 +237,6 @@ CAMLprim value vmmanage_sysctl_kinfo_proc (value pid_r) {
   uerror("sysctl_kinfo_proc", Nothing);
 }
 
-CAMLprim value vmmanage_vmmapi_open (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_open", Nothing);
-}
-
-CAMLprim value vmmanage_vmmapi_close (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_close", Nothing);
-}
-
-CAMLprim value vmmanage_vmmapi_stats (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_stats", Nothing);
-}
-
-CAMLprim value vmmanage_vmmapi_statnames (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_statnames", Nothing);
-}
-
 #else /* Linux */
 
 /* stub symbols for OS currently not supported */
@@ -343,21 +254,6 @@ CAMLprim value vmmanage_get_ifindex_by_name (value unit) {
 CAMLprim value vmmanage_sysctl_ifdata (value num) {
   CAMLparam1(num);
   uerror("sysctl_ifdata", Nothing);
-}
-
-CAMLprim value vmmanage_vmmapi_open (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_open", Nothing);
-}
-
-CAMLprim value vmmanage_vmmapi_close (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_close", Nothing);
-}
-
-CAMLprim value vmmanage_vmmapi_stats (value name) {
-  CAMLparam1(name);
-  uerror("vmmapi_stats", Nothing);
 }
 
 #endif
