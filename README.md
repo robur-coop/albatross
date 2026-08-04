@@ -1,6 +1,6 @@
-# Albatross: orchestrate and manage MirageOS unikernels with Solo5
+# Albatross: orchestrate and manage MirageOS unikernels (and other virtual machines) with Solo5
 
-The goal of albatross is robust deployment of [MirageOS](https://mirage.io)
+The goal of albatross is robust deployment of [MirageOS](https://mirageos.org)
 unikernels using [Solo5](https://github.com/solo5/solo5). Resources managed
 by albatross are network interfaces of kind `tap`, which are connected to
 already existing bridges, block devices, memory, and CPU. Each unikernel is
@@ -46,9 +46,8 @@ Albatross consists of a set of binaries. Several daemons, which communicate in a
 request-response style over Unix domain sockets, are run in the host system:
 - `albatrossd`: privileged to create and destroy unikernels
 - `albatross-console`: reads the console output of unikernels
-- `albatross-stats`: statistics gathering (rusage, ifstat, BHyve debug counters)
+- `albatross-stats`: statistics gathering (rusage, ifstat), reporting to influx
 - `albatross-tls-endpoint`: remote deployment via TLS (and possibly inetd)
-- `albatross-influx`: statistic reporting from `albatross-stats` to influx
 
 The main daemon is the privileged `albatrossd`, which supervises unikernels. It opens
 a listening Unix domain socket, reads the persisted unikernel configuration,
