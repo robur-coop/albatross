@@ -8,7 +8,7 @@ let cert_name cert =
   | None -> Ok None
   | Some (_, data) ->
     match X509.(Distinguished_name.common_name (Certificate.subject cert)) with
-    | Some name -> Ok (Some name)
+    | Some name -> Ok (Some (X509.Distinguished_name.Common_name.to_string name))
     | None -> match Vmm_asn.of_cert_extension data with
       | Error (`Msg _) -> Error (`Msg "couldn't parse albatross extension")
       | Ok (_, `Policy_cmd pc) ->
