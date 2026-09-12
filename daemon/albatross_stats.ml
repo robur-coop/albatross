@@ -203,7 +203,7 @@ let timer no_drop influx () =
         Vmm_lwt.safe_close s)
     outs
 
-let m = Vmm_core.conn_metrics "unix"
+let m = Vmm_core.connections "unix"
 
 let jump _ systemd interval no_drop influx tmpdir =
   Sys.(set_signal sigpipe Signal_ignore);

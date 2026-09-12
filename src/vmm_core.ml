@@ -4,22 +4,16 @@ module String_set = Set.Make(String)
 
 module String_map = Map.Make(String)
 
-let conn_metrics kind =
+let connections kind =
   let s = ref (0, 0) in
-  let open Metrics in
-  let doc = "connection statistics" in
-  let data () =
-    Data.v [
-      int "active" (fst !s) ;
-      int "total" (snd !s) ;
-    ] in
-  let tags = Tags.string "kind" in
-  let src = Src.v ~doc ~tags:Tags.[ tags ] ~data "connections" in
+  let measure () =
+    [ [ "kind", kind ], [ "active", fst !s ; "total", snd !s ] ]
+  in
+  let _tally = Tally.v "connections" measure in
   (fun action ->
      (match action with
       | `Open -> s := (succ (fst !s), succ (snd !s))
-      | `Close -> s := (pred (fst !s), snd !s));
-     Metrics.add src (fun x -> x kind) (fun d -> d ()))
+      | `Close -> s := (pred (fst !s), snd !s)))
 
 let tmpdir = ref (Fpath.v "/nonexisting")
 

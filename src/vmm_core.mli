@@ -4,7 +4,7 @@ module String_set : Set.S with type elt = string
 
 module String_map : Map.S with type key = string
 
-val conn_metrics : string -> [ `Close | `Open ] -> unit
+val connections : string -> [ `Close | `Open ] -> unit
 
 val set_tmpdir : Fpath.t -> unit
 

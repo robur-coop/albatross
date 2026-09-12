@@ -2,20 +2,13 @@
 
 open Lwt.Infix
 
-let process =
-  Metrics.field ~doc:"name of the process" "vm" Metrics.String
-
 let init_influx name data =
   match data with
   | None -> ()
   | Some (ip, port) ->
     Logs.info (fun m -> m "stats connecting to %a:%d" Ipaddr.pp ip port);
-    Metrics.enable_all ();
-    Metrics_lwt.init_periodic (fun () -> Lwt_unix.sleep 10.);
-    Metrics_lwt.periodically (Metrics_rusage.rusage_src ~tags:[]);
-    Metrics_lwt.periodically (Metrics_rusage.kinfo_mem_src ~tags:[]);
-    let reporter = Metrics.cache_reporter () in
-    Metrics.set_reporter reporter;
+    let tag = "vm", name in
+    let _ = Tally_rusage.v (Unix.getpid ()) in
     let fd = ref None in
     let rec report () =
       let send () =
@@ -31,19 +24,13 @@ let init_influx name data =
         match !fd with
         | None -> Lwt.return_unit
         | Some socket ->
-          let tag = process name in
-          let datas = Metrics.SM.fold (fun src measurements acc ->
-              List.fold_left (fun acc (tags, data) ->
-                  match Metrics.Data.fields data with
-                  | [] -> acc
-                  | _ ->
-                    let name = Metrics.Src.name src in
-                    Metrics_influx.encode_line_protocol (tag :: tags) data name :: acc)
-                acc measurements)
-              (Metrics.get_cache ()) []
+          let stats = Tally.measure () in
+          let data =
+            List.map (fun (name, tags, fields) ->
+                Tally.encode_influx name ~tags:(tag :: tags) fields)
+              stats |> String.concat ""
           in
-          let datas = String.concat "" datas in
-          Vmm_lwt.write_raw socket (Bytes.unsafe_of_string datas) >|= function
+          Vmm_lwt.write_raw socket (Bytes.unsafe_of_string data) >|= function
           | Ok () -> ()
           | Error `Exception ->
             Logs.warn (fun m -> m "error on stats write");

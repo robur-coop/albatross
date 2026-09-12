@@ -6,7 +6,7 @@
  (wrapped false)
  (modules vmm_core vmm_commands vmm_compress vmm_trie vmm_trie vmm_ring vmm_asn vmm_resources)
  (libraries logs ipaddr ptime duration bigstringaf decompress.de decompress.zl
-   asn1-combinators fpath metrics ohex))
+   asn1-combinators fpath fmt ohex tally))
 
 (library
  (name albatross_unix)
