@@ -1,3 +1,8 @@
+# v2.8.1 (2026-09-13)
+
+- Update to x509 1.2.0 (#288 @hannesm)
+- Update README (#284 @hannesm)
+
 # v2.8.0 (2026-08-03)
 
 - Embed influx output into albatross_stats, albatross_influx is no more
