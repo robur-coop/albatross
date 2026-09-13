@@ -467,7 +467,7 @@ let gen_cert (cert, certs, key) key_type name (cmd : Vmm_commands.t) =
   in
   let* csr =
     let name =
-      [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
+      [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN (Common_name.v name))) ]
     in
     let extensions = X509.Signing_request.Ext.(singleton Extensions extensions) in
     X509.Signing_request.create name ~extensions tmpkey
@@ -535,7 +535,7 @@ let sign ?dbname ?certname ?cacert extensions issuer key csr delta =
       match
         X509.Distinguished_name.common_name X509.Signing_request.((info csr).subject)
       with
-      | Some name -> Ok name
+      | Some name -> Ok (X509.Distinguished_name.Common_name.to_string name)
       | None -> Error (`Msg "couldn't find name (no common name in CSR subject)")
   in
   let valid_from, valid_until = timestamps delta in
@@ -555,7 +555,9 @@ let sign ?dbname ?certname ?cacert extensions issuer key csr delta =
     match dbname with
     | None -> Ok () (* no DB! *)
     | Some dbname ->
-      append dbname (Printf.sprintf "%s %s\n" (Ohex.encode (X509.Certificate.serial cert)) certname)
+      append dbname (Printf.sprintf "%s %s\n"
+                       (Ohex.encode (X509.Certificate.serial cert))
+                       certname)
   in
   let chain =
     let self_signed c =
@@ -657,11 +659,11 @@ let sign_main _ db cacert cakey csrname days =
 
 let generate _ name db days sname sdays key_type =
   (let* key = priv_key key_type name in
-   let name = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ] in
+   let name = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN (Common_name.v name))) ] in
    let* csr = X509.Signing_request.create name key in
    let* () = sign ~certname:"cacert" (d_exts ()) name key csr Duration.(to_sec (of_day days)) in
    let* skey = priv_key key_type sname in
-   let sname = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN sname)) ] in
+   let sname = [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN (Common_name.v sname))) ] in
    let* csr = X509.Signing_request.create sname skey in
    sign ~dbname:(Fpath.v db) s_exts name key csr Duration.(to_sec (of_day sdays)))
   |> function
@@ -675,7 +677,7 @@ let csr priv name cmd =
     let v = Vmm_asn.to_cert_extension cmd in
     X509.Extension.(singleton (Unsupported Vmm_asn.oid) (false, v))
   and name =
-    [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN name)) ]
+    [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN( (Common_name.v name)))) ]
   in
   let extensions = X509.Signing_request.Ext.(singleton Extensions ext) in
   X509.Signing_request.create name ~extensions priv
