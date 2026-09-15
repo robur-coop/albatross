@@ -17,59 +17,13 @@ open Albatross_stats_pure
 
 module Influx = struct
   open Vmm_core.Stats
-  let tv (sec, usec) = Printf.sprintf "%Lu.%06d" sec usec
-
   let i64 i = Printf.sprintf "%Lui" i
-
-  let encode_ru unikernel ru =
-    let fields =
-      [ "utime", tv ru.utime ;
-        "stime", tv ru.stime ;
-        "maxrss", i64 ru.maxrss ;
-        "ixrss", i64 ru.ixrss ;
-        "idrss", i64 ru.idrss ;
-        "isrss", i64 ru.isrss ;
-        "minflt", i64 ru.minflt ;
-        "maxflt", i64 ru.majflt ;
-        "nswap", i64 ru.nswap ;
-        "inblock", i64 ru.inblock ;
-        "outblock", i64 ru.outblock ;
-        "msgsnd", i64 ru.msgsnd ;
-        "msgrcv", i64 ru.msgrcv ;
-        "nsignals", i64 ru.nsignals ;
-        "nvcsw", i64 ru.nvcsw ;
-        "nivcsw", i64 ru.nivcsw
-      ]
-    in
-    let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "resource_usage,vm=%s %s" unikernel (String.concat "," fields)
-
-  let encode_kinfo_mem unikernel mem =
-    let now = Unix.gettimeofday () in
-    let started =
-      Int64.to_float (fst mem.start) +. (float_of_int (snd mem.start) /. 1_000_000.)
-    in
-    let uptime = now -. started in
-    let uint v = Printf.sprintf "%ui" v in
-    let fields =
-      [ "vsize", i64 mem.vsize ;
-        "rss", i64 mem.rss ;
-        "tsize", i64 mem.tsize ;
-        "dsize", i64 mem.dsize ;
-        "ssize", i64 mem.ssize ;
-        "cow_faults", uint mem.cow ;
-        "runtime", i64 mem.runtime ;
-        "uptime", Printf.sprintf "%f" uptime ;
-      ]
-    in
-    let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in
-    Printf.sprintf "kinfo_mem,vm=%s %s" unikernel (String.concat "," fields)
 
   let i32 i = Printf.sprintf "%lui" i
 
   let encode_if unikernel ifd =
     let fields =
-    (* TODO: flags *)
+      (* TODO: flags *)
       [ "send_queue_length", i32 ifd.send_length ;
         "max_send_queue_length", i32 ifd.max_send_length ;
         "send_queue_drops", i32 ifd.send_drops ;
@@ -107,7 +61,7 @@ let str_of_e = function
   | `Msg m -> m
 
 let write_to_influx fam addr no_drop name data =
-  let send_out fd no_drop name (ru, mem, ifs) =
+  let send_out fd no_drop name (ru, ifs) =
     let name =
       if no_drop then
         Vmm_core.Name.to_string name
@@ -116,10 +70,11 @@ let write_to_influx fam addr no_drop name data =
         | None -> Vmm_core.Name.to_string name
         | Some x -> Vmm_core.Name.Label.to_string x
     in
-    let ru = Influx.encode_ru name ru in
-    let mem = match mem with None -> [] | Some m -> [ Influx.encode_kinfo_mem name m ] in
+    let ru =
+      Tally.encode_influx "rusage" ~tags:["vm",name] (Tally_rusage.to_fields ru)
+    in
     let taps = List.map (Influx.encode_if name) ifs in
-    let out = (String.concat "\n" (ru :: mem @ taps)) ^ "\n" in
+    let out = (String.concat "\n" (ru :: taps)) ^ "\n" in
     Logs.debug (fun m -> m "writing %d to influx" (String.length out)) ;
     Vmm_lwt.write_raw fd (Bytes.unsafe_of_string out) >>= function
     | Ok () ->
@@ -176,7 +131,7 @@ let handle s addr =
         Vmm_lwt.write_wire s (fst wire, `Success (`String out)) >>= function
         | Ok () ->
           (match close with
-           | Some (_, s', _) ->
+           | Some (_, s') ->
              Vmm_lwt.safe_close s' >>= fun () ->
              (* read the next *)
              loop ()

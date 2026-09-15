@@ -208,40 +208,6 @@ module Unikernel : sig
 end
 
 module Stats : sig
-  type rusage = {
-    utime : int64 * int;
-    stime : int64 * int;
-    maxrss : int64;
-    ixrss : int64;
-    idrss : int64;
-    isrss : int64;
-    minflt : int64;
-    majflt : int64;
-    nswap : int64;
-    inblock : int64;
-    outblock : int64;
-    msgsnd : int64;
-    msgrcv : int64;
-    nsignals : int64;
-    nvcsw : int64;
-    nivcsw : int64;
-  }
-  val pp_rusage : rusage Fmt.t
-  val pp_rusage_mem : rusage Fmt.t
-
-  type kinfo_mem = {
-    vsize : int64 ;
-    rss : int64 ;
-    tsize : int64 ;
-    dsize : int64 ;
-    ssize : int64 ;
-    runtime : int64 ;
-    cow : int ;
-    start : (int64 * int) ;
-  }
-
-  val pp_kinfo_mem : kinfo_mem Fmt.t
-
   type ifdata = {
     bridge : string;
     flags : int32;
@@ -264,7 +230,7 @@ module Stats : sig
   }
   val pp_ifdata : ifdata Fmt.t
 
-  type t = rusage * kinfo_mem option * ifdata list
+  type t = Tally_rusage.(rusage * kinfo_mem) * ifdata list
   val pp : t Fmt.t
 end
 

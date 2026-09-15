@@ -172,57 +172,6 @@ let mac_addr =
   in
   Asn.S.map f g Asn.S.octet_string
 
-let timeval =
-  Asn.S.(sequence2
-           (required ~label:"seconds" int64)
-           (required ~label:"microseconds" int))
-
-let ru =
-  let open Stats in
-  let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, nivcsw))))))))))))))) =
-    { utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw }
-  and g ru =
-    (ru.utime, (ru.stime, (ru.maxrss, (ru.ixrss, (ru.idrss, (ru.isrss, (ru.minflt, (ru.majflt, (ru.nswap, (ru.inblock, (ru.outblock, (ru.msgsnd, (ru.msgrcv, (ru.nsignals, (ru.nvcsw, ru.nivcsw)))))))))))))))
-  in
-  Asn.S.map f g @@
-  Asn.S.(sequence @@
-           (required ~label:"utime" timeval)
-         @ (required ~label:"stime" timeval)
-         @ (required ~label:"maxrss" int64)
-         @ (required ~label:"ixrss" int64)
-         @ (required ~label:"idrss" int64)
-         @ (required ~label:"isrss" int64)
-         @ (required ~label:"minflt" int64)
-         @ (required ~label:"majflt" int64)
-         @ (required ~label:"nswap" int64)
-         @ (required ~label:"inblock" int64)
-         @ (required ~label:"outblock" int64)
-         @ (required ~label:"msgsnd" int64)
-         @ (required ~label:"msgrcv" int64)
-         @ (required ~label:"nsignals" int64)
-         @ (required ~label:"nvcsw" int64)
-        -@ (required ~label:"nivcsw" int64))
-
-(* although this changed (+runtime + cow + start) from V3 to V4, since it's not
-   persistent, no need to care about it *)
-let kinfo_mem =
-  let open Stats in
-  let f (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))) =
-    { vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
-  and g t =
-    (t.vsize, (t.rss, (t.tsize, (t.dsize, (t.ssize, (t.runtime, (t.cow, t.start)))))))
-  in
-  Asn.S.map f g @@
-  Asn.S.(sequence @@
-           (required ~label:"bsize" int64)
-         @ (required ~label:"rss" int64)
-         @ (required ~label:"tsize" int64)
-         @ (required ~label:"dsize" int64)
-         @ (required ~label:"ssize" int64)
-         @ (required ~label:"runtime" int64)
-         @ (required ~label:"cow" int)
-        -@ (required ~label:"start" timeval))
-
 (* TODO is this good? *)
 let int32 =
   let f i = Int32.of_int i
@@ -262,18 +211,20 @@ let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
-    | `C3 () -> `Old_stats_subscribe
+    | `C3 () -> `Old_stats_subscribe2
     | `C4 () -> `Stats_initial
-    | `C5 () -> `Stats_subscribe
+    | `C5 () -> `Old_stats_subscribe
+    | `C6 () -> `Stats_subscribe
   and g = function
     | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
-    | `Old_stats_subscribe -> `C3 ()
+    | `Old_stats_subscribe2 -> `C3 ()
     | `Stats_initial -> `C4 ()
-    | `Stats_subscribe -> `C5 ()
+    | `Old_stats_subscribe -> `C5 ()
+    | `Stats_subscribe -> `C6 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
+  Asn.S.(choice6
            (my_explicit 0 ~label:"add"
               (sequence2
                  (required ~label:"pid" int)
@@ -283,9 +234,10 @@ let stats_cmd =
                           (required ~label:"bridge" utf8_string)
                           (required ~label:"tap" utf8_string))))))
            (my_explicit 1 ~label:"remove" null)
-           (my_explicit 2 ~label:"subscribe" null)
+           (my_explicit 2 ~label:"old2 subscribe" null)
            (my_explicit 3 ~label:"initial" null)
-           (my_explicit 4 ~label:"subscribe" null))
+           (my_explicit 4 ~label:"old subscribe" null)
+           (my_explicit 5 ~label:"subscribe" null))
 
 let name =
   let f str =

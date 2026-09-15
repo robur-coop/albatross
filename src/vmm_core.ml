@@ -492,47 +492,6 @@ module Unikernel = struct
 end
 
 module Stats = struct
-  type rusage = {
-    utime : (int64 * int) ;
-    stime : (int64 * int) ;
-    maxrss : int64 ;
-    ixrss : int64 ;
-    idrss : int64 ;
-    isrss : int64 ;
-    minflt : int64 ;
-    majflt : int64 ;
-    nswap : int64 ;
-    inblock : int64 ;
-    outblock : int64 ;
-    msgsnd : int64 ;
-    msgrcv : int64 ;
-    nsignals : int64 ;
-    nvcsw : int64 ;
-    nivcsw : int64 ;
-  }
-
-  let pp_rusage ppf r =
-    Fmt.pf ppf "utime %Lu.%06d stime %Lu.%06d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
-      (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
-  let pp_rusage_mem ppf r =
-    Fmt.pf ppf "maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu"
-      r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt
-
-  type kinfo_mem = {
-    vsize : int64 ;
-    rss : int64 ;
-    tsize : int64 ;
-    dsize : int64 ;
-    ssize : int64 ;
-    runtime : int64 ;
-    cow : int ;
-    start : (int64 * int) ;
-  }
-
-  let pp_kinfo_mem ppf t =
-    Fmt.pf ppf "virtual-size %Lu rss %Lu text-size %Lu data-size %Lu stack-size %Lu runtime %Lu cow %u start %Lu.%06d"
-      t.vsize t.rss t.tsize t.dsize t.ssize t.runtime t.cow (fst t.start) (snd t.start)
-
   type ifdata = {
     bridge : string ;
     flags : int32 ;
@@ -558,11 +517,12 @@ module Stats = struct
     Fmt.pf ppf "bridge %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
       i.bridge i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
-  type t = rusage * kinfo_mem option * ifdata list
-  let pp ppf (ru, mem, ifs) =
-    Fmt.pf ppf "%a@.%a@.%a"
-      pp_rusage ru
-      Fmt.(option ~none:(any "no kinfo_mem stats") pp_kinfo_mem) mem
+  type t = Tally_rusage.(rusage * kinfo_mem) * ifdata list
+
+  let pp ppf (tally, ifs) =
+    let fs = Tally_rusage.to_fields tally in
+    Fmt.pf ppf "%a@.%a"
+      Fmt.(list ~sep:(any "@.") (pair ~sep:(any " ") string int)) fs
       Fmt.(list ~sep:(any "@.@.") pp_ifdata) ifs
 end
 

@@ -59,12 +59,8 @@ let rusage pid =
   | Ok x -> Some x
 
 let gather pid nics =
-  let ru, mem =
-    match rusage pid with
-    | None -> None, None
-    | Some (mem, ru) -> Some mem, Some ru
-  in
-  ru, mem,
+  let ru = rusage pid in
+  ru,
   List.fold_left (fun ifd (bridge, nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
@@ -80,10 +76,10 @@ let tick t =
           match IM.find_opt pid t.pid_nic with
           | None -> None
           | Some nics ->
-            let ru, mem, ifd = gather pid nics in
+            let ru, ifd = gather pid nics in
             match ru with
             | None -> None
-            | Some ru -> Some (ru, mem, ifd)
+            | Some ru -> Some (ru, ifd)
         in
         let stats = match stat with None -> stats | Some x -> (vmid, x) :: stats in
         let listeners = Vmm_trie.collect vmid t.name_sockets in
@@ -91,16 +87,13 @@ let tick t =
         | [] -> Logs.debug (fun m -> m "nobody is listening") ; (out, stats, to_remove)
         | xs -> match stat with
           | None -> out, stats, to_remove
-          | Some (ru, mem, ifd) ->
+          | Some (ru, ifd) ->
             let outs =
-              List.fold_left (fun out (id, (version, socket, curr_old)) ->
+              List.fold_left (fun out (id, (version, socket)) ->
                   let listening_path = Vmm_core.Name.path id in
                   let real_id = Vmm_core.Name.drop_prefix_exn vmid listening_path in
                   let header = Vmm_commands.header ~version real_id in
-                  let data = match curr_old with
-                    | `Current -> `Stats_data (ru, mem, ifd)
-                    | `Old -> `Old_stats_data (ru, mem, None, ifd)
-                  in
+                  let data = `Stats_data (ru, ifd) in
                   ((socket, id, (header, `Data data)) :: out))
                 out xs
             in
@@ -143,15 +136,9 @@ let handle t socket (hdr, wire) =
         Ok (t, None, "removed")
       | `Stats_subscribe ->
         let name_sockets, close =
-          Vmm_trie.insert id (hdr.Vmm_commands.version, socket, `Current) t.name_sockets
+          Vmm_trie.insert id (hdr.Vmm_commands.version, socket) t.name_sockets
         in
         Ok ({ t with name_sockets }, close, "subscribed")
-      | `Old_stats_subscribe ->
-        let name_sockets, close =
-          Vmm_trie.insert id (hdr.Vmm_commands.version, socket, `Old) t.name_sockets
-        in
-        Ok ({ t with name_sockets }, close, "subscribed")
-
     end
   | _ ->
     Logs.err (fun m -> m "unexpected wire %a"
