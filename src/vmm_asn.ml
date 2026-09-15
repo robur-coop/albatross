@@ -179,6 +179,40 @@ let int32 =
   in
   Asn.S.map f g Asn.S.int
 
+let tally_ru =
+  let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, (nivcsw, (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))))))))))))))))))) =
+    Tally_rusage.{ utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw },
+    Tally_rusage.{ vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
+  and g (ru, ki) =
+    (ru.Tally_rusage.utime, (ru.stime, (ru.maxrss, (ru.ixrss, (ru.idrss, (ru.isrss, (ru.minflt, (ru.majflt, (ru.nswap, (ru.inblock, (ru.outblock, (ru.msgsnd, (ru.msgrcv, (ru.nsignals, (ru.nvcsw, (ru.nivcsw, (ki.Tally_rusage.vsize, (ki.rss, (ki.tsize, (ki.dsize, (ki.ssize, (ki.runtime, (ki.cow, ki.start)))))))))))))))))))))))
+  in
+  Asn.S.map f g @@
+  Asn.S.(sequence @@
+           (required ~label:"utime" int)
+         @ (required ~label:"stime" int)
+         @ (required ~label:"maxrss" int)
+         @ (required ~label:"ixrss" int)
+         @ (required ~label:"idrss" int)
+         @ (required ~label:"isrss" int)
+         @ (required ~label:"minflt" int)
+         @ (required ~label:"majflt" int)
+         @ (required ~label:"nswap" int)
+         @ (required ~label:"inblock" int)
+         @ (required ~label:"outblock" int)
+         @ (required ~label:"msgsnd" int)
+         @ (required ~label:"msgrcv" int)
+         @ (required ~label:"nsignals" int)
+         @ (required ~label:"nvcsw" int)
+         @ (required ~label:"nivcsw" int)
+         @ (required ~label:"bsize" int)
+         @ (required ~label:"rss" int)
+         @ (required ~label:"tsize" int)
+         @ (required ~label:"dsize" int)
+         @ (required ~label:"ssize" int)
+         @ (required ~label:"runtime" int)
+         @ (required ~label:"cow" int)
+        -@ (required ~label:"start" int))
+
 let ifdata =
   let open Stats in
   let f (bridge, (flags, (send_length, (max_send_length, (send_drops, (mtu, (baudrate, (input_packets, (input_errors, (output_packets, (output_errors, (collisions, (input_bytes, (output_bytes, (input_mcast, (output_mcast, (input_dropped, output_dropped))))))))))))))))) =
@@ -211,20 +245,16 @@ let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
-    | `C3 () -> `Old_stats_subscribe2
-    | `C4 () -> `Stats_initial
-    | `C5 () -> `Old_stats_subscribe
-    | `C6 () -> `Stats_subscribe
+    | `C3 () -> `Stats_initial
+    | `C4 () -> `Stats_subscribe
   and g = function
     | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
-    | `Old_stats_subscribe2 -> `C3 ()
-    | `Stats_initial -> `C4 ()
-    | `Old_stats_subscribe -> `C5 ()
-    | `Stats_subscribe -> `C6 ()
+    | `Stats_initial -> `C3 ()
+    | `Stats_subscribe -> `C4 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice6
+  Asn.S.(choice4
            (my_explicit 0 ~label:"add"
               (sequence2
                  (required ~label:"pid" int)
@@ -234,10 +264,8 @@ let stats_cmd =
                           (required ~label:"bridge" utf8_string)
                           (required ~label:"tap" utf8_string))))))
            (my_explicit 1 ~label:"remove" null)
-           (my_explicit 2 ~label:"old2 subscribe" null)
-           (my_explicit 3 ~label:"initial" null)
-           (my_explicit 4 ~label:"old subscribe" null)
-           (my_explicit 5 ~label:"subscribe" null))
+           (my_explicit 2 ~label:"initial" null)
+           (my_explicit 3 ~label:"subscribe" null))
 
 let name =
   let f str =
@@ -814,45 +842,33 @@ let log_ev =
 
 let data =
   let f = function
-    | `C1 (ru, ifs, _vmm, mem) -> `Stats_data (ru, mem, ifs)
-    | `C2 (timestamp, data) -> `Console_data (timestamp, data)
-    | `C3 `C1 s -> `Block_data (Some s)
-    | `C3 `C2 () -> `Block_data None
-    | `C4 e -> `Log_data e
-    | `C5 (ru, ifs, mem) -> `Stats_data (ru, mem, ifs)
+    | `C1 (timestamp, data) -> `Console_data (timestamp, data)
+    | `C2 `C1 s -> `Block_data (Some s)
+    | `C2 `C2 () -> `Block_data None
+    | `C3 e -> `Log_data e
+    | `C4 (tally, ifs) -> `Stats_data (tally, ifs)
   and g = function
-    | `Console_data (timestamp, data) -> `C2 (timestamp, data)
-    | `Old_stats_data (ru, mem, vmm, ifs) -> `C1 (ru, ifs, vmm, mem)
-    | `Block_data None -> `C3 (`C2 ())
-    | `Block_data Some s -> `C3 (`C1 s)
-    | `Log_data e -> `C4 e
-    | `Stats_data (ru, mem, ifs) -> `C5 (ru, ifs, mem)
+    | `Console_data (timestamp, data) -> `C1 (timestamp, data)
+    | `Block_data None -> `C2 (`C2 ())
+    | `Block_data Some s -> `C2 (`C1 s)
+    | `Log_data e -> `C3 e
+    | `Stats_data (tally, ifs) -> `C4 (tally, ifs)
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
-           (my_explicit 1 ~label:"old-statistics"
-              (sequence4
-                 (required ~label:"resource-usage" ru)
-                 (required ~label:"ifdata" (sequence_of ifdata))
-                 (optional ~label:"vmm-stats" @@ my_explicit 0
-                    (sequence_of (sequence2
-                                    (required ~label:"key" utf8_string)
-                                    (required ~label:"value" int64))))
-                 (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
-           (my_explicit 2 ~label:"console"
+  Asn.S.(choice4
+           (my_explicit 1 ~label:"console"
               (sequence2
                  (required ~label:"timestamp" generalized_time)
                  (required ~label:"data" utf8_string)))
-           (my_explicit 3 ~label:"block"
+           (my_explicit 2 ~label:"block"
               (choice2
                  (my_explicit 0 ~label:"some data" octet_string)
                  (my_explicit 1 ~label:"no data" null)))
-           (my_explicit 4 ~label:"log" log_ev)
-           (my_explicit 5 ~label:"statistics"
-              (sequence3
-                 (required ~label:"resource-usage" ru)
-                 (required ~label:"ifdata" (sequence_of ifdata))
-                 (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem))))
+           (my_explicit 3 ~label:"log" log_ev)
+           (my_explicit 4 ~label:"statistics"
+              (sequence2
+                 (required ~label:"rusage" tally_ru)
+                 (required ~label:"ifdata" (sequence_of ifdata)))))
 
 let old_unikernel_info4 =
   let open Unikernel in
