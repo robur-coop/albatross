@@ -17,29 +17,27 @@ open Albatross_stats_pure
 
 module Influx = struct
   open Vmm_core.Stats
-  let i64 i = Printf.sprintf "%Lui" i
-
-  let i32 i = Printf.sprintf "%lui" i
+  let i i = Printf.sprintf "%ui" i
 
   let encode_if unikernel ifd =
     let fields =
       (* TODO: flags *)
-      [ "send_queue_length", i32 ifd.send_length ;
-        "max_send_queue_length", i32 ifd.max_send_length ;
-        "send_queue_drops", i32 ifd.send_drops ;
-        "mtu", i32 ifd.mtu ;
-        "baudrate", i64 ifd.baudrate ;
-        "vm_to_host_packets", i64 ifd.input_packets ;
-        "vm_to_host_errors", i64 ifd.input_errors ;
-        "vm_to_host_bytes", i64 ifd.input_bytes ;
-        "vm_to_host_mcast", i64 ifd.input_mcast ;
-        "vm_to_host_dropped", i64 ifd.input_dropped ;
-        "collisions", i64 ifd.collisions ;
-        "host_to_vm_packets", i64 ifd.output_packets ;
-        "host_to_vm_errors", i64 ifd.output_errors ;
-        "host_to_vm_bytes", i64 ifd.output_bytes ;
-        "host_to_vm_mcast", i64 ifd.output_mcast ;
-        "host_to_vm_dropped", i64 ifd.output_dropped
+      [ "send_queue_length", i ifd.send_length ;
+        "max_send_queue_length", i ifd.max_send_length ;
+        "send_queue_drops", i ifd.send_drops ;
+        "mtu", i ifd.mtu ;
+        "baudrate", i ifd.baudrate ;
+        "vm_to_host_packets", i ifd.input_packets ;
+        "vm_to_host_errors", i ifd.input_errors ;
+        "vm_to_host_bytes", i ifd.input_bytes ;
+        "vm_to_host_mcast", i ifd.input_mcast ;
+        "vm_to_host_dropped", i ifd.input_dropped ;
+        "collisions", i ifd.collisions ;
+        "host_to_vm_packets", i ifd.output_packets ;
+        "host_to_vm_errors", i ifd.output_errors ;
+        "host_to_vm_bytes", i ifd.output_bytes ;
+        "host_to_vm_mcast", i ifd.output_mcast ;
+        "host_to_vm_dropped", i ifd.output_dropped
       ]
     in
     let fields = List.map (fun (k, v) -> k ^ "=" ^ v) fields in

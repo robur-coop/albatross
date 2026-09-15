@@ -210,23 +210,23 @@ end
 module Stats : sig
   type ifdata = {
     bridge : string;
-    flags : int32;
-    send_length : int32;
-    max_send_length : int32;
-    send_drops : int32;
-    mtu : int32;
-    baudrate : int64;
-    input_packets : int64;
-    input_errors : int64;
-    output_packets : int64;
-    output_errors : int64;
-    collisions : int64;
-    input_bytes : int64;
-    output_bytes : int64;
-    input_mcast : int64;
-    output_mcast : int64;
-    input_dropped : int64;
-    output_dropped : int64;
+    flags : int;
+    send_length : int;
+    max_send_length : int;
+    send_drops : int;
+    mtu : int;
+    baudrate : int;
+    input_packets : int;
+    input_errors : int;
+    output_packets : int;
+    output_errors : int;
+    collisions : int;
+    input_bytes : int;
+    output_bytes : int;
+    input_mcast : int;
+    output_mcast : int;
+    input_dropped : int;
+    output_dropped : int;
   }
   val pp_ifdata : ifdata Fmt.t
 

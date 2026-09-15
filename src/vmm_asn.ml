@@ -172,13 +172,6 @@ let mac_addr =
   in
   Asn.S.map f g Asn.S.octet_string
 
-(* TODO is this good? *)
-let int32 =
-  let f i = Int32.of_int i
-  and g i = Int32.to_int i
-  in
-  Asn.S.map f g Asn.S.int
-
 let tally_ru =
   let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, (nivcsw, (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))))))))))))))))))) =
     Tally_rusage.{ utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw },
@@ -223,23 +216,23 @@ let ifdata =
   Asn.S.map f g @@
   Asn.S.(sequence @@
          (required ~label:"bridge" utf8_string)
-       @ (required ~label:"flags" int32)
-       @ (required ~label:"send-length" int32)
-       @ (required ~label:"max-send-length" int32)
-       @ (required ~label:"send-drops" int32)
-       @ (required ~label:"mtu" int32)
-       @ (required ~label:"baudrate" int64)
-       @ (required ~label:"input-packets" int64)
-       @ (required ~label:"input-errors" int64)
-       @ (required ~label:"output-packets" int64)
-       @ (required ~label:"output-errors" int64)
-       @ (required ~label:"collisions" int64)
-       @ (required ~label:"input-bytes" int64)
-       @ (required ~label:"output-bytes" int64)
-       @ (required ~label:"input-mcast" int64)
-       @ (required ~label:"output-mcast" int64)
-       @ (required ~label:"input-dropped" int64)
-      -@ (required ~label:"output-dropped" int64))
+       @ (required ~label:"flags" int)
+       @ (required ~label:"send-length" int)
+       @ (required ~label:"max-send-length" int)
+       @ (required ~label:"send-drops" int)
+       @ (required ~label:"mtu" int)
+       @ (required ~label:"baudrate" int)
+       @ (required ~label:"input-packets" int)
+       @ (required ~label:"input-errors" int)
+       @ (required ~label:"output-packets" int)
+       @ (required ~label:"output-errors" int)
+       @ (required ~label:"collisions" int)
+       @ (required ~label:"input-bytes" int)
+       @ (required ~label:"output-bytes" int)
+       @ (required ~label:"input-mcast" int)
+       @ (required ~label:"output-mcast" int)
+       @ (required ~label:"input-dropped" int)
+      -@ (required ~label:"output-dropped" int))
 
 let stats_cmd =
   let f = function

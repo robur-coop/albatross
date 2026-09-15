@@ -54,23 +54,23 @@ CAMLprim value vmmanage_sysctl_ifdata (value num) {
 
   res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(data.ifmd_name));
-  Store_field(res, 1, Val32(data.ifmd_flags));
-  Store_field(res, 2, Val32(data.ifmd_snd_len));
-  Store_field(res, 3, Val32(data.ifmd_snd_maxlen));
-  Store_field(res, 4, Val32(data.ifmd_snd_drops));
-  Store_field(res, 5, Val32(data.ifmd_data.ifi_mtu));
-  Store_field(res, 6, Val64(data.ifmd_data.ifi_baudrate));
-  Store_field(res, 7, Val64(data.ifmd_data.ifi_ipackets));
-  Store_field(res, 8, Val64(data.ifmd_data.ifi_ierrors));
-  Store_field(res, 9, Val64(data.ifmd_data.ifi_opackets));
-  Store_field(res, 10, Val64(data.ifmd_data.ifi_oerrors));
-  Store_field(res, 11, Val64(data.ifmd_data.ifi_collisions));
-  Store_field(res, 12, Val64(data.ifmd_data.ifi_ibytes));
-  Store_field(res, 13, Val64(data.ifmd_data.ifi_obytes));
-  Store_field(res, 14, Val64(data.ifmd_data.ifi_imcasts));
-  Store_field(res, 15, Val64(data.ifmd_data.ifi_omcasts));
-  Store_field(res, 16, Val64(data.ifmd_data.ifi_iqdrops));
-  Store_field(res, 17, Val64(data.ifmd_data.ifi_oqdrops));
+  Store_field(res, 1, Val_int(data.ifmd_flags));
+  Store_field(res, 2, Val_int(data.ifmd_snd_len));
+  Store_field(res, 3, Val_int(data.ifmd_snd_maxlen));
+  Store_field(res, 4, Val_int(data.ifmd_snd_drops));
+  Store_field(res, 5, Val_int(data.ifmd_data.ifi_mtu));
+  Store_field(res, 6, Val_int(data.ifmd_data.ifi_baudrate));
+  Store_field(res, 7, Val_int(data.ifmd_data.ifi_ipackets));
+  Store_field(res, 8, Val_int(data.ifmd_data.ifi_ierrors));
+  Store_field(res, 9, Val_int(data.ifmd_data.ifi_opackets));
+  Store_field(res, 10, Val_int(data.ifmd_data.ifi_oerrors));
+  Store_field(res, 11, Val_int(data.ifmd_data.ifi_collisions));
+  Store_field(res, 12, Val_int(data.ifmd_data.ifi_ibytes));
+  Store_field(res, 13, Val_int(data.ifmd_data.ifi_obytes));
+  Store_field(res, 14, Val_int(data.ifmd_data.ifi_imcasts));
+  Store_field(res, 15, Val_int(data.ifmd_data.ifi_omcasts));
+  Store_field(res, 16, Val_int(data.ifmd_data.ifi_iqdrops));
+  Store_field(res, 17, Val_int(data.ifmd_data.ifi_oqdrops));
 
   CAMLreturn(res);
 }
@@ -126,23 +126,23 @@ CAMLprim value vmmanage_sysctl_ifdata(value num) {
   }
   res = caml_alloc(18, 0);
   Store_field(res, 0, caml_copy_string(rtnl_link_get_name(link)));
-  Store_field(res, 1, Val32(rtnl_link_get_flags(link)));
-  Store_field(res, 2, Val32(0)); /* send_length */
-  Store_field(res, 3, Val32(0)); /* max_send_length */
-  Store_field(res, 4, Val32(0)); /* send_drops */
-  Store_field(res, 5, Val32(rtnl_link_get_mtu(link)));
-  Store_field(res, 6, Val64(0)); /* baudrate */
-  Store_field(res, 7, Val64(get_stat(link, RX_PACKETS)));
-  Store_field(res, 8, Val64(get_stat(link, RX_ERRORS)));
-  Store_field(res, 9, Val64(get_stat(link, TX_PACKETS)));
-  Store_field(res, 10, Val64(get_stat(link, TX_ERRORS)));
-  Store_field(res, 11, Val64(get_stat(link, COLLISIONS)));
-  Store_field(res, 12, Val64(get_stat(link, RX_BYTES)));
-  Store_field(res, 13, Val64(get_stat(link, TX_BYTES)));
-  Store_field(res, 14, Val64(get_stat(link, MULTICAST)));
-  Store_field(res, 15, Val64(0));
-  Store_field(res, 16, Val64(get_stat(link, RX_DROPPED)));
-  Store_field(res, 17, Val64(get_stat(link, TX_DROPPED)));
+  Store_field(res, 1, Val_int(rtnl_link_get_flags(link)));
+  Store_field(res, 2, Val_int(0)); /* send_length */
+  Store_field(res, 3, Val_int(0)); /* max_send_length */
+  Store_field(res, 4, Val_int(0)); /* send_drops */
+  Store_field(res, 5, Val_int(rtnl_link_get_mtu(link)));
+  Store_field(res, 6, Val_int(0)); /* baudrate */
+  Store_field(res, 7, Val_int(get_stat(link, RX_PACKETS)));
+  Store_field(res, 8, Val_int(get_stat(link, RX_ERRORS)));
+  Store_field(res, 9, Val_int(get_stat(link, TX_PACKETS)));
+  Store_field(res, 10, Val_int(get_stat(link, TX_ERRORS)));
+  Store_field(res, 11, Val_int(get_stat(link, COLLISIONS)));
+  Store_field(res, 12, Val_int(get_stat(link, RX_BYTES)));
+  Store_field(res, 13, Val_int(get_stat(link, TX_BYTES)));
+  Store_field(res, 14, Val_int(get_stat(link, MULTICAST)));
+  Store_field(res, 15, Val_int(0));
+  Store_field(res, 16, Val_int(get_stat(link, RX_DROPPED)));
+  Store_field(res, 17, Val_int(get_stat(link, TX_DROPPED)));
   nl_cache_free(link_cache);
   nl_socket_free(nl_sock);
   CAMLreturn(res);

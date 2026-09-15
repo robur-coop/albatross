@@ -494,27 +494,27 @@ end
 module Stats = struct
   type ifdata = {
     bridge : string ;
-    flags : int32 ;
-    send_length : int32 ;
-    max_send_length : int32 ;
-    send_drops : int32 ;
-    mtu : int32 ;
-    baudrate : int64 ;
-    input_packets : int64 ;
-    input_errors : int64 ;
-    output_packets : int64 ;
-    output_errors : int64 ;
-    collisions : int64 ;
-    input_bytes : int64 ;
-    output_bytes : int64 ;
-    input_mcast : int64 ;
-    output_mcast : int64 ;
-    input_dropped : int64 ;
-    output_dropped : int64 ;
+    flags : int ;
+    send_length : int ;
+    max_send_length : int ;
+    send_drops : int ;
+    mtu : int ;
+    baudrate : int ;
+    input_packets : int ;
+    input_errors : int ;
+    output_packets : int ;
+    output_errors : int ;
+    collisions : int ;
+    input_bytes : int ;
+    output_bytes : int ;
+    input_mcast : int ;
+    output_mcast : int ;
+    input_dropped : int ;
+    output_dropped : int ;
   }
 
   let pp_ifdata ppf i =
-    Fmt.pf ppf "bridge %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
+    Fmt.pf ppf "bridge %s flags %X send_length %u max_send_length %u send_drops %u mtu %u baudrate %u input_packets %u input_errors %u output_packets %u output_errors %u collisions %u input_bytes %u output_bytes %u input_mcast %u output_mcast %u input_dropped %u output_dropped %u"
       i.bridge i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
   type t = Tally_rusage.(rusage * kinfo_mem) * ifdata list
