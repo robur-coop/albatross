@@ -22,7 +22,8 @@ let port_socket ip port =
       PF_INET6, ADDR_INET (Ipaddr_unix.V6.to_inet_addr v6, port),
       fun s -> setsockopt s IPV6_ONLY false
   in
-  let s = socket pf SOCK_STREAM 0 in
+  let proto = Unix.getprotobyname "tcp" in
+  let s = socket pf SOCK_STREAM proto.Unix.p_proto in
   set_close_on_exec s ;
   setsockopt s SO_REUSEADDR true ;
   sockopt s ;
@@ -47,7 +48,8 @@ let service_socket sock =
           | e -> raise e)
     | false -> Lwt.return_unit)
   >>= fun () ->
-  let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM 0) in
+  let proto = Unix.getprotobyname "tcp" in
+  let s = Lwt_unix.(socket PF_UNIX SOCK_STREAM proto.Unix.p_proto) in
   Lwt_unix.set_close_on_exec s;
   let old_umask = Unix.umask 0 in
   let _ = Unix.umask (old_umask land 0o707) in
@@ -62,7 +64,8 @@ let service_socket sock =
   s
 
 let connect addrtype sockaddr =
-  let c = Lwt_unix.(socket addrtype SOCK_STREAM 0) in
+  let proto = Unix.getprotobyname "tcp" in
+  let c = Lwt_unix.(socket addrtype SOCK_STREAM proto.Unix.p_proto) in
   Lwt_unix.set_close_on_exec c ;
   Lwt.catch (fun () ->
       Lwt_unix.(connect c sockaddr) >|= fun () ->
