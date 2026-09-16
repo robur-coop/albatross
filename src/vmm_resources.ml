@@ -30,17 +30,18 @@ let empty dev_zvol = {
 }
 
 let policy_metrics =
-  let open Metrics in
-  let doc = "Albatross resource policies" in
-  let data policy =
-    Data.v [
-      uint "maximum unikernels" policy.Policy.unikernels ;
-      uint "maximum memory" policy.Policy.memory ;
-      uint "maximum block" (match policy.Policy.block with None -> 0 | Some x -> x)
-    ]
+  let data = Hashtbl.create 3 in
+  let measure () =
+    Hashtbl.fold (fun domain policy acc ->
+        ([ "domain", domain ],
+         [ "maximum unikernels", policy.Policy.unikernels ;
+           "maximum memory", policy.Policy.memory ;
+           "maximum block", (match policy.Policy.block with None -> 0 | Some x -> x) ])
+        :: acc)
+      data []
   in
-  let tag = Tags.string "domain" in
-  Src.v ~doc ~tags:Tags.[tag] ~data "albatross-policies"
+  let _ = Tally.v "albatross-policies" measure in
+  (fun domain policy -> Hashtbl.replace data domain policy)
 
 let no_policy = Policy.{ unikernels = 0 ; cpuids = IS.empty ; memory = 0 ; block = None ; bridges = String_set.empty }
 
@@ -62,33 +63,31 @@ let unikernel_usage t path =
        (succ unikernels, memory + unikernel.Unikernel.config.Unikernel.memory))
     (0, 0)
 
-let unikernel_metrics =
-  let open Metrics in
-  let doc = "Albatross unikernels" in
-  let data (t, path) =
-    let unikernels, memory = unikernel_usage t path
-    and act, inact = block_usage t path
-    in
-    Data.v [
-      uint "attached used block" act ;
-      uint "unattached used block" inact ;
-      uint "total used block" (act + inact) ;
-      uint "running unikernels" unikernels ;
-      uint "used memory" memory
-    ]
-  in
-  let tag = Tags.string "domain" in
-  Src.v ~doc ~tags:Tags.[tag] ~data "albatross-unikernels"
+module S = Set.Make(Vmm_core.Name.Path)
 
-let report_unikernels t name =
-  let rec doit path =
-    let str =
-      if Name.Path.is_root path then ":" else Name.Path.to_string path
-    in
-    Metrics.add unikernel_metrics (fun x -> x str) (fun d -> d (t, path));
-    if Name.Path.is_root path then () else doit (Name.Path.parent path)
+let unikernel_metrics =
+  let data : t option ref = ref None in
+  let measure () =
+    match !data with
+    | None -> []
+    | Some t ->
+      S.fold (fun path acc ->
+          let unikernels, memory = unikernel_usage t path
+          and act, inact = block_usage t path
+          in
+          ([ "domain", Name.Path.to_string path ],
+           [ "attached used block", act ;
+             "unattached used block", inact ;
+             "total used block", act + inact ;
+             "running unikernels", unikernels ;
+             "used memory", memory ]) :: acc)
+        (S.union
+           (S.of_list (Vmm_trie.paths t.unikernels))
+           (S.of_list (Vmm_trie.paths t.block_devices)))
+        []
   in
-  doit (Name.path name)
+  let _ = Tally.v "albatross-unikernels" measure in
+  (fun t -> data := Some t)
 
 let find_unikernel t name = Vmm_trie.find name t.unikernels
 
@@ -133,7 +132,7 @@ let remove_unikernel t name = match find_unikernel t name with
     let* block_devices = use_blocks ?dev_zvol:t.dev_zvol t.block_devices name unikernel false in
     let unikernels = Vmm_trie.remove name t.unikernels in
     let t' = { t with block_devices ; unikernels } in
-    report_unikernels t' name;
+    unikernel_metrics t';
     Ok t'
 
 let remove_policy t path = match find_policy t path with
@@ -142,8 +141,7 @@ let remove_policy t path = match find_policy t path with
     let policies =
       Vmm_trie.remove (Vmm_core.Name.make_of_path path) t.policies
     in
-    Metrics.add policy_metrics
-      (fun x -> x (Name.Path.to_string path)) (fun d -> d no_policy);
+    policy_metrics (Name.Path.to_string path) no_policy;
     Ok { t with policies }
 
 let remove_block t name =
@@ -155,7 +153,7 @@ let remove_block t name =
     else
       let block_devices = Vmm_trie.remove name t.block_devices in
       let t' = { t with block_devices } in
-      report_unikernels t' name;
+      unikernel_metrics t';
       Ok t'
 
 let bridge_allowed set s = String_set.mem s set
@@ -224,7 +222,7 @@ let insert_unikernel t name unikernel =
   (match old with None -> () | Some _ -> invalid_arg ("unikernel " ^ Name.to_string name ^ " already exists in trie")) ;
   let* block_devices = use_blocks ?dev_zvol:t.dev_zvol t.block_devices name unikernel true in
   let t' = { t with unikernels ; block_devices } in
-  report_unikernels t' name;
+  unikernel_metrics t';
   Ok t'
 
 let check_block t name size =
@@ -254,7 +252,7 @@ let insert_block t name size =
   let* () = check_block t name size in
   let block_devices = fst (Vmm_trie.insert name (size, false) t.block_devices) in
   let t' = { t with block_devices } in
-  report_unikernels t' name;
+  unikernel_metrics t';
   Ok t'
 
 let check_policies_above t path sub =
@@ -320,6 +318,5 @@ let insert_policy t path p =
   let policies =
     fst (Vmm_trie.insert (Vmm_core.Name.make_of_path path) p t.policies)
   in
-  Metrics.add policy_metrics
-    (fun x -> x (Name.Path.to_string path)) (fun d -> d p);
+  policy_metrics (Name.Path.to_string path) p;
   Ok { t with policies }

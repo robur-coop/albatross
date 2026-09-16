@@ -4,22 +4,16 @@ module String_set = Set.Make(String)
 
 module String_map = Map.Make(String)
 
-let conn_metrics kind =
+let connections kind =
   let s = ref (0, 0) in
-  let open Metrics in
-  let doc = "connection statistics" in
-  let data () =
-    Data.v [
-      int "active" (fst !s) ;
-      int "total" (snd !s) ;
-    ] in
-  let tags = Tags.string "kind" in
-  let src = Src.v ~doc ~tags:Tags.[ tags ] ~data "connections" in
+  let measure () =
+    [ [ "kind", kind ], [ "active", fst !s ; "total", snd !s ] ]
+  in
+  let _tally = Tally.v "connections" measure in
   (fun action ->
      (match action with
       | `Open -> s := (succ (fst !s), succ (snd !s))
-      | `Close -> s := (pred (fst !s), snd !s));
-     Metrics.add src (fun x -> x kind) (fun d -> d ()))
+      | `Close -> s := (pred (fst !s), snd !s)))
 
 let tmpdir = ref (Fpath.v "/nonexisting")
 
@@ -498,77 +492,37 @@ module Unikernel = struct
 end
 
 module Stats = struct
-  type rusage = {
-    utime : (int64 * int) ;
-    stime : (int64 * int) ;
-    maxrss : int64 ;
-    ixrss : int64 ;
-    idrss : int64 ;
-    isrss : int64 ;
-    minflt : int64 ;
-    majflt : int64 ;
-    nswap : int64 ;
-    inblock : int64 ;
-    outblock : int64 ;
-    msgsnd : int64 ;
-    msgrcv : int64 ;
-    nsignals : int64 ;
-    nvcsw : int64 ;
-    nivcsw : int64 ;
-  }
-
-  let pp_rusage ppf r =
-    Fmt.pf ppf "utime %Lu.%06d stime %Lu.%06d maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu nswap %Lu inblock %Lu outblock %Lu msgsnd %Lu msgrcv %Lu signals %Lu nvcsw %Lu nivcsw %Lu"
-      (fst r.utime) (snd r.utime) (fst r.stime) (snd r.stime) r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt r.nswap r.inblock r.outblock r.msgsnd r.msgrcv r.nsignals r.nvcsw r.nivcsw
-  let pp_rusage_mem ppf r =
-    Fmt.pf ppf "maxrss %Lu ixrss %Lu idrss %Lu isrss %Lu minflt %Lu majflt %Lu"
-      r.maxrss r.ixrss r.idrss r.isrss r.minflt r.majflt
-
-  type kinfo_mem = {
-    vsize : int64 ;
-    rss : int64 ;
-    tsize : int64 ;
-    dsize : int64 ;
-    ssize : int64 ;
-    runtime : int64 ;
-    cow : int ;
-    start : (int64 * int) ;
-  }
-
-  let pp_kinfo_mem ppf t =
-    Fmt.pf ppf "virtual-size %Lu rss %Lu text-size %Lu data-size %Lu stack-size %Lu runtime %Lu cow %u start %Lu.%06d"
-      t.vsize t.rss t.tsize t.dsize t.ssize t.runtime t.cow (fst t.start) (snd t.start)
-
   type ifdata = {
     bridge : string ;
-    flags : int32 ;
-    send_length : int32 ;
-    max_send_length : int32 ;
-    send_drops : int32 ;
-    mtu : int32 ;
-    baudrate : int64 ;
-    input_packets : int64 ;
-    input_errors : int64 ;
-    output_packets : int64 ;
-    output_errors : int64 ;
-    collisions : int64 ;
-    input_bytes : int64 ;
-    output_bytes : int64 ;
-    input_mcast : int64 ;
-    output_mcast : int64 ;
-    input_dropped : int64 ;
-    output_dropped : int64 ;
+    flags : int ;
+    send_length : int ;
+    max_send_length : int ;
+    send_drops : int ;
+    mtu : int ;
+    baudrate : int ;
+    input_packets : int ;
+    input_errors : int ;
+    output_packets : int ;
+    output_errors : int ;
+    collisions : int ;
+    input_bytes : int ;
+    output_bytes : int ;
+    input_mcast : int ;
+    output_mcast : int ;
+    input_dropped : int ;
+    output_dropped : int ;
   }
 
   let pp_ifdata ppf i =
-    Fmt.pf ppf "bridge %s flags %lX send_length %lu max_send_length %lu send_drops %lu mtu %lu baudrate %Lu input_packets %Lu input_errors %Lu output_packets %Lu output_errors %Lu collisions %Lu input_bytes %Lu output_bytes %Lu input_mcast %Lu output_mcast %Lu input_dropped %Lu output_dropped %Lu"
+    Fmt.pf ppf "bridge %s flags %X send_length %u max_send_length %u send_drops %u mtu %u baudrate %u input_packets %u input_errors %u output_packets %u output_errors %u collisions %u input_bytes %u output_bytes %u input_mcast %u output_mcast %u input_dropped %u output_dropped %u"
       i.bridge i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
-  type t = rusage * kinfo_mem option * ifdata list
-  let pp ppf (ru, mem, ifs) =
-    Fmt.pf ppf "%a@.%a@.%a"
-      pp_rusage ru
-      Fmt.(option ~none:(any "no kinfo_mem stats") pp_kinfo_mem) mem
+  type t = Tally_rusage.(rusage * kinfo_mem) * ifdata list
+
+  let pp ppf (tally, ifs) =
+    let fs = Tally_rusage.to_fields tally in
+    Fmt.pf ppf "%a@.%a"
+      Fmt.(list ~sep:(any "@.") (pair ~sep:(any " ") string int)) fs
       Fmt.(list ~sep:(any "@.@.") pp_ifdata) ifs
 end
 

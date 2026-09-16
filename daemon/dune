@@ -2,14 +2,14 @@
  (name albatrossd_utils)
  (wrapped false)
  (modules albatrossd_utils)
- (libraries albatross albatross.unix albatross.cli ipaddr.unix lwt.unix metrics metrics-lwt metrics-influx metrics-rusage cmdliner))
+ (libraries albatross albatross.unix albatross.cli ipaddr.unix lwt.unix cmdliner tally tally.rusage))
 
 (executable
  (name albatrossd)
  (public_name albatrossd)
  (package albatross)
  (modules albatrossd)
- (libraries albatross.cli albatross albatrossd_utils metrics-lwt metrics-influx))
+ (libraries albatross.cli albatross albatrossd_utils))
 
 (executable
  (name albatross_console)

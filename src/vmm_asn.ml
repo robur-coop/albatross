@@ -172,63 +172,39 @@ let mac_addr =
   in
   Asn.S.map f g Asn.S.octet_string
 
-let timeval =
-  Asn.S.(sequence2
-           (required ~label:"seconds" int64)
-           (required ~label:"microseconds" int))
-
-let ru =
-  let open Stats in
-  let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, nivcsw))))))))))))))) =
-    { utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw }
-  and g ru =
-    (ru.utime, (ru.stime, (ru.maxrss, (ru.ixrss, (ru.idrss, (ru.isrss, (ru.minflt, (ru.majflt, (ru.nswap, (ru.inblock, (ru.outblock, (ru.msgsnd, (ru.msgrcv, (ru.nsignals, (ru.nvcsw, ru.nivcsw)))))))))))))))
+let tally_ru =
+  let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, (nivcsw, (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))))))))))))))))))) =
+    Tally_rusage.{ utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw },
+    Tally_rusage.{ vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
+  and g (ru, ki) =
+    (ru.Tally_rusage.utime, (ru.stime, (ru.maxrss, (ru.ixrss, (ru.idrss, (ru.isrss, (ru.minflt, (ru.majflt, (ru.nswap, (ru.inblock, (ru.outblock, (ru.msgsnd, (ru.msgrcv, (ru.nsignals, (ru.nvcsw, (ru.nivcsw, (ki.Tally_rusage.vsize, (ki.rss, (ki.tsize, (ki.dsize, (ki.ssize, (ki.runtime, (ki.cow, ki.start)))))))))))))))))))))))
   in
   Asn.S.map f g @@
   Asn.S.(sequence @@
-           (required ~label:"utime" timeval)
-         @ (required ~label:"stime" timeval)
-         @ (required ~label:"maxrss" int64)
-         @ (required ~label:"ixrss" int64)
-         @ (required ~label:"idrss" int64)
-         @ (required ~label:"isrss" int64)
-         @ (required ~label:"minflt" int64)
-         @ (required ~label:"majflt" int64)
-         @ (required ~label:"nswap" int64)
-         @ (required ~label:"inblock" int64)
-         @ (required ~label:"outblock" int64)
-         @ (required ~label:"msgsnd" int64)
-         @ (required ~label:"msgrcv" int64)
-         @ (required ~label:"nsignals" int64)
-         @ (required ~label:"nvcsw" int64)
-        -@ (required ~label:"nivcsw" int64))
-
-(* although this changed (+runtime + cow + start) from V3 to V4, since it's not
-   persistent, no need to care about it *)
-let kinfo_mem =
-  let open Stats in
-  let f (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))) =
-    { vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
-  and g t =
-    (t.vsize, (t.rss, (t.tsize, (t.dsize, (t.ssize, (t.runtime, (t.cow, t.start)))))))
-  in
-  Asn.S.map f g @@
-  Asn.S.(sequence @@
-           (required ~label:"bsize" int64)
-         @ (required ~label:"rss" int64)
-         @ (required ~label:"tsize" int64)
-         @ (required ~label:"dsize" int64)
-         @ (required ~label:"ssize" int64)
-         @ (required ~label:"runtime" int64)
+           (required ~label:"utime" int)
+         @ (required ~label:"stime" int)
+         @ (required ~label:"maxrss" int)
+         @ (required ~label:"ixrss" int)
+         @ (required ~label:"idrss" int)
+         @ (required ~label:"isrss" int)
+         @ (required ~label:"minflt" int)
+         @ (required ~label:"majflt" int)
+         @ (required ~label:"nswap" int)
+         @ (required ~label:"inblock" int)
+         @ (required ~label:"outblock" int)
+         @ (required ~label:"msgsnd" int)
+         @ (required ~label:"msgrcv" int)
+         @ (required ~label:"nsignals" int)
+         @ (required ~label:"nvcsw" int)
+         @ (required ~label:"nivcsw" int)
+         @ (required ~label:"bsize" int)
+         @ (required ~label:"rss" int)
+         @ (required ~label:"tsize" int)
+         @ (required ~label:"dsize" int)
+         @ (required ~label:"ssize" int)
+         @ (required ~label:"runtime" int)
          @ (required ~label:"cow" int)
-        -@ (required ~label:"start" timeval))
-
-(* TODO is this good? *)
-let int32 =
-  let f i = Int32.of_int i
-  and g i = Int32.to_int i
-  in
-  Asn.S.map f g Asn.S.int
+        -@ (required ~label:"start" int))
 
 let ifdata =
   let open Stats in
@@ -240,40 +216,38 @@ let ifdata =
   Asn.S.map f g @@
   Asn.S.(sequence @@
          (required ~label:"bridge" utf8_string)
-       @ (required ~label:"flags" int32)
-       @ (required ~label:"send-length" int32)
-       @ (required ~label:"max-send-length" int32)
-       @ (required ~label:"send-drops" int32)
-       @ (required ~label:"mtu" int32)
-       @ (required ~label:"baudrate" int64)
-       @ (required ~label:"input-packets" int64)
-       @ (required ~label:"input-errors" int64)
-       @ (required ~label:"output-packets" int64)
-       @ (required ~label:"output-errors" int64)
-       @ (required ~label:"collisions" int64)
-       @ (required ~label:"input-bytes" int64)
-       @ (required ~label:"output-bytes" int64)
-       @ (required ~label:"input-mcast" int64)
-       @ (required ~label:"output-mcast" int64)
-       @ (required ~label:"input-dropped" int64)
-      -@ (required ~label:"output-dropped" int64))
+       @ (required ~label:"flags" int)
+       @ (required ~label:"send-length" int)
+       @ (required ~label:"max-send-length" int)
+       @ (required ~label:"send-drops" int)
+       @ (required ~label:"mtu" int)
+       @ (required ~label:"baudrate" int)
+       @ (required ~label:"input-packets" int)
+       @ (required ~label:"input-errors" int)
+       @ (required ~label:"output-packets" int)
+       @ (required ~label:"output-errors" int)
+       @ (required ~label:"collisions" int)
+       @ (required ~label:"input-bytes" int)
+       @ (required ~label:"output-bytes" int)
+       @ (required ~label:"input-mcast" int)
+       @ (required ~label:"output-mcast" int)
+       @ (required ~label:"input-dropped" int)
+      -@ (required ~label:"output-dropped" int))
 
 let stats_cmd =
   let f = function
     | `C1 (pid, taps) -> `Stats_add (pid, taps)
     | `C2 () -> `Stats_remove
-    | `C3 () -> `Old_stats_subscribe
-    | `C4 () -> `Stats_initial
-    | `C5 () -> `Stats_subscribe
+    | `C3 () -> `Stats_initial
+    | `C4 () -> `Stats_subscribe
   and g = function
     | `Stats_add (pid, taps) -> `C1 (pid, taps)
     | `Stats_remove -> `C2 ()
-    | `Old_stats_subscribe -> `C3 ()
-    | `Stats_initial -> `C4 ()
-    | `Stats_subscribe -> `C5 ()
+    | `Stats_initial -> `C3 ()
+    | `Stats_subscribe -> `C4 ()
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
+  Asn.S.(choice4
            (my_explicit 0 ~label:"add"
               (sequence2
                  (required ~label:"pid" int)
@@ -283,9 +257,8 @@ let stats_cmd =
                           (required ~label:"bridge" utf8_string)
                           (required ~label:"tap" utf8_string))))))
            (my_explicit 1 ~label:"remove" null)
-           (my_explicit 2 ~label:"subscribe" null)
-           (my_explicit 3 ~label:"initial" null)
-           (my_explicit 4 ~label:"subscribe" null))
+           (my_explicit 2 ~label:"initial" null)
+           (my_explicit 3 ~label:"subscribe" null))
 
 let name =
   let f str =
@@ -862,45 +835,33 @@ let log_ev =
 
 let data =
   let f = function
-    | `C1 (ru, ifs, _vmm, mem) -> `Stats_data (ru, mem, ifs)
-    | `C2 (timestamp, data) -> `Console_data (timestamp, data)
-    | `C3 `C1 s -> `Block_data (Some s)
-    | `C3 `C2 () -> `Block_data None
-    | `C4 e -> `Log_data e
-    | `C5 (ru, ifs, mem) -> `Stats_data (ru, mem, ifs)
+    | `C1 (timestamp, data) -> `Console_data (timestamp, data)
+    | `C2 `C1 s -> `Block_data (Some s)
+    | `C2 `C2 () -> `Block_data None
+    | `C3 e -> `Log_data e
+    | `C4 (tally, ifs) -> `Stats_data (tally, ifs)
   and g = function
-    | `Console_data (timestamp, data) -> `C2 (timestamp, data)
-    | `Old_stats_data (ru, mem, vmm, ifs) -> `C1 (ru, ifs, vmm, mem)
-    | `Block_data None -> `C3 (`C2 ())
-    | `Block_data Some s -> `C3 (`C1 s)
-    | `Log_data e -> `C4 e
-    | `Stats_data (ru, mem, ifs) -> `C5 (ru, ifs, mem)
+    | `Console_data (timestamp, data) -> `C1 (timestamp, data)
+    | `Block_data None -> `C2 (`C2 ())
+    | `Block_data Some s -> `C2 (`C1 s)
+    | `Log_data e -> `C3 e
+    | `Stats_data (tally, ifs) -> `C4 (tally, ifs)
   in
   Asn.S.map f g @@
-  Asn.S.(choice5
-           (my_explicit 1 ~label:"old-statistics"
-              (sequence4
-                 (required ~label:"resource-usage" ru)
-                 (required ~label:"ifdata" (sequence_of ifdata))
-                 (optional ~label:"vmm-stats" @@ my_explicit 0
-                    (sequence_of (sequence2
-                                    (required ~label:"key" utf8_string)
-                                    (required ~label:"value" int64))))
-                 (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem)))
-           (my_explicit 2 ~label:"console"
+  Asn.S.(choice4
+           (my_explicit 1 ~label:"console"
               (sequence2
                  (required ~label:"timestamp" generalized_time)
                  (required ~label:"data" utf8_string)))
-           (my_explicit 3 ~label:"block"
+           (my_explicit 2 ~label:"block"
               (choice2
                  (my_explicit 0 ~label:"some data" octet_string)
                  (my_explicit 1 ~label:"no data" null)))
-           (my_explicit 4 ~label:"log" log_ev)
-           (my_explicit 5 ~label:"statistics"
-              (sequence3
-                 (required ~label:"resource-usage" ru)
-                 (required ~label:"ifdata" (sequence_of ifdata))
-                 (optional ~label:"kinfo-mem" @@ implicit 1 kinfo_mem))))
+           (my_explicit 3 ~label:"log" log_ev)
+           (my_explicit 4 ~label:"statistics"
+              (sequence2
+                 (required ~label:"rusage" tally_ru)
+                 (required ~label:"ifdata" (sequence_of ifdata)))))
 
 let old_unikernel_info4 =
   let open Unikernel in
