@@ -1224,10 +1224,12 @@ let args =
 
 let colon_separated_c =
   let parse s =
-    match String.split_on_char ':' s with
-    | [ a ; b ] -> Ok (a, Some b)
-    | [ _ ] -> Ok (s, None)
-    | _ -> Error (`Msg "format is 'name' or 'name:device-name'")
+    match String.index_opt s ':' with
+    | Some idx ->
+      let a = String.sub s 0 idx
+      and b = String.sub s (succ idx) (String.length s - (succ idx)) in
+      Ok (a, Some b)
+    | None -> Ok (s, None)
   and pp ppf (a, b) =
     Fmt.pf ppf "%s:%s" a (match b with None -> a | Some b -> b)
   in
