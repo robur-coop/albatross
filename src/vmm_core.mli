@@ -230,7 +230,7 @@ module Stats : sig
   }
   val pp_ifdata : ifdata Fmt.t
 
-  type t = Tally_rusage.(rusage * kinfo_mem) * ifdata list
+  type t = Tally_rusage.ru * ifdata list
   val pp : t Fmt.t
 end
 

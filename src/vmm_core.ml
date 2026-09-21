@@ -517,7 +517,7 @@ module Stats = struct
     Fmt.pf ppf "bridge %s flags %X send_length %u max_send_length %u send_drops %u mtu %u baudrate %u input_packets %u input_errors %u output_packets %u output_errors %u collisions %u input_bytes %u output_bytes %u input_mcast %u output_mcast %u input_dropped %u output_dropped %u"
       i.bridge i.flags i.send_length i.max_send_length i.send_drops i.mtu i.baudrate i.input_packets i.input_errors i.output_packets i.output_errors i.collisions i.input_bytes i.output_bytes i.input_mcast i.output_mcast i.input_dropped i.output_dropped
 
-  type t = Tally_rusage.(rusage * kinfo_mem) * ifdata list
+  type t = Tally_rusage.ru * ifdata list
 
   let pp ppf (tally, ifs) =
     let fs = Tally_rusage.to_fields tally in

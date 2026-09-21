@@ -174,10 +174,9 @@ let mac_addr =
 
 let tally_ru =
   let f (utime, (stime, (maxrss, (ixrss, (idrss, (isrss, (minflt, (majflt, (nswap, (inblock, (outblock, (msgsnd, (msgrcv, (nsignals, (nvcsw, (nivcsw, (vsize, (rss, (tsize, (dsize, (ssize, (runtime, (cow, start))))))))))))))))))))))) =
-    Tally_rusage.{ utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw },
-    Tally_rusage.{ vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
-  and g (ru, ki) =
-    (ru.Tally_rusage.utime, (ru.stime, (ru.maxrss, (ru.ixrss, (ru.idrss, (ru.isrss, (ru.minflt, (ru.majflt, (ru.nswap, (ru.inblock, (ru.outblock, (ru.msgsnd, (ru.msgrcv, (ru.nsignals, (ru.nvcsw, (ru.nivcsw, (ki.Tally_rusage.vsize, (ki.rss, (ki.tsize, (ki.dsize, (ki.ssize, (ki.runtime, (ki.cow, ki.start)))))))))))))))))))))))
+    Tally_rusage.{ utime ; stime ; maxrss ; ixrss ; idrss ; isrss ; minflt ; majflt ; nswap ; inblock ; outblock ; msgsnd ; msgrcv ; nsignals ; nvcsw ; nivcsw ; vsize ; rss ; tsize ; dsize ; ssize ; runtime ; cow ; start }
+  and g ru =
+    (ru.Tally_rusage.utime, (ru.stime, (ru.maxrss, (ru.ixrss, (ru.idrss, (ru.isrss, (ru.minflt, (ru.majflt, (ru.nswap, (ru.inblock, (ru.outblock, (ru.msgsnd, (ru.msgrcv, (ru.nsignals, (ru.nvcsw, (ru.nivcsw, (ru.vsize, (ru.rss, (ru.tsize, (ru.dsize, (ru.ssize, (ru.runtime, (ru.cow, ru.start)))))))))))))))))))))))
   in
   Asn.S.map f g @@
   Asn.S.(sequence @@
