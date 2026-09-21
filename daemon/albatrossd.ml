@@ -264,7 +264,7 @@ let write_reply name fd txt (hdr, cmd) =
       Logs.err (fun m -> m "error in read from %s" name) ;
       Error (`Msg "communication failure")
 
-let m = conn_metrics "unix"
+let m = connections "unix"
 
 let jump _ systemd influx tmpdir dbdir no_drop dev_zvol =
   Sys.(set_signal sigpipe Signal_ignore);

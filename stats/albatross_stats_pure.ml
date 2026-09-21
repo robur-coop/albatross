@@ -4,10 +4,6 @@ open Vmm_core
 
 let ( let* ) = Result.bind
 
-external sysconf_clock_tick : unit -> int = "vmmanage_sysconf_clock_tick"
-
-external sysctl_kinfo_proc : int -> Stats.rusage * Stats.kinfo_mem =
-  "vmmanage_sysctl_kinfo_proc"
 external get_ifindex_by_name : string -> int = "vmmanage_get_ifindex_by_name"
 external sysctl_ifdata : int -> Stats.ifdata = "vmmanage_sysctl_ifdata"
 
@@ -36,7 +32,7 @@ let rec wrap f arg =
     Logs.err (fun m -> m "exception %s" (Printexc.to_string e)) ;
     None
 
-let vmmapi = conn_metrics "vmmapi"
+let vmmapi = connections "vmmapi"
 
 let remove_vmid t vmid =
   Logs.info (fun m -> m "removing vmid %a" Vmm_core.Name.pp vmid) ;
@@ -49,134 +45,22 @@ let remove_vmid t vmid =
     in
     { t with pid_nic ; vmid_pid }
 
-let reported_vmmapi = ref false
-
-let string_of_file filename =
-  try
-    let fh = open_in filename in
-    let content = input_line fh in
-    close_in_noerr fh ;
-    Ok content
-  with _ -> Error (`Msg (Fmt.str "Error reading file %S" filename))
-
-let parse_proc_stat s =
-  let stats_opt =
-    match String.index_opt s '(', String.rindex_opt s ')' with
-    | Some idxa, Some idxb ->
-      let pid = String.sub s 0 (idxa - 1)
-      and tcomm = String.sub s (idxa + 1) (idxb - idxa - 1)
-      and rest = String.sub s (idxb + 2) (String.length s - (idxb + 2))
-      in
-      let rest = String.split_on_char ' ' rest in
-      Some (pid :: tcomm :: rest)
-    | _ -> None
-  in
-  Option.to_result ~none:(`Msg "unable to parse /proc/<pid>/stat") stats_opt
-
-let read_proc_status pid =
-  try
-    let fh = open_in ("/proc/" ^ string_of_int pid ^ "/status") in
-    let lines =
-      let rec read_lines acc = try
-          read_lines (input_line fh :: acc)
-        with End_of_file -> acc in
-      read_lines []
-    in
-    close_in_noerr fh ;
-    List.map (String.split_on_char ':') lines |>
-    List.fold_left (fun acc x -> match acc, x with
-        | Some acc, k :: v ->
-          (* strip leading tab character and further possible whitespace *)
-          let v = String.concat ":" v |> String.trim in
-          Some ((k, v) :: acc)
-        | _ -> None) (Some []) |>
-    Option.to_result ~none:(`Msg "failed to parse /proc/<pid>/status")
-  with _ -> Error (`Msg (Fmt.str "error reading file /proc/%d/status" pid))
-
-let linux_rusage pid =
-  let* start =
-    match Unix.stat ("/proc/" ^ string_of_int pid) with
-    | { Unix.st_ctime = start; _ } ->
-      let frac = Float.rem start 1. in
-      Ok (Int64.of_float start, int_of_float (frac *. 1_000_000.))
-    | exception Unix.Unix_error (Unix.ENOENT,_,_) -> Error (`Msg "failed to stat process")
-  in
-  (* reading /proc/<pid>/stat - since it may disappear mid-time,
-     best to have it in memory *)
-  let* data = string_of_file ("/proc/" ^ string_of_int pid ^ "/stat") in
-  let* stat_vals = parse_proc_stat data in
-  let* data = string_of_file ("/proc/" ^ string_of_int pid ^ "/statm") in
-  let statm_vals = String.split_on_char ' ' data in
-  let* status = read_proc_status pid in
-  let assoc_i64 key : (int64, _) result =
-    let e x = Option.to_result ~none:(`Msg "error parsing /proc/<pid>/status") x in
-    let* v = e (List.assoc_opt key status) in
-    e (Int64.of_string_opt v)
-  in
-  let i64 s = try Ok (Int64.of_string s) with
-      Failure _ -> Error (`Msg "couldn't parse integer")
-  in
-  let time_of_int64 t =
-    let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
-    let ( * ) = Int64.mul and ( / ) = Int64.div in
-    (t / clock_tick, Int64.to_int (((Int64.rem t clock_tick) * 1_000_000L) / clock_tick))
-  and us_of_int64 t =
-    let clock_tick = Int64.of_int (sysconf_clock_tick ()) in
-    let ( * ) = Int64.mul and ( / ) = Int64.div in
-    t * 1_000_000L / clock_tick
-  in
-  if List.length stat_vals >= 52 && List.length statm_vals >= 7 then
-    let* minflt = i64 (List.nth stat_vals 9) in
-    let* majflt = i64 (List.nth stat_vals 11) in
-    let* utime = i64 (List.nth stat_vals 13) in (* divide by sysconf(_SC_CLK_TCK) *)
-    let* stime = i64 (List.nth stat_vals 14) in (* divide by sysconf(_SC_CLK_TCK) *)
-    let runtime = us_of_int64 Int64.(add utime stime) in
-    let utime = time_of_int64 utime
-    and stime = time_of_int64 stime in
-    let* vsize = i64 (List.nth stat_vals 22) in (* in bytes *)
-    let* rss = i64 (List.nth stat_vals 23) in (* in pages *)
-    let* nswap = i64 (List.nth stat_vals 35) in (* not maintained, 0 *)
-    let* tsize = i64 (List.nth statm_vals 3) in
-    let* dsize = i64 (List.nth statm_vals 5) in (* data + stack *)
-    let* ssize = i64 (List.nth statm_vals 5) in (* data + stack *)
-    let* nvcsw = assoc_i64 "voluntary_ctxt_switches" in
-    let* nivcsw = assoc_i64 "nonvoluntary_ctxt_switches" in
-    let rusage = { Stats.utime ; stime ; maxrss = rss ; ixrss = 0L ;
-         idrss = 0L ; isrss = 0L ; minflt ; majflt ; nswap ; inblock = 0L ; outblock = 0L ;
-         msgsnd = 0L ; msgrcv = 0L ; nsignals = 0L ; nvcsw ; nivcsw }
-    and kmem = { Stats.vsize; rss; tsize; dsize; ssize; runtime; cow = 0; start }
-    in
-    Ok (rusage, kmem)
-  else
-    Error (`Msg "couldn't read /proc/<pid>/stat")
-
 let reported_rusage_hint = ref false
 
 let rusage pid =
-  match Lazy.force Vmm_unix.uname with
-  | Vmm_unix.FreeBSD ->
-    begin match wrap sysctl_kinfo_proc pid with
-      | None ->
-        if not !reported_rusage_hint then begin
-          reported_rusage_hint := true;
-          Logs.err (fun m -> m "HINT: Is the process visible? Are sysctls 'security.bsd.see_other_uids' and 'security.bsd.see_other_gids' enabled (set to 1)?")
-        end;
-        None
-      | Some x -> Some x
-    end
-  | Vmm_unix.Linux -> match linux_rusage pid with
-    | Ok x -> Some x
-    | Error (`Msg msg) ->
-      Logs.err (fun m -> m "error %s while reading /proc/" msg);
-      None
+  match Tally_rusage.rusage pid with
+  | Error `Msg msg ->
+    Logs.warn (fun m -> m "failed to report rusage for pid %u: %s" pid msg);
+    if not !reported_rusage_hint then begin
+      reported_rusage_hint := true;
+      Logs.err (fun m -> m "HINT: Is the process visible? Are sysctls 'security.bsd.see_other_uids' and 'security.bsd.see_other_gids' enabled (set to 1)?")
+    end;
+    None
+  | Ok x -> Some x
 
 let gather pid nics =
-  let ru, mem =
-    match rusage pid with
-    | None -> None, None
-    | Some (mem, ru) -> Some mem, Some ru
-  in
-  ru, mem,
+  let ru = rusage pid in
+  ru,
   List.fold_left (fun ifd (bridge, nic, nname) ->
       match wrap sysctl_ifdata nic with
       | None ->
@@ -192,10 +76,10 @@ let tick t =
           match IM.find_opt pid t.pid_nic with
           | None -> None
           | Some nics ->
-            let ru, mem, ifd = gather pid nics in
+            let ru, ifd = gather pid nics in
             match ru with
             | None -> None
-            | Some ru -> Some (ru, mem, ifd)
+            | Some ru -> Some (ru, ifd)
         in
         let stats = match stat with None -> stats | Some x -> (vmid, x) :: stats in
         let listeners = Vmm_trie.collect vmid t.name_sockets in
@@ -203,16 +87,13 @@ let tick t =
         | [] -> Logs.debug (fun m -> m "nobody is listening") ; (out, stats, to_remove)
         | xs -> match stat with
           | None -> out, stats, to_remove
-          | Some (ru, mem, ifd) ->
+          | Some (ru, ifd) ->
             let outs =
-              List.fold_left (fun out (id, (version, socket, curr_old)) ->
+              List.fold_left (fun out (id, (version, socket)) ->
                   let listening_path = Vmm_core.Name.path id in
                   let real_id = Vmm_core.Name.drop_prefix_exn vmid listening_path in
                   let header = Vmm_commands.header ~version real_id in
-                  let data = match curr_old with
-                    | `Current -> `Stats_data (ru, mem, ifd)
-                    | `Old -> `Old_stats_data (ru, mem, None, ifd)
-                  in
+                  let data = `Stats_data (ru, ifd) in
                   ((socket, id, (header, `Data data)) :: out))
                 out xs
             in
@@ -255,15 +136,9 @@ let handle t socket (hdr, wire) =
         Ok (t, None, "removed")
       | `Stats_subscribe ->
         let name_sockets, close =
-          Vmm_trie.insert id (hdr.Vmm_commands.version, socket, `Current) t.name_sockets
+          Vmm_trie.insert id (hdr.Vmm_commands.version, socket) t.name_sockets
         in
         Ok ({ t with name_sockets }, close, "subscribed")
-      | `Old_stats_subscribe ->
-        let name_sockets, close =
-          Vmm_trie.insert id (hdr.Vmm_commands.version, socket, `Old) t.name_sockets
-        in
-        Ok ({ t with name_sockets }, close, "subscribed")
-
     end
   | _ ->
     Logs.err (fun m -> m "unexpected wire %a"

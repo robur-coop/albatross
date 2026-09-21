@@ -1,7 +1,7 @@
 (library
  (name albatross_stats)
  (public_name albatross.stats)
- (libraries albatross albatross.unix)
+ (libraries albatross albatross.unix tally.rusage)
  (wrapped false)
  (foreign_stubs
   (language c)

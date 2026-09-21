@@ -30,7 +30,7 @@ val find : Name.t -> 'a t -> 'a option
 (** [collect name t] finds for each sub-element of name the connected values.
     If [name] is "foo:bar",
     [("foo:bar", t("foo:bar")) :: ("foo", t("foo")) :: ("", t("")) :: []]
-    are returned (only the values present are returned.
+    are returned (only the values present are returned).
 
     This is at the moment used in the albatross statistics daemon, but it may
     be removed soon.
@@ -43,3 +43,6 @@ val all : 'a t -> (Name.t * 'a) list
 (** [fold path t f init] folds [f] over [t] at [path]. Each subnode of [path] is
     passed to [f]. *)
 val fold : Name.Path.t -> 'a t -> (Name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
+
+(** [paths t] are all top-level paths. *)
+val paths : 'a t -> Name.Path.t list

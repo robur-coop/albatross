@@ -172,7 +172,7 @@ let open_fifo name =
         Logs.err (fun m -> m "%a error while reading %s" Fpath.pp fifo (Printexc.to_string exn)) ;
         Lwt.return None)
 
-let fifos = Vmm_core.conn_metrics "fifo"
+let fifos = Vmm_core.connections "fifo"
 
 let maybe_drop name path n map =
   (* we allow 1 more unikernel console output, thus we compare with > n here, not >= n. *)
@@ -357,7 +357,7 @@ let handle max_subscribers s addr =
   Vmm_lwt.safe_close s >|= fun () ->
   Logs.warn (fun m -> m "disconnected")
 
-let m = Vmm_core.conn_metrics "unix"
+let m = Vmm_core.connections "unix"
 
 let jump _ systemd influx tmpdir max_subscribers =
   Sys.(set_signal sigpipe Signal_ignore) ;

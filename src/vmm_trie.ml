@@ -137,3 +137,6 @@ let fold path t f acc =
       | Some n -> down xs n
   in
   down (Vmm_core.Name.Path.to_labels path) t
+
+let paths (N (_, m)) =
+  List.map (fun (name, _) -> Vmm_core.Name.Path.of_label name) (Map.bindings m)
