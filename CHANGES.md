@@ -1,3 +1,8 @@
+# v2.8.2 (2026-09-21)
+
+- Allow colons in block device name (#289 @reynir)
+- Fix albatross_stats.daemon systemd script, allow AF_INET (#292 @dinosaure)
+
 # v2.8.1 (2026-09-13)
 
 - Update to x509 1.2.0 (#288 @hannesm)
