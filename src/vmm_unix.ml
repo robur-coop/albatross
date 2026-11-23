@@ -356,7 +356,9 @@ let prepare name (unikernel : Unikernel.config) =
           Ok unikernel.Unikernel.image
       in
       let filename = Name.image_file name in
-      let digest = Digestif.SHA256.(to_raw_string (digest_string image)) in
+      let digest = Caravan.Slot.hash ~algorithm:SHA256 (Bytes.unsafe_of_string image) in
+      let digest = Digestif.SHA256.of_hex digest in
+      let digest = Digestif.SHA256.to_raw_string digest in
       let* target, version = solo5_image_target image in
       let* _ = check_solo5_tender target version in
       let* () = manifest_devices_match ~bridges:unikernel.Unikernel.bridges ~block_devices:unikernel.Unikernel.block_devices image in
