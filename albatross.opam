@@ -62,5 +62,5 @@ pinned (`cpuset` / `taskset`) to a specific core.
 depexts: ["linux-headers"] {os-family = "alpine"}
 x-maintenance-intent: [ "(latest)" ]
 pin-depends: [
-  [ "caravan.dev" "git+https://git.robur.coop/robur/caravan.git#b65f4c3b18e7168cee8a0fc5b3b284e1b64978c2" ]
+  [ "caravan.dev" "git+https://git.robur.coop/robur/caravan.git#d20753fa261473572a68b8a87c15d5478128609a" ]
 ]
