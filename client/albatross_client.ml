@@ -2,6 +2,8 @@
 
 open Lwt.Infix
 
+let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
+
 type exit_status =
   | Success
   | Local_authentication_failed
@@ -179,7 +181,33 @@ let http_get_binary ~happy_eyeballs host job build =
       Logs.warn (fun m -> m "received HTTP reply: %a" Http_lwt_client.pp_response resp);
       Error (`Msg "unexpected HTTP reply")
 
-let prepare_update ~happy_eyeballs level host dryrun = function
+let find_slot slots name =
+  match List.filter (fun s -> s.Caravan.Slot.name = name) slots with
+  | [ slot ] -> Ok slot
+  | [] -> error_msgf "slot %S not found" name
+  | _ -> error_msgf "slot %S is ambiguous (multiple occurences)" name
+
+let update_caravan_slots old_unikernel unikernel =
+  let old_unikernel = Bytes.unsafe_of_string old_unikernel in
+  let unikernel = Bytes.of_string unikernel in
+  let slots_in = Caravan.Slot.scan old_unikernel in
+  let slots_out = Caravan.Slot.scan unikernel in
+  let fn slot_out =
+    if not slot_out.Caravan.Slot.filled then
+      match find_slot slots_in slot_out.Caravan.Slot.name with
+      | Ok ({ Caravan.Slot.filled= true; _ } as slot_in) ->
+        let value = Caravan.Slot.value old_unikernel slot_in in
+        let fn value =
+          match Caravan.Slot.fill unikernel slot_out value with
+          | Ok () -> ()
+          | Error (`Msg msg) ->
+            Logs.warn (fun m -> m "Impossible to fill %s: %s" slot_out.Caravan.Slot.name msg) in
+        Option.iter fn value
+      | _ -> () in
+  List.iter fn slots_out;
+  Bytes.unsafe_to_string unikernel
+
+let prepare_update ~happy_eyeballs level host dryrun get_old_unikernel = function
   | Ok (_hdr, `Success (`Unikernel_info
       [ _name, Vmm_core.Unikernel.{ digest ; bridges ; block_devices ; argv ; startup ; cpuids ; memory ; fail_behaviour ; typ = `Solo5 as typ ; numcpus ; linux_boot_partition ; _ } ]))
   | Ok (_hdr, `Success (`Old_unikernel_info4
@@ -224,6 +252,9 @@ let prepare_update ~happy_eyeballs level host dryrun = function
               Logs.err (fun m -> m "manifest failed: %s" msg);
               Lwt.return (Error Internal_error)
             | Ok () ->
+              let ( let* ) = Lwt_result.bind in
+              let* (old_unikernel : string) = get_old_unikernel () in
+              let unikernel = update_caravan_slots old_unikernel unikernel in
               let compressed, image =
                 match level with
                 | 0 -> false, unikernel
@@ -967,7 +998,13 @@ let update () host dryrun compression name d cert key ca key_type tmpdir =
         one_jump d (`Unikernel_cmd `Unikernel_info) name cert key ca key_type tmpdir >>= fun r ->
         let happy_eyeballs = Happy_eyeballs_lwt.create () in
         let level = compress_default compression d in
-        let* cmd = prepare_update ~happy_eyeballs level host dryrun r in
+        let get_old_unikernel () =
+          one_jump d (`Unikernel_cmd (`Unikernel_get 0)) name cert key ca key_type tmpdir >|= function
+          | Ok (_, `Success (`Unikernel_image (false, image))) -> Ok image
+          | Ok _ -> assert false
+          | Error (`Connect exit_status) -> Error exit_status
+          | _ -> Error Remote_command_failed in
+        let* cmd = prepare_update ~happy_eyeballs level host dryrun get_old_unikernel r in
         one_jump d (`Unikernel_cmd cmd) name cert key ca key_type tmpdir >>= fun r ->
         match r with
         | Ok w ->

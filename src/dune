@@ -14,7 +14,7 @@
  (wrapped false)
  (modules vmm_unix vmm_lwt vmm_vmmd)
  (libraries albatross ipaddr.unix bos solo5-elftool lwt lwt.unix ptime.clock.os
-   digestif cachet decompress.de decompress.zl)
+   digestif cachet caravan decompress.de decompress.zl)
  (foreign_stubs
   (language c)
   (names vmm_stubs)
